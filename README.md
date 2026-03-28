@@ -131,7 +131,24 @@ Config is validated on load (types, enums, provider names, event sound keys).
 
 The Pi integration is intentionally separate from core logic:
 - Core logic: Python package (`let_me_know_agent/*`)
-- Pi adapter: `pi-extension/let-me-know-agent.ts` (calls `let-me-know-pi` as a subprocess)
+- Pi adapter: `extensions/let-me-know-agent.ts` (calls `let-me-know-pi` as a subprocess)
+
+### Install via `pi install` (recommended)
+
+```bash
+pi install https://github.com/piotrgredowski/let-me-know-agent
+```
+
+This works because the repo is a Pi package (`package.json` + `pi.extensions`).
+After install, run `/reload` in Pi.
+
+> Note: The extension shells out to `let-me-know-pi`, so the Python package must also be installed in your environment.
+> 
+> ```bash
+> pip install let-me-know-agent
+> # or local dev
+> pip install -e .
+> ```
 
 ### 1) Install Python package
 
@@ -141,7 +158,7 @@ pip install let-me-know-agent
 pip install -e .
 ```
 
-### 2) Install Pi extension file
+### 2) (Alternative manual install) copy Pi extension file
 
 ```bash
 ./pi-extension/install.sh

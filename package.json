@@ -1,0 +1,13 @@
+{
+  "name": "let-me-know-agent-pi-package",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi package wrapper for let-me-know-agent extension",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
