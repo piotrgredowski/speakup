@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 
-from .config import Config
+from .config import Config, write_default_config
 from .models import MessageEvent, NotifyRequest
 from .service import NotifyService
 
@@ -16,6 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--event", help="final|error|needs_input|progress|info", default="final")
     parser.add_argument("--input-json", help="JSON payload string using NotifyRequest schema", default=None)
     parser.add_argument("--input-file", help="Path to JSON payload using NotifyRequest schema", default=None)
+    parser.add_argument("--init-config", action="store_true", help="Write default config to ~/.config/let-me-know-agent/config.json")
+    parser.add_argument("--force", action="store_true", help="Overwrite config file when used with --init-config")
     return parser
 
 
@@ -41,6 +43,17 @@ def _load_payload(args: argparse.Namespace) -> NotifyRequest:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.init_config:
+        try:
+            path = write_default_config(force=args.force)
+        except FileExistsError as exc:
+            json.dump({"status": "error", "error": str(exc)}, sys.stdout)
+            sys.stdout.write("\n")
+            raise SystemExit(2)
+        json.dump({"status": "ok", "config_path": str(path)}, sys.stdout)
+        sys.stdout.write("\n")
+        return
 
     config = Config.load(args.config)
     request = _load_payload(args)

@@ -52,7 +52,16 @@ Returns JSON result:
 
 ## Configuration
 
-Create `config.json` and pass `--config config.json`.
+Initialize a default config file:
+
+```bash
+let-me-know --init-config
+```
+
+This writes to `~/.config/let-me-know-agent/config.json`.
+Use `--force` to overwrite an existing file.
+
+You can also pass an explicit config path with `--config config.json`.
 
 If `--config` is omitted, the tool checks:
 1. `~/.config/let-me-know-agent/config.json`

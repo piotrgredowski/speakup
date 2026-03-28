@@ -17,6 +17,10 @@ _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
 
 
+def default_config_path() -> Path:
+    return Path.home() / ".config" / "let-me-know-agent" / "config.json"
+
+
 @dataclass(slots=True)
 class Config:
     raw: dict[str, Any]
@@ -24,7 +28,7 @@ class Config:
     @classmethod
     def load(cls, path: str | Path | None) -> "Config":
         if path is None:
-            default_path = Path.home() / ".config" / "let-me-know-agent" / "config.json"
+            default_path = default_config_path()
             if default_path.exists():
                 base = json.loads(default_path.read_text())
                 validate_config(base)
@@ -202,3 +206,14 @@ def default_config() -> dict[str, Any]:
             },
         },
     }
+
+
+def write_default_config(path: str | Path | None = None, *, force: bool = False) -> Path:
+    target = Path(path) if path is not None else default_config_path()
+    if target.exists() and not force:
+        raise FileExistsError(f"Config already exists: {target}")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(default_config(), indent=2) + "\n"
+    target.write_text(content)
+    return target
