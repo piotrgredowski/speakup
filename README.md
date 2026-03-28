@@ -6,6 +6,7 @@ Python library + CLI to turn agent responses into short spoken updates.
 
 - Summarizes agent output into concise spoken text
 - Speaks on: final, error, needs_input, progress
+- Kokoro TTS included as Python dependency (`kokoro`)
 - Per-event sound cues (earcons) before speech
 - Provider fallback chains for summarization and TTS
 - Privacy modes (`local_only`, `prefer_local`)
@@ -33,6 +34,12 @@ You can skip local playback (useful in headless runs):
 
 ```bash
 let-me-know --no-play --message "Done implementing the feature." --event final
+```
+
+Install/repair Kokoro runtime command in current Python env:
+
+```bash
+let-me-know --install-kokoro
 ```
 
 Pi payload through dedicated wrapper command:

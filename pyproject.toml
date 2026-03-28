@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Speak concise agent status updates with pluggable local/remote backends"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "kokoro>=0.7.16",
+]
 
 [project.scripts]
 let-me-know = "let_me_know_agent.cli:main"

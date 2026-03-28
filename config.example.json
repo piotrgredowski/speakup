@@ -37,6 +37,9 @@
     "cache_file": "/tmp/let-me-know-agent/last_progress.json"
   },
   "providers": {
+    "kokoro": {
+      "command": "kokoro"
+    },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",

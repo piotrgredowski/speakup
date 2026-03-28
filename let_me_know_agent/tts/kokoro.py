@@ -12,7 +12,7 @@ from ..models import AudioResult
 class KokoroTTSAdapter(TTSAdapter):
     name = "kokoro"
 
-    def __init__(self, command: str = "kokoro-tts"):
+    def __init__(self, command: str = "kokoro"):
         self.command = command
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "wav") -> AudioResult:

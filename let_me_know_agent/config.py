@@ -149,10 +149,10 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_str(dedup.get("cache_file", ".cache/last_progress.json"), "dedup.cache_file")
 
     providers = _require_dict(raw.get("providers", {}), "providers")
-    for provider_name in ("lmstudio", "elevenlabs", "openai"):
+    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
-            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model"}:
+            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command"}:
                 _require_str(value, f"providers.{provider_name}.{key}")
 
 
@@ -211,6 +211,9 @@ def default_config() -> dict[str, Any]:
                 "model": "gpt-4o-mini-tts",
                 "summary_model": "gpt-4o-mini",
                 "voice": "alloy",
+            },
+            "kokoro": {
+                "command": "kokoro",
             },
         },
     }
