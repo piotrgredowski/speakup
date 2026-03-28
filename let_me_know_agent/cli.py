@@ -5,8 +5,6 @@ import json
 import sys
 
 from .config import Config, write_default_config
-from .errors import AdapterError
-from .installer import install_kokoro
 from .models import MessageEvent, NotifyRequest
 from .service import NotifyService
 
@@ -21,7 +19,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-play", action="store_true", help="Synthesize audio but skip local playback")
     parser.add_argument("--init-config", action="store_true", help="Write default config to ~/.config/let-me-know-agent/config.json")
     parser.add_argument("--force", action="store_true", help="Overwrite config file when used with --init-config")
-    parser.add_argument("--install-kokoro", action="store_true", help="Install kokoro TTS runtime in current Python environment")
     return parser
 
 
@@ -56,17 +53,6 @@ def main() -> None:
             sys.stdout.write("\n")
             raise SystemExit(2)
         json.dump({"status": "ok", "config_path": str(path)}, sys.stdout)
-        sys.stdout.write("\n")
-        return
-
-    if args.install_kokoro:
-        try:
-            message = install_kokoro(python_executable=sys.executable)
-        except AdapterError as exc:
-            json.dump({"status": "error", "error": str(exc)}, sys.stdout)
-            sys.stdout.write("\n")
-            raise SystemExit(2)
-        json.dump({"status": "ok", "message": message}, sys.stdout)
         sys.stdout.write("\n")
         return
 

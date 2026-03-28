@@ -158,7 +158,8 @@ class NotifyService:
         if provider == "macos":
             return MacOSTTSAdapter()
         if provider == "kokoro":
-            return KokoroTTSAdapter()
+            kk = self.config.get("providers", "kokoro", default={})
+            return KokoroTTSAdapter(command=kk.get("command", "kokoro"))
         if provider == "lmstudio":
             lm = self.config.get("providers", "lmstudio", default={})
             return LMStudioTTSAdapter(lm.get("base_url", "http://localhost:1234/v1"), lm.get("tts_model", lm.get("model", "local-model")))

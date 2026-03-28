@@ -36,11 +36,6 @@ You can skip local playback (useful in headless runs):
 let-me-know --no-play --message "Done implementing the feature." --event final
 ```
 
-Install/repair Kokoro runtime command in current Python env:
-
-```bash
-let-me-know --install-kokoro
-```
 
 Pi payload through dedicated wrapper command:
 
