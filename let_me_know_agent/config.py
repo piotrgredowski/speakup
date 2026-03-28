@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,10 @@ _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
 
 def default_config_path() -> Path:
     return Path.home() / ".config" / "let-me-know-agent" / "config.json"
+
+
+def runtime_temp_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "let-me-know-agent"
 
 
 @dataclass(slots=True)
@@ -151,6 +156,7 @@ def validate_config(raw: dict[str, Any]) -> None:
 
 
 def default_config() -> dict[str, Any]:
+    runtime_dir = runtime_temp_dir()
     return {
         "privacy": {
             "mode": "prefer_local",
@@ -181,12 +187,12 @@ def default_config() -> dict[str, Any]:
             "voice": "default",
             "speed": 1.0,
             "audio_format": "mp3",
-            "save_audio_dir": ".cache/audio",
+            "save_audio_dir": str(runtime_dir / "audio"),
         },
         "dedup": {
             "enabled": True,
             "window_seconds": 30,
-            "cache_file": ".cache/last_progress.json",
+            "cache_file": str(runtime_dir / "last_progress.json"),
         },
         "providers": {
             "lmstudio": {

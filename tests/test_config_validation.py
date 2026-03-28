@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 
 import pytest
 
@@ -10,6 +11,13 @@ from let_me_know_agent.config import Config, ConfigValidationError, default_conf
 def test_config_load_given_valid_default_then_succeeds() -> None:
     cfg = Config.load(None)
     assert cfg.get("privacy", "mode") == "prefer_local"
+
+
+def test_default_config_runtime_paths_use_system_temp_dir() -> None:
+    cfg = default_config()
+    temp_root = tempfile.gettempdir()
+    assert cfg["tts"]["save_audio_dir"].startswith(temp_root)
+    assert cfg["dedup"]["cache_file"].startswith(temp_root)
 
 
 @pytest.mark.parametrize(

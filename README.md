@@ -44,7 +44,7 @@ Returns JSON result:
   "state": "needs_input",
   "backend": "macos",
   "played": true,
-  "audio_path": ".cache/audio/tts-....aiff",
+  "audio_path": "/tmp/let-me-know-agent/audio/tts-....aiff",
   "dedup_skipped": false,
   "error": null
 }
@@ -100,12 +100,12 @@ Config is validated on load (types, enums, provider names, event sound keys).
     "voice": "default",
     "speed": 1.0,
     "audio_format": "mp3",
-    "save_audio_dir": ".cache/audio"
+    "save_audio_dir": "/tmp/let-me-know-agent/audio"
   },
   "dedup": {
     "enabled": true,
     "window_seconds": 30,
-    "cache_file": ".cache/last_progress.json"
+    "cache_file": "/tmp/let-me-know-agent/last_progress.json"
   },
   "providers": {
     "lmstudio": {
