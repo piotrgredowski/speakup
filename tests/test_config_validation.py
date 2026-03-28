@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from let_me_know_agent.config import Config, ConfigValidationError, default_config
+
+
+def test_config_load_given_valid_default_then_succeeds() -> None:
+    cfg = Config.load(None)
+    assert cfg.get("privacy", "mode") == "prefer_local"
+
+
+@pytest.mark.parametrize(
+    "mutator,expected",
+    [
+        (lambda c: c["privacy"].update({"mode": "remote_only"}), "privacy.mode"),
+        (lambda c: c["tts"].update({"audio_format": "flac"}), "tts.audio_format"),
+        (lambda c: c["summarization"].update({"provider_order": ["rule_based", "x"]}), "summarization.provider_order"),
+        (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files has unknown event key"),
+        (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
+    ],
+)
+def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path) -> None:
+    config = default_config()
+    mutator(config)
+    config_path = tmp_path / "bad.json"
+    config_path.write_text(json.dumps(config))
+
+    with pytest.raises(ConfigValidationError) as exc:
+        Config.load(config_path)
+
+    assert expected in str(exc.value)

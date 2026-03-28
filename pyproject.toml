@@ -1,0 +1,23 @@
+[project]
+name = "let-me-know-agent"
+version = "0.1.0"
+description = "Speak concise agent status updates with pluggable local/remote backends"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+let-me-know = "let_me_know_agent.cli:main"
+let-me-know-pi = "let_me_know_agent.pi_command:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["let_me_know_agent", "let_me_know_agent.summarizers", "let_me_know_agent.tts", "let_me_know_agent.playback", "let_me_know_agent.integrations"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
