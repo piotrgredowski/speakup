@@ -9,7 +9,7 @@ Python library + CLI to turn agent responses into short spoken updates.
 - Per-event sound cues (earcons) before speech
 - Provider fallback chains for summarization and TTS
 - Privacy modes (`local_only`, `prefer_local`)
-- Pi payload adapter (`--from-pi`)
+- Agent-agnostic core CLI + dedicated Pi wrapper command
 
 ## Install
 
@@ -23,10 +23,10 @@ pip install -e .
 let-me-know --message "Done implementing the feature." --event final
 ```
 
-Pi payload through the generic CLI:
+Or with normalized JSON input:
 
 ```bash
-let-me-know --from-pi --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
+let-me-know --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
 ```
 
 Pi payload through dedicated wrapper command:
