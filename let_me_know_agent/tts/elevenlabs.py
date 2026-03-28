@@ -44,9 +44,14 @@ class ElevenLabsTTSAdapter(TTSAdapter):
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                content_type = resp.headers.get("Content-Type", "")
                 audio = resp.read()
         except Exception as exc:
             raise AdapterError(f"ElevenLabs TTS failed: {exc}") from exc
+
+        if not content_type.lower().startswith("audio/"):
+            preview = audio[:200].decode("utf-8", errors="replace")
+            raise AdapterError(f"ElevenLabs TTS returned non-audio response ({content_type}): {preview}")
 
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"tts-{uuid4().hex}.mp3"

@@ -46,9 +46,14 @@ class OpenAITTSAdapter(TTSAdapter):
 
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                content_type = resp.headers.get("Content-Type", "")
                 audio = resp.read()
         except Exception as exc:
             raise AdapterError(f"OpenAI TTS failed: {exc}") from exc
+
+        if not content_type.lower().startswith("audio/"):
+            preview = audio[:200].decode("utf-8", errors="replace")
+            raise AdapterError(f"OpenAI TTS returned non-audio response ({content_type}): {preview}")
 
         suffix = "mp3" if format_value == "mp3" else "wav"
         mime = "audio/mpeg" if suffix == "mp3" else "audio/wav"
