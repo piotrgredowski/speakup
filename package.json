@@ -5,7 +5,7 @@
   "description": "Pi package wrapper for let-me-know-agent extension",
   "keywords": ["pi-package"],
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": ["./pi-extensions"]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*"
