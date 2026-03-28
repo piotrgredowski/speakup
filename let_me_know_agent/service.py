@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .classifier import infer_event
-from .config import Config
+from .config import Config, runtime_temp_dir
 from .dedup import should_skip_progress
 from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest, NotifyResult
@@ -62,20 +62,28 @@ class NotifyService:
 
         audio_path = Path(str(tts_result.value)) if tts_result.kind == "file" and tts_result.value else None
         played = False
-        if audio_path:
+        playback_error: str | None = None
+        play_audio = bool(self.config.get("tts", "play_audio", default=True))
+        if audio_path and play_audio:
             try:
                 self.playback.play_file(audio_path)
                 played = True
-            except AdapterError:
+            except AdapterError as exc:
                 played = False
+                playback_error = str(exc)
+
+        status = "ok" if played or not play_audio else "partial_success"
+        if audio_path is None:
+            status = "ok"
 
         return NotifyResult(
-            status="ok",
+            status=status,
             summary=summary_text,
             state=event,
             backend=backend,
             played=played,
             audio_path=audio_path,
+            error=playback_error,
         )
 
     def _should_speak(self, event: MessageEvent) -> bool:
@@ -92,7 +100,7 @@ class NotifyService:
         enabled = self.config.get("dedup", "enabled", default=True)
         if not enabled or event != MessageEvent.PROGRESS:
             return False
-        cache_file = Path(self.config.get("dedup", "cache_file", default=".cache/last_progress.json"))
+        cache_file = Path(self.config.get("dedup", "cache_file", default=str(runtime_temp_dir() / "last_progress.json")))
         window = int(self.config.get("dedup", "window_seconds", default=30))
         return should_skip_progress(message, cache_file, window)
 
@@ -124,7 +132,7 @@ class NotifyService:
 
     def _synthesize(self, text: str):
         provider_order = self.config.get("tts", "provider_order", default=["macos"])
-        output_dir = Path(self.config.get("tts", "save_audio_dir", default=".cache/audio"))
+        output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         voice = self.config.get("tts", "voice", default="default")
         speed = float(self.config.get("tts", "speed", default=1.0))
         audio_format = self.config.get("tts", "audio_format", default="mp3")

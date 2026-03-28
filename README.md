@@ -29,6 +29,12 @@ Or with normalized JSON input:
 let-me-know --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
 ```
 
+You can skip local playback (useful in headless runs):
+
+```bash
+let-me-know --no-play --message "Done implementing the feature." --event final
+```
+
 Pi payload through dedicated wrapper command:
 
 ```bash
@@ -99,6 +105,7 @@ Config is validated on load (types, enums, provider names, event sound keys).
     "provider_order": ["macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
     "speed": 1.0,
+    "play_audio": true,
     "audio_format": "mp3",
     "save_audio_dir": "/tmp/let-me-know-agent/audio"
   },

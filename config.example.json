@@ -27,6 +27,7 @@
     "provider_order": ["macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
     "speed": 1.0,
+    "play_audio": true,
     "audio_format": "mp3",
     "save_audio_dir": "/tmp/let-me-know-agent/audio"
   },

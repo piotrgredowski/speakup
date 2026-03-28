@@ -25,6 +25,7 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     [
         (lambda c: c["privacy"].update({"mode": "remote_only"}), "privacy.mode"),
         (lambda c: c["tts"].update({"audio_format": "flac"}), "tts.audio_format"),
+        (lambda c: c["tts"].update({"play_audio": "yes"}), "tts.play_audio"),
         (lambda c: c["summarization"].update({"provider_order": ["rule_based", "x"]}), "summarization.provider_order"),
         (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files has unknown event key"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),

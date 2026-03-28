@@ -137,6 +137,7 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_list_of_known(tts.get("provider_order", ["macos"]), _ALLOWED_TTS, "tts.provider_order")
     _require_str(tts.get("voice", "default"), "tts.voice")
     _require_number(tts.get("speed", 1.0), "tts.speed")
+    _require_bool(tts.get("play_audio", True), "tts.play_audio")
     audio_format = tts.get("audio_format", "mp3")
     if audio_format not in _ALLOWED_AUDIO_FORMATS:
         raise ConfigValidationError(f"tts.audio_format must be one of {_ALLOWED_AUDIO_FORMATS}")
@@ -186,6 +187,7 @@ def default_config() -> dict[str, Any]:
             "provider_order": ["macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
             "voice": "default",
             "speed": 1.0,
+            "play_audio": True,
             "audio_format": "mp3",
             "save_audio_dir": str(runtime_dir / "audio"),
         },

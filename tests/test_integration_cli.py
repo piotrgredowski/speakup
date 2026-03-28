@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 
 from .conftest import run_cli
@@ -52,3 +54,39 @@ def test_cli_given_event_sound_mapping_then_plays_sound_and_tts(tmp_path: Path, 
     lines = [ln.strip() for ln in play_log.read_text().splitlines() if ln.strip()]
     assert str(beep) in lines
     assert any("tts-" in line for line in lines)
+
+
+def test_cli_given_playback_failure_then_returns_partial_success(tmp_path: Path, base_config: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    say_script = bin_dir / "say"
+    say_script.write_text(
+        "#!/bin/sh\n"
+        "OUT=\"\"\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  if [ \"$1\" = \"-o\" ]; then\n"
+        "    shift\n"
+        "    OUT=\"$1\"\n"
+        "  fi\n"
+        "  shift\n"
+        "done\n"
+        "echo 'FAKEAUDIO' > \"$OUT\"\n"
+    )
+    say_script.chmod(say_script.stat().st_mode | stat.S_IEXEC)
+
+    afplay_script = bin_dir / "afplay"
+    afplay_script.write_text("#!/bin/sh\nexit 1\n")
+    afplay_script.chmod(afplay_script.stat().st_mode | stat.S_IEXEC)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+
+    result = run_cli(["--config", str(base_config), "--message", "Done", "--event", "final"], env=env)
+    assert result.returncode == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "partial_success"
+    assert payload["played"] is False
+    assert payload["backend"] == "macos"
+    assert payload["error"] is not None

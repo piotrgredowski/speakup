@@ -16,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--event", help="final|error|needs_input|progress|info", default="final")
     parser.add_argument("--input-json", help="JSON payload string using NotifyRequest schema", default=None)
     parser.add_argument("--input-file", help="Path to JSON payload using NotifyRequest schema", default=None)
+    parser.add_argument("--no-play", action="store_true", help="Synthesize audio but skip local playback")
     parser.add_argument("--init-config", action="store_true", help="Write default config to ~/.config/let-me-know-agent/config.json")
     parser.add_argument("--force", action="store_true", help="Overwrite config file when used with --init-config")
     return parser
@@ -56,6 +57,8 @@ def main() -> None:
         return
 
     config = Config.load(args.config)
+    if args.no_play:
+        config.raw.setdefault("tts", {})["play_audio"] = False
     request = _load_payload(args)
 
     result = NotifyService(config).notify(request)
