@@ -24,6 +24,12 @@ class Config:
     @classmethod
     def load(cls, path: str | Path | None) -> "Config":
         if path is None:
+            default_path = Path.home() / ".config" / "let-me-know-agent" / "config.json"
+            if default_path.exists():
+                base = json.loads(default_path.read_text())
+                validate_config(base)
+                return cls(base)
+
             raw = default_config()
             validate_config(raw)
             return cls(raw)

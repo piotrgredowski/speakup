@@ -54,6 +54,10 @@ Returns JSON result:
 
 Create `config.json` and pass `--config config.json`.
 
+If `--config` is omitted, the tool checks:
+1. `~/.config/let-me-know-agent/config.json`
+2. built-in defaults (if no file is found)
+
 Config is validated on load (types, enums, provider names, event sound keys).
 
 ```json
