@@ -118,6 +118,56 @@ Config is validated on load (types, enums, provider names, event sound keys).
 }
 ```
 
+## Pi extension install
+
+The Pi integration is intentionally separate from core logic:
+- Core logic: Python package (`let_me_know_agent/*`)
+- Pi adapter: `pi-extension/let-me-know-agent.ts` (calls `let-me-know-pi` as a subprocess)
+
+### 1) Install Python package
+
+```bash
+pip install let-me-know-agent
+# or for local dev
+pip install -e .
+```
+
+### 2) Install Pi extension file
+
+```bash
+./pi-extension/install.sh
+```
+
+This copies the extension to:
+`~/.pi/agent/extensions/let-me-know-agent.ts`
+
+Then inside Pi run:
+
+```text
+/reload
+```
+
+### 3) Optional extension config
+
+Copy and edit:
+
+```bash
+mkdir -p ~/.config/let-me-know-agent
+cp pi-extension/pi-extension.example.json ~/.config/let-me-know-agent/pi-extension.json
+```
+
+You can set a custom command/path and args (for example explicit `--config`).
+
+### 4) Runtime control in Pi
+
+Use command:
+
+```text
+/letmeknow on
+/letmeknow off
+/letmeknow status
+```
+
 ## Notes
 
 - Lightweight audio format default is `mp3` for remote providers.

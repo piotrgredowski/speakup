@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "command": "let-me-know-pi",
+  "args": ["--config", "/Users/you/.config/let-me-know-agent/config.json"],
+  "onlyAssistant": true
+}
