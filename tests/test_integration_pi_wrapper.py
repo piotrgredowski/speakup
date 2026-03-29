@@ -42,3 +42,18 @@ def test_pi_wrapper_given_input_file_then_processes_payload(base_config: Path, t
     output = json.loads(result.stdout)
     assert output["status"] == "ok"
     assert output["state"] == "final"
+
+
+def test_pi_wrapper_given_precomputed_summary_then_uses_it(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    payload = {
+        "message": "Very long content that normally would be summarized differently",
+        "summary": "Custom summary from headless agent",
+        "event": "final",
+        "agent": "pi",
+    }
+    result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
+
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["status"] == "ok"
+    assert output["summary"] == "Custom summary from headless agent"

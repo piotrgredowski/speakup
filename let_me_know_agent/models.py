@@ -21,6 +21,7 @@ class NotifyRequest:
     conversation_id: str | None = None
     task_id: str | None = None
     agent: str = "pi"
+    precomputed_summary: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

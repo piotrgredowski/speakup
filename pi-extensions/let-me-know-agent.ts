@@ -9,6 +9,14 @@ type ExtensionConfig = {
   command?: string;
   args?: string[];
   onlyAssistant?: boolean;
+  summaryMode?: "internal" | "agent_headless";
+  headlessSummary?: {
+    command?: string;
+    args?: string[];
+    model?: string;
+    maxChars?: number;
+    promptTemplate?: string;
+  };
 };
 
 type ExecSpec = {
@@ -25,6 +33,15 @@ function loadConfig(ctx: any): Required<ExtensionConfig> {
     command: "uvx",
     args: ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi"],
     onlyAssistant: true,
+    summaryMode: "internal",
+    headlessSummary: {
+      command: "pi",
+      args: ["headless", "--model", "{model}", "--prompt", "{prompt}"],
+      model: "default",
+      maxChars: 220,
+      promptTemplate:
+        "Summarize this agent message for spoken notification in <= {maxChars} characters. Return only the summary text.\\n\\nEvent: {event}\\n\\nMessage:\\n{text}",
+    },
   };
 
   if (!existsSync(DEFAULT_CONFIG_PATH)) return defaults;
@@ -35,11 +52,67 @@ function loadConfig(ctx: any): Required<ExtensionConfig> {
       command: raw.command ?? defaults.command,
       args: raw.args ?? defaults.args,
       onlyAssistant: raw.onlyAssistant ?? defaults.onlyAssistant,
+      summaryMode: raw.summaryMode ?? defaults.summaryMode,
+      headlessSummary: {
+        command: raw.headlessSummary?.command ?? defaults.headlessSummary.command,
+        args: raw.headlessSummary?.args ?? defaults.headlessSummary.args,
+        model: raw.headlessSummary?.model ?? defaults.headlessSummary.model,
+        maxChars: raw.headlessSummary?.maxChars ?? defaults.headlessSummary.maxChars,
+        promptTemplate: raw.headlessSummary?.promptTemplate ?? defaults.headlessSummary.promptTemplate,
+      },
     };
   } catch (err: any) {
     ctx.ui.notify(`let-me-know: invalid extension config: ${err?.message ?? err}`, "error");
     return defaults;
   }
+}
+
+function interpolateTemplate(template: string, values: Record<string, string | number>): string {
+  let out = template;
+  for (const [k, v] of Object.entries(values)) {
+    out = out.split(`{${k}}`).join(String(v));
+  }
+  return out;
+}
+
+function summarizeWithHeadless(text: string, event: string, cfg: Required<ExtensionConfig>, ctx: any): Promise<string | null> {
+  const h = cfg.headlessSummary;
+  const prompt = interpolateTemplate(h.promptTemplate, {
+    text,
+    event,
+    maxChars: h.maxChars,
+  });
+
+  const args = h.args.map((a) =>
+    interpolateTemplate(a, {
+      model: h.model,
+      prompt,
+      text,
+      event,
+      maxChars: h.maxChars,
+    }),
+  );
+
+  return new Promise((resolve) => {
+    const child = spawn(h.command, args, { stdio: ["ignore", "pipe", "pipe"] });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+
+    child.on("error", () => resolve(null));
+    child.on("close", (code) => {
+      if (code !== 0) {
+        const detail = stderr.trim() || `exit code ${code}`;
+        ctx.ui.notify(`let-me-know: headless summarizer failed (${detail}), falling back`, "warning");
+        resolve(null);
+        return;
+      }
+      const summary = stdout.trim();
+      resolve(summary || null);
+    });
+  });
 }
 
 function extractText(message: any): string {
@@ -151,13 +224,21 @@ export default function (pi: ExtensionAPI) {
     const text = extractText(event?.message);
     if (!text) return;
 
+    const eventType = role === "assistant" ? "final" : "info";
+    let summaryOverride: string | null = null;
+    if (cfg.summaryMode === "agent_headless") {
+      summaryOverride = await summarizeWithHeadless(text, eventType, cfg, ctx);
+    }
+
     const payload = {
       message: text,
-      event: role === "assistant" ? "final" : "info",
+      event: eventType,
+      ...(summaryOverride ? { summary: summaryOverride } : {}),
       agent: "pi",
       metadata: {
         source: "pi-message_end",
         role,
+        ...(summaryOverride ? { summary_source: "agent_headless" } : {}),
       },
     };
 

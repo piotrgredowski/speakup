@@ -17,5 +17,6 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
         conversation_id=payload.get("conversationId"),
         task_id=payload.get("taskId"),
         agent=payload.get("agent", "pi"),
+        precomputed_summary=payload.get("summary"),
         metadata=payload.get("metadata", {}),
     )

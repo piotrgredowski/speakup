@@ -76,10 +76,14 @@ class NotifyService:
                 dedup_skipped=True,
             )
 
-        with self._timed("summarize", request_id, event=event.value):
-            summary = self._summarize(request.message, event, request_id=request_id)
-        summary_text = summary.summary
-        self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
+        if request.precomputed_summary:
+            summary_text = str(request.precomputed_summary).strip()
+            self.logger.info("summary_precomputed_used", extra={"request_id": request_id, "summary_length": len(summary_text)})
+        else:
+            with self._timed("summarize", request_id, event=event.value):
+                summary = self._summarize(request.message, event, request_id=request_id)
+            summary_text = summary.summary
+            self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
         with self._timed("tts", request_id):
             tts_result, backend = self._synthesize(summary_text, request_id=request_id)
