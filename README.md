@@ -188,6 +188,14 @@ cp pi-extensions/pi-extension.example.json ~/.config/let-me-know-agent/pi-extens
 
 You can set a custom command/path and args (for example explicit `--config`).
 
+You can also enable agent-driven headless summarization in the extension:
+
+- `summaryMode: "internal"` (default): let Python backends summarize (`rule_based`/`lmstudio`/`openai`).
+- `summaryMode: "agent_headless"`: extension first runs a headless command and passes its summary into `let-me-know-pi`.
+
+When `agent_headless` is enabled, configure `headlessSummary.command/args/model/promptTemplate` as needed.
+The command args support placeholders: `{model}`, `{prompt}`, `{text}`, `{event}`, `{maxChars}`.
+
 ### 4) Runtime control in Pi
 
 Use command:
