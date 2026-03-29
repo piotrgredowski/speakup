@@ -36,9 +36,26 @@
     "window_seconds": 30,
     "cache_file": "/tmp/let-me-know-agent/last_progress.json"
   },
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "format": "json",
+    "destination": "stderr",
+    "file_path": "/tmp/let-me-know-agent/let-me-know-agent.log",
+    "rotate_max_bytes": 1048576,
+    "rotate_backup_count": 3,
+    "include_timestamps": true,
+    "include_module": true,
+    "include_pid": false,
+    "log_message_text": false,
+    "log_provider_payloads": false,
+    "redact_sensitive": true
+  },
   "providers": {
     "kokoro": {
-      "command": "kokoro"
+      "lang_code": "a",
+      "voice": "af_heart",
+      "repo_id": "hexgrad/Kokoro-82M"
     },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",

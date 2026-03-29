@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+import time
+from contextlib import contextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from .classifier import infer_event
 from .config import Config, runtime_temp_dir
@@ -22,10 +26,37 @@ class NotifyService:
     def __init__(self, config: Config):
         self.config = config
         self.playback = MacOSPlaybackAdapter()
+        self.logger = logging.getLogger(__name__)
+
+    @contextmanager
+    def _timed(self, operation: str, request_id: str, **extra):
+        start = time.perf_counter()
+        self.logger.debug("operation_start", extra={"request_id": request_id, "operation": operation, **extra})
+        try:
+            yield
+        finally:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            self.logger.debug("operation_end", extra={"request_id": request_id, "operation": operation, "elapsed_ms": elapsed_ms, **extra})
 
     def notify(self, request: NotifyRequest) -> NotifyResult:
-        event = infer_event(request.message, request.event)
+        request_id = uuid4().hex[:12]
+        include_message = bool(self.config.get("logging", "log_message_text", default=False))
+        self.logger.info(
+            "notify_received",
+            extra={
+                "request_id": request_id,
+                "event": request.event.value,
+                "message_length": len(request.message),
+                "message_text": request.message if include_message else None,
+            },
+        )
+
+        with self._timed("infer_event", request_id):
+            event = infer_event(request.message, request.event)
+        self.logger.info("event_inferred", extra={"request_id": request_id, "event": event.value})
+
         if not self._should_speak(event):
+            self.logger.info("notify_skipped_speak_disabled", extra={"request_id": request_id, "event": event.value})
             return NotifyResult(
                 status="skipped",
                 summary="",
@@ -35,6 +66,7 @@ class NotifyService:
             )
 
         if self._dedup_progress(event, request.message):
+            self.logger.info("notify_skipped_dedup", extra={"request_id": request_id, "event": event.value})
             return NotifyResult(
                 status="skipped",
                 summary="",
@@ -44,13 +76,18 @@ class NotifyService:
                 dedup_skipped=True,
             )
 
-        summary = self._summarize(request.message, event)
+        with self._timed("summarize", request_id, event=event.value):
+            summary = self._summarize(request.message, event, request_id=request_id)
         summary_text = summary.summary
+        self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
-        self._play_event_sound(event)
+        with self._timed("event_sound", request_id, event=event.value):
+            self._play_event_sound(event, request_id=request_id)
 
-        tts_result, backend = self._synthesize(summary_text)
+        with self._timed("tts", request_id):
+            tts_result, backend = self._synthesize(summary_text, request_id=request_id)
         if tts_result is None:
+            self.logger.warning("tts_failed_all_backends", extra={"request_id": request_id})
             return NotifyResult(
                 status="degraded_text_only",
                 summary=summary_text,
@@ -66,15 +103,23 @@ class NotifyService:
         play_audio = bool(self.config.get("tts", "play_audio", default=True))
         if audio_path and play_audio:
             try:
+                self.logger.info("playback_start", extra={"request_id": request_id, "audio_path": str(audio_path)})
                 self.playback.play_file(audio_path)
                 played = True
+                self.logger.info("playback_success", extra={"request_id": request_id, "audio_path": str(audio_path)})
             except AdapterError as exc:
                 played = False
                 playback_error = str(exc)
+                self.logger.warning("playback_failed", extra={"request_id": request_id, "error": playback_error})
 
         status = "ok" if played or not play_audio else "partial_success"
         if audio_path is None:
             status = "ok"
+
+        self.logger.info(
+            "notify_completed",
+            extra={"request_id": request_id, "status": status, "backend": backend, "played": played, "audio_path": str(audio_path) if audio_path else None},
+        )
 
         return NotifyResult(
             status=status,
@@ -104,33 +149,44 @@ class NotifyService:
         window = int(self.config.get("dedup", "window_seconds", default=30))
         return should_skip_progress(message, cache_file, window)
 
-    def _summarize(self, message: str, event: MessageEvent):
+    def _summarize(self, message: str, event: MessageEvent, *, request_id: str):
         provider_order = self.config.get("summarization", "provider_order", default=["rule_based"])
         max_chars = int(self.config.get("summarization", "max_chars", default=220))
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
 
         for provider in provider_order:
+            self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
             if provider == "rule_based":
-                return RuleBasedSummarizer().summarize(message, event, max_chars)
+                result = RuleBasedSummarizer().summarize(message, event, max_chars)
+                self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
+                return result
             if provider == "lmstudio":
                 try:
                     lm = self.config.get("providers", "lmstudio", default={})
-                    return LMStudioSummarizer(lm.get("base_url", "http://localhost:1234/v1"), lm.get("model", "local-model")).summarize(message, event, max_chars)
-                except AdapterError:
+                    result = LMStudioSummarizer(lm.get("base_url", "http://localhost:1234/v1"), lm.get("model", "local-model")).summarize(message, event, max_chars)
+                    self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
+                    return result
+                except AdapterError as exc:
+                    self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
                     continue
             if provider == "openai":
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
+                    self.logger.info("summarizer_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue
                 try:
                     op = self.config.get("providers", "openai", default={})
-                    return OpenAISummarizer(op.get("api_key_env", "OPENAI_API_KEY"), model=op.get("summary_model", "gpt-4o-mini")).summarize(message, event, max_chars)
-                except AdapterError:
+                    result = OpenAISummarizer(op.get("api_key_env", "OPENAI_API_KEY"), model=op.get("summary_model", "gpt-4o-mini")).summarize(message, event, max_chars)
+                    self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
+                    return result
+                except AdapterError as exc:
+                    self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
                     continue
 
+        self.logger.info("summarizer_fallback_rule_based", extra={"request_id": request_id})
         return RuleBasedSummarizer().summarize(message, event, max_chars)
 
-    def _synthesize(self, text: str):
+    def _synthesize(self, text: str, *, request_id: str):
         provider_order = self.config.get("tts", "provider_order", default=["macos"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         voice = self.config.get("tts", "voice", default="default")
@@ -141,15 +197,20 @@ class NotifyService:
 
         for provider in provider_order:
             if provider in {"elevenlabs", "openai"} and (privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote)):
+                self.logger.info("tts_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                 continue
 
             adapter = self._make_tts(provider)
             if not adapter:
+                self.logger.warning("tts_unknown_provider", extra={"request_id": request_id, "provider": provider})
                 continue
             try:
+                self.logger.debug("tts_try", extra={"request_id": request_id, "provider": provider})
                 audio = adapter.synthesize(text, output_dir, voice=voice, speed=speed, audio_format=audio_format)
+                self.logger.info("tts_selected", extra={"request_id": request_id, "provider": provider, "audio_kind": audio.kind})
                 return audio, provider
-            except AdapterError:
+            except AdapterError as exc:
+                self.logger.warning("tts_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
                 continue
 
         return None, "none"
@@ -159,7 +220,11 @@ class NotifyService:
             return MacOSTTSAdapter()
         if provider == "kokoro":
             kk = self.config.get("providers", "kokoro", default={})
-            return KokoroTTSAdapter(command=kk.get("command", "kokoro"))
+            return KokoroTTSAdapter(
+                lang_code=kk.get("lang_code", "a"),
+                default_voice=kk.get("voice", "af_heart"),
+                repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
+            )
         if provider == "lmstudio":
             lm = self.config.get("providers", "lmstudio", default={})
             return LMStudioTTSAdapter(lm.get("base_url", "http://localhost:1234/v1"), lm.get("tts_model", lm.get("model", "local-model")))
@@ -171,18 +236,23 @@ class NotifyService:
             return OpenAITTSAdapter(op.get("api_key_env", "OPENAI_API_KEY"), model=op.get("model", "gpt-4o-mini-tts"), voice=op.get("voice", "alloy"))
         return None
 
-    def _play_event_sound(self, event: MessageEvent) -> None:
+    def _play_event_sound(self, event: MessageEvent, *, request_id: str) -> None:
         event_key = event.value
         enabled = bool(self.config.get("event_sounds", "enabled", default=True))
         if not enabled:
+            self.logger.debug("event_sound_disabled", extra={"request_id": request_id, "event": event_key})
             return
 
         mapping = self.config.get("event_sounds", "files", default={})
         path_value = mapping.get(event_key)
         if not path_value:
+            self.logger.debug("event_sound_not_configured", extra={"request_id": request_id, "event": event_key})
             return
 
         try:
+            self.logger.debug("event_sound_play_start", extra={"request_id": request_id, "event": event_key, "path": path_value})
             self.playback.play_file(Path(path_value))
-        except AdapterError:
+            self.logger.debug("event_sound_play_success", extra={"request_id": request_id, "event": event_key, "path": path_value})
+        except AdapterError as exc:
+            self.logger.warning("event_sound_play_failed", extra={"request_id": request_id, "event": event_key, "path": path_value, "error": str(exc)})
             return

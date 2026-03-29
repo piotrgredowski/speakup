@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+from pathlib import Path
 
+from .app_logging import setup_logging
 from .config import Config, write_default_config
+from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest
+from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
+from .tts.kokoro import KokoroTTSAdapter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,7 +25,59 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-play", action="store_true", help="Synthesize audio but skip local playback")
     parser.add_argument("--init-config", action="store_true", help="Write default config to ~/.config/let-me-know-agent/config.json")
     parser.add_argument("--force", action="store_true", help="Overwrite config file when used with --init-config")
+    parser.add_argument("--log-level", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)", default=None)
+    parser.add_argument("--log-format", help="Override log format (text|json)", default=None)
+    parser.add_argument("--log-file", help="Write logs to file path", default=None)
+    parser.add_argument("--debug", action="store_true", help="Shortcut for --log-level DEBUG")
+    parser.add_argument("--self-test-audio", action="store_true", help="Run event sound + Kokoro synth/playback diagnostics")
     return parser
+
+
+def _self_test_audio(config: Config) -> dict:
+    logger = logging.getLogger(__name__)
+    playback = MacOSPlaybackAdapter()
+    checks: dict[str, dict[str, str | bool | None]] = {
+        "event_sound": {"ok": False, "error": None, "path": "/System/Library/Sounds/Ping.aiff"},
+        "kokoro_tts": {"ok": False, "error": None, "audio_path": None},
+    }
+
+    try:
+        event_sound_path = Path("/System/Library/Sounds/Ping.aiff")
+        playback.play_file(event_sound_path)
+        checks["event_sound"]["ok"] = True
+    except AdapterError as exc:
+        checks["event_sound"]["error"] = str(exc)
+        logger.warning("self_test_event_sound_failed", extra={"error": str(exc)})
+
+    kk = config.get("providers", "kokoro", default={})
+    tts = config.get("tts", default={})
+    adapter = KokoroTTSAdapter(
+        lang_code=kk.get("lang_code", "a"),
+        default_voice=kk.get("voice", "af_heart"),
+        repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
+    )
+    try:
+        output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
+        audio_format = tts.get("audio_format", "mp3")
+        speed = float(tts.get("speed", 1.0))
+        voice = tts.get("voice", "default")
+        audio = adapter.synthesize(
+            "Self test. If you hear this, Kokoro text to speech is working.",
+            output_dir,
+            voice=voice,
+            speed=speed,
+            audio_format=audio_format,
+        )
+        audio_path = Path(str(audio.value))
+        playback.play_file(audio_path)
+        checks["kokoro_tts"]["ok"] = True
+        checks["kokoro_tts"]["audio_path"] = str(audio_path)
+    except AdapterError as exc:
+        checks["kokoro_tts"]["error"] = str(exc)
+        logger.warning("self_test_kokoro_failed", extra={"error": str(exc)})
+
+    overall_ok = bool(checks["event_sound"]["ok"] and checks["kokoro_tts"]["ok"])
+    return {"status": "ok" if overall_ok else "error", "checks": checks}
 
 
 def _load_payload(args: argparse.Namespace) -> NotifyRequest:
@@ -45,6 +103,15 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    setup_logging(
+        {},
+        level_override="DEBUG" if args.debug else args.log_level,
+        format_override=args.log_format,
+        file_override=args.log_file,
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("cli_start", extra={"has_message": bool(args.message), "has_input_json": bool(args.input_json), "has_input_file": bool(args.input_file)})
+
     if args.init_config:
         try:
             path = write_default_config(force=args.force)
@@ -57,11 +124,29 @@ def main() -> None:
         return
 
     config = Config.load(args.config)
+    setup_logging(
+        config.get("logging", default={}),
+        level_override="DEBUG" if args.debug else args.log_level,
+        format_override=args.log_format,
+        file_override=args.log_file,
+    )
+    logger.info("config_loaded", extra={"config_path": args.config or "default"})
+    if args.self_test_audio:
+        result = _self_test_audio(config)
+        json.dump(result, sys.stdout)
+        sys.stdout.write("\n")
+        if result["status"] != "ok":
+            raise SystemExit(1)
+        return
+
     if args.no_play:
         config.raw.setdefault("tts", {})["play_audio"] = False
+        logger.info("playback_disabled_via_cli")
     request = _load_payload(args)
+    logger.info("request_loaded", extra={"event": request.event.value, "message_length": len(request.message)})
 
     result = NotifyService(config).notify(request)
+    logger.info("notify_completed", extra={"status": result.status, "backend": result.backend, "played": result.played})
     json.dump(result.to_dict(), sys.stdout)
     sys.stdout.write("\n")
 
