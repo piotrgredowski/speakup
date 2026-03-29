@@ -184,6 +184,8 @@ def validate_config(raw: dict[str, Any]) -> None:
         for key, value in provider.items():
             if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id"}:
                 _require_str(value, f"providers.{provider_name}.{key}")
+            if provider_name == "kokoro" and key == "offline":
+                _require_bool(value, f"providers.{provider_name}.{key}")
 
 
 def default_config() -> dict[str, Any]:
@@ -261,6 +263,7 @@ def default_config() -> dict[str, Any]:
                 "lang_code": "a",
                 "voice": "af_heart",
                 "repo_id": "hexgrad/Kokoro-82M",
+                "offline": True,
             },
         },
     }

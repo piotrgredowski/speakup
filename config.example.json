@@ -55,7 +55,8 @@
     "kokoro": {
       "lang_code": "a",
       "voice": "af_heart",
-      "repo_id": "hexgrad/Kokoro-82M"
+      "repo_id": "hexgrad/Kokoro-82M",
+      "offline": true
     },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",

@@ -225,6 +225,7 @@ class NotifyService:
                 lang_code=kk.get("lang_code", "a"),
                 default_voice=kk.get("voice", "af_heart"),
                 repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
+                offline=bool(kk.get("offline", True)),
             )
         if provider == "lmstudio":
             lm = self.config.get("providers", "lmstudio", default={})
