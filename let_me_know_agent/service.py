@@ -76,11 +76,6 @@ class NotifyService:
                 dedup_skipped=True,
             )
 
-        # Play short event cue immediately so users get instant feedback,
-        # even if summarization/TTS generation takes longer.
-        with self._timed("event_sound", request_id, event=event.value):
-            self._play_event_sound(event, request_id=request_id)
-
         with self._timed("summarize", request_id, event=event.value):
             summary = self._summarize(request.message, event, request_id=request_id)
         summary_text = summary.summary
@@ -105,6 +100,10 @@ class NotifyService:
         play_audio = bool(self.config.get("tts", "play_audio", default=True))
         if audio_path and play_audio:
             try:
+                # Play the event cue immediately before spoken TTS to avoid a gap.
+                with self._timed("event_sound", request_id, event=event.value):
+                    self._play_event_sound(event, request_id=request_id)
+
                 self.logger.info("playback_start", extra={"request_id": request_id, "audio_path": str(audio_path)})
                 self.playback.play_file(audio_path)
                 played = True
