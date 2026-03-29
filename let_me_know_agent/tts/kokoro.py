@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import wave
 from pathlib import Path
 from uuid import uuid4
@@ -12,10 +13,12 @@ from ..models import AudioResult
 class KokoroTTSAdapter(TTSAdapter):
     name = "kokoro"
 
-    def __init__(self, lang_code: str = "a", default_voice: str = "af_heart", repo_id: str = "hexgrad/Kokoro-82M"):
+    def __init__(self, lang_code: str = "a", default_voice: str = "af_heart", repo_id: str = "hexgrad/Kokoro-82M", offline: bool = True):
         self.lang_code = lang_code
         self.default_voice = default_voice
         self.repo_id = repo_id
+        self.offline = offline
+        self._pipeline = None
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "wav") -> AudioResult:
         if audio_format not in {"wav", "mp3"}:
@@ -33,9 +36,16 @@ class KokoroTTSAdapter(TTSAdapter):
             import torch
             from kokoro import KPipeline
 
-            pipeline = KPipeline(lang_code=self.lang_code, repo_id=self.repo_id)
+            if self.offline:
+                # Force Hugging Face/Transformers to use local cache only.
+                os.environ["HF_HUB_OFFLINE"] = "1"
+                os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+            if self._pipeline is None:
+                self._pipeline = KPipeline(lang_code=self.lang_code, repo_id=self.repo_id)
+
             chunks = []
-            for result in pipeline(text, voice=selected_voice, speed=speed):
+            for result in self._pipeline(text, voice=selected_voice, speed=speed):
                 if result.audio is not None:
                     chunks.append(result.audio.detach().cpu().flatten())
 
@@ -52,6 +62,12 @@ class KokoroTTSAdapter(TTSAdapter):
                 wav.writeframes(pcm)
 
         except Exception as exc:
+            if self.offline:
+                raise AdapterError(
+                    f"Kokoro TTS failed in offline mode: {exc}. "
+                    "Ensure model files are already cached locally for repo_id="
+                    f"{self.repo_id}"
+                ) from exc
             raise AdapterError(f"Kokoro TTS failed: {exc}") from exc
 
         return AudioResult(kind="file", value=str(out_path), provider=self.name, mime_type="audio/wav")
