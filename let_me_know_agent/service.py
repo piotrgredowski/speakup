@@ -76,13 +76,15 @@ class NotifyService:
                 dedup_skipped=True,
             )
 
+        # Play short event cue immediately so users get instant feedback,
+        # even if summarization/TTS generation takes longer.
+        with self._timed("event_sound", request_id, event=event.value):
+            self._play_event_sound(event, request_id=request_id)
+
         with self._timed("summarize", request_id, event=event.value):
             summary = self._summarize(request.message, event, request_id=request_id)
         summary_text = summary.summary
         self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
-
-        with self._timed("event_sound", request_id, event=event.value):
-            self._play_event_sound(event, request_id=request_id)
 
         with self._timed("tts", request_id):
             tts_result, backend = self._synthesize(summary_text, request_id=request_id)
