@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "command": "let-me-know-pi",
-  "args": ["--config", "/Users/you/.config/let-me-know-agent/config.json"],
+  "command": "uvx",
+  "args": ["--from", "let-me-know-agent", "let-me-know-pi", "--config", "/Users/you/.config/let-me-know-agent/config.json"],
   "onlyAssistant": true
 }

@@ -11,13 +11,19 @@ type ExtensionConfig = {
   onlyAssistant?: boolean;
 };
 
+type ExecSpec = {
+  command: string;
+  args: string[];
+  source: string;
+};
+
 const DEFAULT_CONFIG_PATH = join(homedir(), ".config", "let-me-know-agent", "pi-extension.json");
 
 function loadConfig(ctx: any): Required<ExtensionConfig> {
   const defaults: Required<ExtensionConfig> = {
     enabled: true,
-    command: "let-me-know-pi",
-    args: [],
+    command: "uvx",
+    args: ["--from", "let-me-know-agent", "let-me-know-pi"],
     onlyAssistant: true,
   };
 
@@ -50,28 +56,80 @@ function extractText(message: any): string {
 }
 
 function runNotifier(command: string, args: string[], payload: Record<string, unknown>, ctx: any) {
-  const child = spawn(command, args, {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const candidates: ExecSpec[] = [
+    { command, args, source: "config" },
+    {
+      command: "uvx",
+      args: ["--from", "let-me-know-agent", "let-me-know-pi", ...args],
+      source: "uvx",
+    },
+    {
+      command: "python3",
+      args: ["-m", "let_me_know_agent.pi_command", ...args],
+      source: "python3-module",
+    },
+    {
+      command: "python",
+      args: ["-m", "let_me_know_agent.pi_command", ...args],
+      source: "python-module",
+    },
+  ];
 
-  child.stdin.write(JSON.stringify(payload));
-  child.stdin.end();
+  const dedupedCandidates: ExecSpec[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = `${candidate.command}\u0000${candidate.args.join("\u0000")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedupedCandidates.push(candidate);
+  }
 
-  let stdout = "";
-  let stderr = "";
-  child.stdout.on("data", (d) => (stdout += d.toString()));
-  child.stderr.on("data", (d) => (stderr += d.toString()));
-
-  child.on("error", (err) => {
-    ctx.ui.notify(`let-me-know: failed to start notifier: ${err.message}`, "error");
-  });
-
-  child.on("close", (code) => {
-    if (code !== 0) {
-      const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
-      ctx.ui.notify(`let-me-know: notifier failed (${detail})`, "error");
+  const tryIndex = (idx: number) => {
+    if (idx >= dedupedCandidates.length) {
+      ctx.ui.notify(
+        "let-me-know: notifier unavailable. Install with `uv tool install let-me-know-agent` or `pip install let-me-know-agent`",
+        "error",
+      );
+      return;
     }
-  });
+
+    const spec = dedupedCandidates[idx];
+    const child = spawn(spec.command, spec.args, {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    child.stdin.write(JSON.stringify(payload));
+    child.stdin.end();
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+
+    child.on("error", (err: any) => {
+      if (err?.code === "ENOENT") {
+        tryIndex(idx + 1);
+        return;
+      }
+      ctx.ui.notify(`let-me-know: failed to start notifier: ${err?.message ?? err}`, "error");
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) return;
+
+      // If binary exists but failed (non-ENOENT), surface failure immediately.
+      // For the default command only, we still try automatic fallbacks once.
+      if (code === -2 && idx < dedupedCandidates.length - 1) {
+        tryIndex(idx + 1);
+        return;
+      }
+
+      const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
+      ctx.ui.notify(`let-me-know: notifier failed via ${spec.source} (${detail})`, "error");
+    });
+  };
+
+  tryIndex(0);
 }
 
 export default function (pi: ExtensionAPI) {
