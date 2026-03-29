@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 import wave
 from pathlib import Path
 from uuid import uuid4
@@ -33,13 +34,26 @@ class KokoroTTSAdapter(TTSAdapter):
         selected_voice = self.default_voice if voice == "default" else voice
 
         try:
-            import torch
-            from kokoro import KPipeline
-
             if self.offline:
                 # Force Hugging Face/Transformers to use local cache only.
+                # This must happen before importing kokoro/transformers modules,
+                # otherwise they may perform network/cache checks during import.
                 os.environ["HF_HUB_OFFLINE"] = "1"
                 os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="dropout option adds dropout after all but last recurrent layer",
+                    category=UserWarning,
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    message="`torch.nn.utils.weight_norm` is deprecated",
+                    category=FutureWarning,
+                )
+                import torch
+                from kokoro import KPipeline
 
             if self._pipeline is None:
                 self._pipeline = KPipeline(lang_code=self.lang_code, repo_id=self.repo_id)

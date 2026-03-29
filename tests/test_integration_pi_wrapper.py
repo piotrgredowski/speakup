@@ -14,7 +14,7 @@ def test_pi_wrapper_given_payload_on_stdin_then_returns_notify_result(base_confi
     output = json.loads(result.stdout)
     assert output["status"] == "ok"
     assert output["state"] == "needs_input"
-    assert output["summary"].startswith("Action needed:")
+    assert output["summary"] == "Could you provide API token?"
 
 
 def test_pi_wrapper_given_invalid_config_then_exits_with_error(tmp_path: Path, env_with_fake_audio: dict[str, str]) -> None:

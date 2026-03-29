@@ -15,7 +15,7 @@ def test_cli_given_needs_input_message_then_returns_spoken_summary(base_config: 
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
     assert payload["state"] == "needs_input"
-    assert payload["summary"].startswith("Action needed:")
+    assert payload["summary"] == "Could you confirm the deploy region?"
     assert payload["played"] is True
     assert payload["backend"] == "macos"
 

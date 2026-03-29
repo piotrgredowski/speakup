@@ -104,7 +104,7 @@ Config is validated on load (types, enums, provider names, event sound keys).
     "provider_order": ["rule_based", "lmstudio", "openai"]
   },
   "tts": {
-    "provider_order": ["macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+    "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
     "speed": 1.0,
     "play_audio": true,
@@ -117,6 +117,12 @@ Config is validated on load (types, enums, provider names, event sound keys).
     "cache_file": "/tmp/let-me-know-agent/last_progress.json"
   },
   "providers": {
+    "kokoro_cli": {
+      "command": "kokoro",
+      "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
+      "voice": "af_heart",
+      "timeout_seconds": 60
+    },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",

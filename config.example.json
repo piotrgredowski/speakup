@@ -24,7 +24,7 @@
     "provider_order": ["rule_based", "lmstudio", "openai"]
   },
   "tts": {
-    "provider_order": ["macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+    "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
     "speed": 1.0,
     "play_audio": true,
@@ -52,12 +52,18 @@
     "redact_sensitive": true
   },
   "providers": {
+    "kokoro_cli": {
+      "command": "kokoro",
+      "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
+      "voice": "af_heart",
+      "timeout_seconds": 60
+    },
     "kokoro": {
       "lang_code": "a",
       "voice": "af_heart",
       "repo_id": "hexgrad/Kokoro-82M",
       "offline": true
-    },
+    }
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",

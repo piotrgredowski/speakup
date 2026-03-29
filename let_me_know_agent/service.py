@@ -16,6 +16,7 @@ from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .tts.elevenlabs import ElevenLabsTTSAdapter
+from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
@@ -192,7 +193,7 @@ class NotifyService:
         return RuleBasedSummarizer().summarize(message, event, max_chars)
 
     def _synthesize(self, text: str, *, request_id: str):
-        provider_order = self.config.get("tts", "provider_order", default=["macos"])
+        provider_order = self.config.get("tts", "provider_order", default=["kokoro_cli", "macos"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         voice = self.config.get("tts", "voice", default="default")
         speed = float(self.config.get("tts", "speed", default=1.0))
@@ -221,6 +222,14 @@ class NotifyService:
         return None, "none"
 
     def _make_tts(self, provider: str):
+        if provider == "kokoro_cli":
+            kk_cli = self.config.get("providers", "kokoro_cli", default={})
+            return KokoroCliTTSAdapter(
+                command=kk_cli.get("command", "kokoro"),
+                args=kk_cli.get("args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]),
+                timeout_seconds=int(kk_cli.get("timeout_seconds", 60)),
+                default_voice=kk_cli.get("voice", self.config.get("providers", "kokoro", "voice", default="af_heart")),
+            )
         if provider == "macos":
             return MacOSTTSAdapter()
         if provider == "kokoro":

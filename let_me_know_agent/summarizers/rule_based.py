@@ -15,7 +15,7 @@ class RuleBasedSummarizer(Summarizer):
 
         if event == MessageEvent.NEEDS_INPUT:
             prompt = _extract_question(cleaned)
-            text = f"Action needed: {prompt}" if prompt else f"Action needed: {short}"
+            text = prompt or short
             return SummaryResult(
                 summary=_truncate(text, max_chars),
                 state=event,
@@ -23,21 +23,9 @@ class RuleBasedSummarizer(Summarizer):
                 action_prompt=prompt,
             )
 
-        if event == MessageEvent.ERROR:
+        if event in (MessageEvent.ERROR, MessageEvent.PROGRESS, MessageEvent.FINAL):
             return SummaryResult(
-                summary=_truncate(f"There was an issue: {short}", max_chars),
-                state=event,
-            )
-
-        if event == MessageEvent.PROGRESS:
-            return SummaryResult(
-                summary=_truncate(f"Progress update: {short}", max_chars),
-                state=event,
-            )
-
-        if event == MessageEvent.FINAL:
-            return SummaryResult(
-                summary=_truncate(f"Done: {short}", max_chars),
+                summary=short,
                 state=event,
             )
 

@@ -13,6 +13,7 @@ from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
+from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
 
 
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-file", help="Write logs to file path", default=None)
     parser.add_argument("--debug", action="store_true", help="Shortcut for --log-level DEBUG")
     parser.add_argument("--self-test-audio", action="store_true", help="Run event sound + Kokoro synth/playback diagnostics")
+    parser.add_argument("--doctor", action="store_true", help="Run Kokoro CLI health check")
     return parser
 
 
@@ -107,6 +109,52 @@ def _self_test_audio(config: Config) -> dict:
     return {"status": "ok" if overall_ok else "error", "checks": checks}
 
 
+def _doctor(config: Config) -> dict:
+    kk_cli = config.get("providers", "kokoro_cli", default={})
+    tts = config.get("tts", default={})
+
+    command = kk_cli.get("command", "kokoro")
+    args = kk_cli.get("args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"])
+    timeout_seconds = int(kk_cli.get("timeout_seconds", 60))
+    output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
+    voice = tts.get("voice", "default")
+    speed = float(tts.get("speed", 1.0))
+    audio_format = tts.get("audio_format", "mp3")
+    if audio_format not in {"mp3", "wav"}:
+        audio_format = "mp3"
+
+    checks: dict[str, dict[str, str | bool | None]] = {
+        "kokoro_cli": {
+            "ok": False,
+            "command": command,
+            "audio_path": None,
+            "error": None,
+        }
+    }
+
+    try:
+        adapter = KokoroCliTTSAdapter(
+            command=command,
+            args=args,
+            timeout_seconds=timeout_seconds,
+            default_voice=kk_cli.get("voice", config.get("providers", "kokoro", "voice", default="af_heart")),
+        )
+        audio = adapter.synthesize(
+            "Doctor test. If you hear this, Kokoro CLI is working.",
+            output_dir,
+            voice=voice,
+            speed=speed,
+            audio_format=audio_format,
+        )
+        checks["kokoro_cli"]["ok"] = True
+        checks["kokoro_cli"]["audio_path"] = str(audio.value)
+    except AdapterError as exc:
+        checks["kokoro_cli"]["error"] = str(exc)
+
+    overall_ok = bool(checks["kokoro_cli"]["ok"])
+    return {"status": "ok" if overall_ok else "error", "checks": checks}
+
+
 def _load_payload(args: argparse.Namespace) -> NotifyRequest:
     if args.input_json:
         payload = json.loads(args.input_json)
@@ -158,6 +206,14 @@ def main() -> None:
         file_override=args.log_file,
     )
     logger.info("config_loaded", extra={"config_path": args.config or "default"})
+    if args.doctor:
+        result = _doctor(config)
+        json.dump(result, sys.stdout)
+        sys.stdout.write("\n")
+        if result["status"] != "ok":
+            raise SystemExit(1)
+        return
+
     if args.self_test_audio:
         result = _self_test_audio(config)
         json.dump(result, sys.stdout)

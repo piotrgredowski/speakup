@@ -20,6 +20,11 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     assert cfg["dedup"]["cache_file"].startswith(temp_root)
 
 
+def test_default_config_prefers_kokoro_cli_before_macos() -> None:
+    cfg = default_config()
+    assert cfg["tts"]["provider_order"][:2] == ["kokoro_cli", "macos"]
+
+
 @pytest.mark.parametrize(
     "mutator,expected",
     [
