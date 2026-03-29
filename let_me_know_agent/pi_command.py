@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 
+from .app_logging import setup_logging
 from .config import Config, ConfigValidationError
 from .integrations.pi_extension import request_from_pi_payload
 from .service import NotifyService
@@ -28,6 +30,8 @@ def _load_pi_payload(input_file: str | None) -> dict:
 
 def main() -> None:
     args = build_parser().parse_args()
+    setup_logging({})
+    logger = logging.getLogger(__name__)
     try:
         config = Config.load(args.config)
     except ConfigValidationError as exc:
@@ -35,9 +39,13 @@ def main() -> None:
         sys.stdout.write("\n")
         raise SystemExit(2)
 
+    setup_logging(config.get("logging", default={}))
+    logger.info("pi_wrapper_start", extra={"has_input_file": bool(args.input_file), "config_path": args.config or "default"})
+
     payload = _load_pi_payload(args.input_file)
     request = request_from_pi_payload(payload)
     result = NotifyService(config).notify(request)
+    logger.info("pi_wrapper_completed", extra={"status": result.status, "state": result.state.value, "backend": result.backend})
     json.dump(result.to_dict(), sys.stdout)
     sys.stdout.write("\n")
 

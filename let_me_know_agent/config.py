@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,9 @@ _ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai"}
 _ALLOWED_TTS = {"macos", "kokoro", "lmstudio", "elevenlabs", "openai"}
 _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
+_ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
+_ALLOWED_LOG_FORMATS = {"text", "json"}
+_ALLOWED_LOG_DESTINATIONS = {"stderr", "file", "both"}
 
 
 def default_config_path() -> Path:
@@ -32,15 +36,18 @@ class Config:
 
     @classmethod
     def load(cls, path: str | Path | None) -> "Config":
+        logger = logging.getLogger(__name__)
         if path is None:
             default_path = default_config_path()
             if default_path.exists():
                 base = json.loads(default_path.read_text())
                 validate_config(base)
+                logger.info("config_loaded", extra={"source": "default_path", "path": str(default_path)})
                 return cls(base)
 
             raw = default_config()
             validate_config(raw)
+            logger.info("config_loaded", extra={"source": "embedded_defaults"})
             return cls(raw)
 
         base = json.loads(Path(path).read_text())
@@ -48,8 +55,10 @@ class Config:
         if local_path.exists():
             local = json.loads(local_path.read_text())
             base = deep_merge(base, local)
+            logger.info("config_local_merged", extra={"path": str(local_path)})
 
         validate_config(base)
+        logger.info("config_loaded", extra={"source": "explicit_path", "path": str(path)})
         return cls(base)
 
     def get(self, *keys: str, default: Any = None) -> Any:
@@ -148,11 +157,32 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_positive_int(dedup.get("window_seconds", 30), "dedup.window_seconds")
     _require_str(dedup.get("cache_file", ".cache/last_progress.json"), "dedup.cache_file")
 
+    log_cfg = _require_dict(raw.get("logging", {}), "logging")
+    _require_bool(log_cfg.get("enabled", True), "logging.enabled")
+    level = str(log_cfg.get("level", "INFO")).upper()
+    if level not in _ALLOWED_LOG_LEVELS:
+        raise ConfigValidationError(f"logging.level must be one of {_ALLOWED_LOG_LEVELS}")
+    fmt = log_cfg.get("format", "text")
+    if fmt not in _ALLOWED_LOG_FORMATS:
+        raise ConfigValidationError(f"logging.format must be one of {_ALLOWED_LOG_FORMATS}")
+    destination = log_cfg.get("destination", "stderr")
+    if destination not in _ALLOWED_LOG_DESTINATIONS:
+        raise ConfigValidationError(f"logging.destination must be one of {_ALLOWED_LOG_DESTINATIONS}")
+    _require_str(log_cfg.get("file_path", str(runtime_temp_dir() / "let-me-know-agent.log")), "logging.file_path")
+    _require_positive_int(log_cfg.get("rotate_max_bytes", 1_048_576), "logging.rotate_max_bytes")
+    _require_positive_int(log_cfg.get("rotate_backup_count", 3), "logging.rotate_backup_count")
+    _require_bool(log_cfg.get("include_timestamps", True), "logging.include_timestamps")
+    _require_bool(log_cfg.get("include_module", True), "logging.include_module")
+    _require_bool(log_cfg.get("include_pid", False), "logging.include_pid")
+    _require_bool(log_cfg.get("log_message_text", False), "logging.log_message_text")
+    _require_bool(log_cfg.get("log_provider_payloads", False), "logging.log_provider_payloads")
+    _require_bool(log_cfg.get("redact_sensitive", True), "logging.redact_sensitive")
+
     providers = _require_dict(raw.get("providers", {}), "providers")
     for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
-            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command"}:
+            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id"}:
                 _require_str(value, f"providers.{provider_name}.{key}")
 
 
@@ -196,6 +226,21 @@ def default_config() -> dict[str, Any]:
             "window_seconds": 30,
             "cache_file": str(runtime_dir / "last_progress.json"),
         },
+        "logging": {
+            "enabled": True,
+            "level": "INFO",
+            "format": "json",
+            "destination": "stderr",
+            "file_path": str(runtime_dir / "let-me-know-agent.log"),
+            "rotate_max_bytes": 1_048_576,
+            "rotate_backup_count": 3,
+            "include_timestamps": True,
+            "include_module": True,
+            "include_pid": False,
+            "log_message_text": False,
+            "log_provider_payloads": False,
+            "redact_sensitive": True,
+        },
         "providers": {
             "lmstudio": {
                 "base_url": "http://localhost:1234/v1",
@@ -213,7 +258,9 @@ def default_config() -> dict[str, Any]:
                 "voice": "alloy",
             },
             "kokoro": {
-                "command": "kokoro",
+                "lang_code": "a",
+                "voice": "af_heart",
+                "repo_id": "hexgrad/Kokoro-82M",
             },
         },
     }

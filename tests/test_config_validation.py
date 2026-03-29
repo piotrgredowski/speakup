@@ -29,6 +29,8 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
         (lambda c: c["summarization"].update({"provider_order": ["rule_based", "x"]}), "summarization.provider_order"),
         (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files has unknown event key"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
+        (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
+        (lambda c: c.setdefault("logging", {}).update({"destination": "stdout"}), "logging.destination"),
     ],
 )
 def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path) -> None:
