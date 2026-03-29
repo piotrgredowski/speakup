@@ -23,7 +23,7 @@ function loadConfig(ctx: any): Required<ExtensionConfig> {
   const defaults: Required<ExtensionConfig> = {
     enabled: true,
     command: "uvx",
-    args: ["--from", "let-me-know-agent", "let-me-know-pi"],
+    args: ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi"],
     onlyAssistant: true,
   };
 
@@ -60,8 +60,8 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
     { command, args, source: "config" },
     {
       command: "uvx",
-      args: ["--from", "let-me-know-agent", "let-me-know-pi", ...args],
-      source: "uvx",
+      args: ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi", ...args],
+      source: "uvx-git",
     },
     {
       command: "python3",
