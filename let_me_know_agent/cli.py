@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -51,16 +52,18 @@ def _self_test_audio(config: Config) -> dict:
 
     kk = config.get("providers", "kokoro", default={})
     tts = config.get("tts", default={})
-    adapter = KokoroTTSAdapter(
-        lang_code=kk.get("lang_code", "a"),
-        default_voice=kk.get("voice", "af_heart"),
-        repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
-    )
-    try:
-        output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
-        audio_format = tts.get("audio_format", "mp3")
-        speed = float(tts.get("speed", 1.0))
-        voice = tts.get("voice", "default")
+    output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
+    audio_format = tts.get("audio_format", "mp3")
+    speed = float(tts.get("speed", 1.0))
+    voice = tts.get("voice", "default")
+
+    def _run_kokoro_self_test(offline: bool) -> Path:
+        adapter = KokoroTTSAdapter(
+            lang_code=kk.get("lang_code", "a"),
+            default_voice=kk.get("voice", "af_heart"),
+            repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
+            offline=offline,
+        )
         audio = adapter.synthesize(
             "Self test. If you hear this, Kokoro text to speech is working.",
             output_dir,
@@ -68,13 +71,37 @@ def _self_test_audio(config: Config) -> dict:
             speed=speed,
             audio_format=audio_format,
         )
-        audio_path = Path(str(audio.value))
+        return Path(str(audio.value))
+
+    try:
+        audio_path = _run_kokoro_self_test(offline=bool(kk.get("offline", True)))
+    except AdapterError as exc:
+        # First-run bootstrap: if offline mode is enabled and local artifacts are
+        # missing, retry once in online mode so dependencies/models can be cached.
+        if bool(kk.get("offline", True)) and "offline mode" in str(exc):
+            logger.info("self_test_kokoro_retry_online")
+            prev_hf_offline = os.environ.pop("HF_HUB_OFFLINE", None)
+            prev_transformers_offline = os.environ.pop("TRANSFORMERS_OFFLINE", None)
+            try:
+                audio_path = _run_kokoro_self_test(offline=False)
+            except AdapterError as retry_exc:
+                checks["kokoro_tts"]["error"] = str(retry_exc)
+                logger.warning("self_test_kokoro_failed", extra={"error": str(retry_exc)})
+                audio_path = None
+            finally:
+                if prev_hf_offline is not None:
+                    os.environ["HF_HUB_OFFLINE"] = prev_hf_offline
+                if prev_transformers_offline is not None:
+                    os.environ["TRANSFORMERS_OFFLINE"] = prev_transformers_offline
+        else:
+            checks["kokoro_tts"]["error"] = str(exc)
+            logger.warning("self_test_kokoro_failed", extra={"error": str(exc)})
+            audio_path = None
+
+    if audio_path is not None:
         playback.play_file(audio_path)
         checks["kokoro_tts"]["ok"] = True
         checks["kokoro_tts"]["audio_path"] = str(audio_path)
-    except AdapterError as exc:
-        checks["kokoro_tts"]["error"] = str(exc)
-        logger.warning("self_test_kokoro_failed", extra={"error": str(exc)})
 
     overall_ok = bool(checks["event_sound"]["ok"] and checks["kokoro_tts"]["ok"])
     return {"status": "ok" if overall_ok else "error", "checks": checks}
