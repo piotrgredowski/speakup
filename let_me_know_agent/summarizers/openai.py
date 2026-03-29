@@ -27,10 +27,16 @@ class OpenAISummarizer(Summarizer):
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        f"Summarize for TTS in <= {max_chars} chars. "
-                        f"Event={event.value}. Action-first for user requests."
-                    ),
+                    "content": f"""You create short spoken summaries for a TTS engine.
+Return a single plain-text line in <= {max_chars} characters.
+Event={event.value}.
+Prioritize what the listener must know now.
+For NEEDS_INPUT, start with 'Action needed:' and include the exact ask.
+For ERROR, clearly state the failure and likely next step.
+Remove markdown, links, code, tables, emojis, and unusual symbols.
+Use simple punctuation only. Avoid URLs unless essential.
+If a term has tricky pronunciation, include IPA slash notation when useful,
+for example: Kokoro (/kˈOkəɹO/).""",
                 },
                 {"role": "user", "content": message},
             ],

@@ -86,6 +86,18 @@ class NotifyService:
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
+        self.logger.debug(
+            "summary_and_input",
+            extra={
+                "request_id": request_id,
+                "event": event.value,
+                "message_text": request.message,
+                "summary_text": summary_text,
+                "message_length": len(request.message),
+                "summary_length": len(summary_text),
+            },
+        )
+
         with self._timed("tts", request_id):
             tts_result, backend = self._synthesize(summary_text, request_id=request_id)
         if tts_result is None:

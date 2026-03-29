@@ -16,11 +16,19 @@ class LMStudioSummarizer(Summarizer):
         self.model = model
         self.timeout = timeout
 
-    def summarize(self, message: str, event: MessageEvent, max_chars: int) -> SummaryResult:
-        prompt = (
-            "Summarize for text-to-speech in max "
-            f"{max_chars} chars. Event={event.value}. Keep concise and actionable."
-        )
+    def summarize(
+        self, message: str, event: MessageEvent, max_chars: int
+    ) -> SummaryResult:
+        prompt = f"""You have to create short spoken summaries for a TTS engine.
+Return a single plain-text line which should not exceed {max_chars} characters..
+Event={event.value}.
+Prioritize what the listener must know now.
+For NEEDS_INPUT, start with 'Action needed:' and include the exact ask.
+For ERROR, clearly state the failure and likely next step.
+Remove markdown, links, code, tables, emojis, and unusual symbols.
+Use simple punctuation only. Avoid URLs unless essential.
+If a term has tricky pronunciation, include IPA slash notation when useful,
+for example: Kokoro (/kˈOkəɹO/)."""
         payload = {
             "model": self.model,
             "messages": [
@@ -44,4 +52,8 @@ class LMStudioSummarizer(Summarizer):
         text = data["choices"][0]["message"]["content"].strip()
         if len(text) > max_chars:
             text = text[: max_chars - 1].rstrip() + "…"
-        return SummaryResult(summary=text, state=event, user_action_required=event == MessageEvent.NEEDS_INPUT)
+        return SummaryResult(
+            summary=text,
+            state=event,
+            user_action_required=event == MessageEvent.NEEDS_INPUT,
+        )
