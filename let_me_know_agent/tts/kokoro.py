@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import subprocess
+import wave
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,21 +12,47 @@ from ..models import AudioResult
 class KokoroTTSAdapter(TTSAdapter):
     name = "kokoro"
 
-    def __init__(self, command: str = "kokoro"):
-        self.command = command
+    def __init__(self, lang_code: str = "a", default_voice: str = "af_heart", repo_id: str = "hexgrad/Kokoro-82M"):
+        self.lang_code = lang_code
+        self.default_voice = default_voice
+        self.repo_id = repo_id
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "wav") -> AudioResult:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        out_path = output_dir / f"tts-{uuid4().hex}.wav"
+        if audio_format not in {"wav", "mp3"}:
+            raise AdapterError(f"Kokoro adapter supports only wav/mp3 output, got: {audio_format}")
 
-        cmd = [self.command, "--text", text, "--output", str(out_path)]
-        if voice != "default":
-            cmd += ["--voice", voice]
-        cmd += ["--speed", str(speed)]
+        # Kokoro natively produces PCM audio which we write as WAV.
+        # Even if mp3 is requested globally, keep Kokoro output as .wav to avoid
+        # mislabeled files and unnecessary lossy conversion.
+        output_dir.mkdir(parents=True, exist_ok=True)
+        wav_path = output_dir / f"tts-{uuid4().hex}.wav"
+        out_path = wav_path
+        selected_voice = self.default_voice if voice == "default" else voice
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
+            import torch
+            from kokoro import KPipeline
+
+            pipeline = KPipeline(lang_code=self.lang_code, repo_id=self.repo_id)
+            chunks = []
+            for result in pipeline(text, voice=selected_voice, speed=speed):
+                if result.audio is not None:
+                    chunks.append(result.audio.detach().cpu().flatten())
+
+            if not chunks:
+                raise AdapterError("Kokoro TTS produced no audio")
+
+            audio = torch.cat(chunks).clamp(-1, 1)
+            pcm = (audio * 32767).to(torch.int16).numpy().tobytes()
+
+            with wave.open(str(wav_path), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(24000)
+                wav.writeframes(pcm)
+
         except Exception as exc:
             raise AdapterError(f"Kokoro TTS failed: {exc}") from exc
 
         return AudioResult(kind="file", value=str(out_path), provider=self.name, mime_type="audio/wav")
+
