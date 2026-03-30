@@ -70,7 +70,7 @@
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",
-      "tts_model": "local-tts-model",
+      "tts_model": "orpheus-3b-0.1-ft",
       "tts_mode": "orpheus_completions",
       "orpheus_voice": "tara"
     },

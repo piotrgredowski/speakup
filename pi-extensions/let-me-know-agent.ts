@@ -129,21 +129,30 @@ function extractText(message: any): string {
 }
 
 function runNotifier(command: string, args: string[], payload: Record<string, unknown>, ctx: any) {
+  const configuredAsUvxBootstrap =
+    command === "uvx" && args.includes("--from") && args.includes("let-me-know-pi");
+  const fallbackCliArgs = configuredAsUvxBootstrap ? [] : args;
+
   const candidates: ExecSpec[] = [
     { command, args, source: "config" },
     {
       command: "uvx",
-      args: ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi", ...args],
+      args: ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi", ...fallbackCliArgs],
       source: "uvx-git",
     },
     {
+      command: "let-me-know-pi",
+      args: fallbackCliArgs,
+      source: "path-cli",
+    },
+    {
       command: "python3",
-      args: ["-m", "let_me_know_agent.pi_command", ...args],
+      args: ["-m", "let_me_know_agent.pi_command", ...fallbackCliArgs],
       source: "python3-module",
     },
     {
       command: "python",
-      args: ["-m", "let_me_know_agent.pi_command", ...args],
+      args: ["-m", "let_me_know_agent.pi_command", ...fallbackCliArgs],
       source: "python-module",
     },
   ];
@@ -190,6 +199,23 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
     child.on("close", (code) => {
       if (code === 0) return;
 
+      const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
+
+      // Backward-compatibility: older let-me-know-agent versions reject
+      // summarization provider "command". Try the next candidate executable.
+      if (
+        detail.includes("summarization.provider_order contains unknown values") &&
+        detail.includes("command") &&
+        idx < dedupedCandidates.length - 1
+      ) {
+        ctx.ui.notify(
+          `let-me-know: ${spec.source} is too old for provider 'command'; trying next fallback`,
+          "warning",
+        );
+        tryIndex(idx + 1);
+        return;
+      }
+
       // If binary exists but failed (non-ENOENT), surface failure immediately.
       // For the default command only, we still try automatic fallbacks once.
       if (code === -2 && idx < dedupedCandidates.length - 1) {
@@ -197,7 +223,6 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
         return;
       }
 
-      const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
       ctx.ui.notify(`let-me-know: notifier failed via ${spec.source} (${detail})`, "error");
     });
   };
@@ -206,7 +231,12 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
 }
 
 export default function (pi: ExtensionAPI) {
-  let cfg: Required<ExtensionConfig>;
+  let cfg: Required<ExtensionConfig> | undefined;
+
+  const getCfg = (ctx: any): Required<ExtensionConfig> => {
+    if (!cfg) cfg = loadConfig(ctx);
+    return cfg;
+  };
 
   pi.on("session_start", async (_event, ctx) => {
     cfg = loadConfig(ctx);
@@ -216,18 +246,19 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("message_end", async (event, ctx) => {
-    if (!cfg?.enabled) return;
+    const loadedCfg = getCfg(ctx);
+    if (!loadedCfg.enabled) return;
 
     const role = event?.message?.role;
-    if (cfg.onlyAssistant && role !== "assistant") return;
+    if (loadedCfg.onlyAssistant && role !== "assistant") return;
 
     const text = extractText(event?.message);
     if (!text) return;
 
     const eventType = role === "assistant" ? "final" : "info";
     let summaryOverride: string | null = null;
-    if (cfg.summaryMode === "agent_headless") {
-      summaryOverride = await summarizeWithHeadless(text, eventType, cfg, ctx);
+    if (loadedCfg.summaryMode === "agent_headless") {
+      summaryOverride = await summarizeWithHeadless(text, eventType, loadedCfg, ctx);
     }
 
     const payload = {
@@ -242,21 +273,22 @@ export default function (pi: ExtensionAPI) {
       },
     };
 
-    runNotifier(cfg.command, cfg.args, payload, ctx);
+    runNotifier(loadedCfg.command, loadedCfg.args, payload, ctx);
   });
 
   pi.registerCommand("letmeknow", {
     description: "Toggle let-me-know extension notifications (on/off/status)",
     handler: async (args, ctx) => {
+      const loadedCfg = getCfg(ctx);
       const cmd = (args || "status").trim().toLowerCase();
       if (cmd === "on") {
-        cfg.enabled = true;
+        loadedCfg.enabled = true;
         ctx.ui.notify("let-me-know enabled", "info");
       } else if (cmd === "off") {
-        cfg.enabled = false;
+        loadedCfg.enabled = false;
         ctx.ui.notify("let-me-know disabled", "info");
       } else {
-        ctx.ui.notify(`let-me-know is ${cfg.enabled ? "enabled" : "disabled"}`, "info");
+        ctx.ui.notify(`let-me-know is ${loadedCfg.enabled ? "enabled" : "disabled"}`, "info");
       }
     },
   });
