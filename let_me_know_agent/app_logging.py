@@ -7,110 +7,76 @@ import sys
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
-
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
-        for key, value in record.__dict__.items():
-            if key.startswith("_") or key in {
-                "name",
-                "msg",
-                "args",
-                "levelname",
-                "levelno",
-                "pathname",
-                "filename",
-                "module",
-                "exc_info",
-                "exc_text",
-                "stack_info",
-                "lineno",
-                "funcName",
-                "created",
-                "msecs",
-                "relativeCreated",
-                "thread",
-                "threadName",
-                "processName",
-                "process",
-            }:
-                continue
-            payload[key] = value
-        return json.dumps(payload, default=str)
+import structlog
 
 
-class TextExtrasFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        base = super().format(record)
-        extras: list[str] = []
-        for key, value in record.__dict__.items():
-            if key.startswith("_") or key in {
-                "name",
-                "msg",
-                "args",
-                "levelname",
-                "levelno",
-                "pathname",
-                "filename",
-                "module",
-                "exc_info",
-                "exc_text",
-                "stack_info",
-                "lineno",
-                "funcName",
-                "created",
-                "msecs",
-                "relativeCreated",
-                "thread",
-                "threadName",
-                "processName",
-                "process",
-                "asctime",
-                "message",
-            }:
-                continue
-            if value is None:
-                continue
-            extras.append(f"{key}={value}")
-
-        if extras:
-            return f"{base} | {' '.join(sorted(extras))}"
-        return base
+_RESERVED_RECORD_KEYS = {
+    "name",
+    "msg",
+    "args",
+    "levelname",
+    "levelno",
+    "pathname",
+    "filename",
+    "module",
+    "exc_info",
+    "exc_text",
+    "stack_info",
+    "lineno",
+    "funcName",
+    "created",
+    "msecs",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "processName",
+    "process",
+    "asctime",
+    "message",
+}
 
 
-def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(name)
+def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+    return structlog.get_logger(name)
 
 
-def _build_text_format(include_timestamps: bool, include_module: bool, include_pid: bool) -> str:
-    parts = []
-    if include_timestamps:
-        parts.append("%(asctime)s")
-    parts.append("%(levelname)s")
-    if include_pid:
-        parts.append("pid=%(process)d")
-    if include_module:
-        parts.append("%(name)s")
-    parts.append("%(message)s")
-    return " | ".join(parts)
+def _copy_extra_record_fields(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    record = event_dict.get("_record")
+    if not record:
+        return event_dict
+    for key, value in record.__dict__.items():
+        if key.startswith("_") or key in _RESERVED_RECORD_KEYS or value is None:
+            continue
+        event_dict.setdefault(key, value)
+    return event_dict
 
 
-def _make_formatter(config: dict[str, Any]) -> logging.Formatter:
+def _make_formatter(config: dict[str, Any], *, colors: bool = False) -> logging.Formatter:
     fmt = config.get("format", "text")
+    include_timestamps = bool(config.get("include_timestamps", True))
+    include_module = bool(config.get("include_module", True))
+    include_pid = bool(config.get("include_pid", False))
+
+    pre_chain: list[Any] = [
+        structlog.stdlib.add_log_level,
+        _copy_extra_record_fields,
+        structlog.processors.format_exc_info,
+    ]
+    if include_module:
+        pre_chain.insert(1, structlog.stdlib.add_logger_name)
+    if include_timestamps:
+        pre_chain.append(structlog.processors.TimeStamper(fmt="iso"))
+    if include_pid:
+        pre_chain.append(structlog.processors.CallsiteParameterAdder(parameters={structlog.processors.CallsiteParameter.PROCESS}))
+
     if fmt == "json":
-        return JsonFormatter()
-    return TextExtrasFormatter(
-        _build_text_format(
-            bool(config.get("include_timestamps", True)),
-            bool(config.get("include_module", True)),
-            bool(config.get("include_pid", False)),
-        )
+        processor = structlog.processors.JSONRenderer(serializer=lambda obj, **kwargs: json.dumps(obj, default=str, **kwargs))
+    else:
+        processor = structlog.dev.ConsoleRenderer(colors=colors)
+
+    return structlog.stdlib.ProcessorFormatter(
+        processor=processor,
+        foreign_pre_chain=pre_chain,
     )
 
 
@@ -133,15 +99,18 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
     effective_cfg = dict(cfg)
     if format_override:
         effective_cfg["format"] = format_override
-    formatter = _make_formatter(effective_cfg)
-
     destination = cfg.get("destination", "stderr")
     handlers: list[logging.Handler] = []
 
     if destination in {"stderr", "both"}:
         stderr_handler = logging.StreamHandler(sys.stderr)
-        stderr_handler.setFormatter(formatter)
+        stderr_handler.setFormatter(_make_formatter(effective_cfg, colors=sys.stderr.isatty()))
         handlers.append(stderr_handler)
+
+    if destination == "stdout":
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        stdout_handler.setFormatter(_make_formatter(effective_cfg, colors=sys.stdout.isatty()))
+        handlers.append(stdout_handler)
 
     if destination in {"file", "both"} or file_override:
         file_path = file_override or cfg.get("file_path")
@@ -153,16 +122,29 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
             maxBytes=int(cfg.get("rotate_max_bytes", 1_048_576)),
             backupCount=int(cfg.get("rotate_backup_count", 3)),
         )
-        file_handler.setFormatter(formatter)
+        file_handler.setFormatter(_make_formatter(effective_cfg, colors=False))
         handlers.append(file_handler)
 
     if not handlers:
         fallback = logging.StreamHandler(sys.stderr)
-        fallback.setFormatter(formatter)
+        fallback.setFormatter(_make_formatter(effective_cfg, colors=sys.stderr.isatty()))
         handlers.append(fallback)
 
     for handler in handlers:
         root.addHandler(handler)
+
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            _copy_extra_record_fields,
+            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
 
 
 def redact_value(value: str, *, enabled: bool = True) -> str:

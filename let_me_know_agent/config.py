@@ -19,7 +19,7 @@ _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
 _ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
 _ALLOWED_LOG_FORMATS = {"text", "json"}
-_ALLOWED_LOG_DESTINATIONS = {"stderr", "file", "both"}
+_ALLOWED_LOG_DESTINATIONS = {"stderr", "stdout", "file", "both"}
 
 
 def default_config_path() -> Path:

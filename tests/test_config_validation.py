@@ -35,7 +35,7 @@ def test_default_config_prefers_kokoro_cli_before_macos() -> None:
         (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files has unknown event key"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
-        (lambda c: c.setdefault("logging", {}).update({"destination": "stdout"}), "logging.destination"),
+        (lambda c: c.setdefault("logging", {}).update({"destination": "console"}), "logging.destination"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
         (lambda c: c.setdefault("providers", {}).setdefault("lmstudio", {}).update({"tts_mode": "bad"}), "providers.lmstudio.tts_mode"),
     ],

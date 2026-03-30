@@ -23,6 +23,19 @@ class _SummaryHandler(BaseHTTPRequestHandler):
         return
 
 
+class _EmptySummaryHandler(BaseHTTPRequestHandler):
+    def do_POST(self):  # noqa: N802
+        body = b'{"choices":[{"message":{"content":""}}]}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):  # noqa: A003
+        return
+
+
 class _SummaryModelEchoHandler(BaseHTTPRequestHandler):
     last_model: str | None = None
 
@@ -266,6 +279,40 @@ def test_cli_given_summary_model_override_then_lmstudio_uses_it(tmp_path: Path, 
         assert payload["status"] == "ok"
         assert payload["summary"] == "summary-model=override-summary-model"
         assert _SummaryModelEchoHandler.last_model == "override-summary-model"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cli_given_empty_lmstudio_summary_then_falls_back_to_rule_based_and_keeps_session_prefix(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    server, port = _start_server(_EmptySummaryHandler)
+    try:
+        config = json.loads(base_config.read_text())
+        config["summarization"]["provider_order"] = ["lmstudio", "rule_based"]
+        config.setdefault("providers", {})["lmstudio"] = {
+            "base_url": f"http://127.0.0.1:{port}",
+            "model": "fake",
+        }
+        cfg_path = tmp_path / "cfg_empty_summary.json"
+        cfg_path.write_text(json.dumps(config))
+
+        result = run_cli(
+            [
+                "--config",
+                str(cfg_path),
+                "--message",
+                "Build is complete",
+                "--session-name",
+                "Pi, from session named let-me-know-agent",
+                "--event",
+                "final",
+            ],
+            env=env_with_fake_audio,
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "ok"
+        assert payload["summary"] == "Pi, from session named let-me-know-agent: Build is complete"
     finally:
         server.shutdown()
         server.server_close()

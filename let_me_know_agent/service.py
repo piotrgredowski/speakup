@@ -190,6 +190,9 @@ class NotifyService:
                 try:
                     lm = self.config.get("providers", "lmstudio", default={})
                     result = LMStudioSummarizer(lm.get("base_url", "http://localhost:1234/v1"), lm.get("model", "local-model")).summarize(message, event, max_chars)
+                    if not result.summary.strip():
+                        self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
+                        return RuleBasedSummarizer().summarize(message, event, max_chars)
                     self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
                     return result
                 except AdapterError as exc:
@@ -204,6 +207,9 @@ class NotifyService:
                 try:
                     op = self.config.get("providers", "openai", default={})
                     result = OpenAISummarizer(op.get("api_key_env", "OPENAI_API_KEY"), model=op.get("summary_model", "gpt-4o-mini")).summarize(message, event, max_chars)
+                    if not result.summary.strip():
+                        self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
+                        return RuleBasedSummarizer().summarize(message, event, max_chars)
                     self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
                     return result
                 except AdapterError as exc:
