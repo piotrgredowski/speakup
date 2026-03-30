@@ -77,7 +77,10 @@ class NotifyService:
                 dedup_skipped=True,
             )
 
-        if request.precomputed_summary:
+        if request.skip_summarization:
+            summary_text = request.message
+            self.logger.info("summarization_skipped", extra={"request_id": request_id})
+        elif request.precomputed_summary:
             summary_text = str(request.precomputed_summary).strip()
             self.logger.info("summary_precomputed_used", extra={"request_id": request_id, "summary_length": len(summary_text)})
         else:

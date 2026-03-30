@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import Optional
+
+import typer
 
 from .app_logging import setup_logging
 from .config import Config, write_default_config
@@ -16,25 +18,186 @@ from .service import NotifyService
 from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
 
+app = typer.Typer(
+    name="let-me-know",
+    help="Speak concise agent status updates with pluggable local/remote backends",
+    rich_markup_mode="rich",
+)
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="let-me-know-agent CLI")
-    parser.add_argument("--config", help="Path to config.json", default=None)
-    parser.add_argument("--message", help="Raw message text", default=None)
-    parser.add_argument("--event", help="final|error|needs_input|progress|info", default="final")
-    parser.add_argument("--session-name", help="Optional session label spoken at the start", default=None)
-    parser.add_argument("--input-json", help="JSON payload string using NotifyRequest schema", default=None)
-    parser.add_argument("--input-file", help="Path to JSON payload using NotifyRequest schema", default=None)
-    parser.add_argument("--no-play", action="store_true", help="Synthesize audio but skip local playback")
-    parser.add_argument("--init-config", action="store_true", help="Write default config to ~/.config/let-me-know-agent/config.json")
-    parser.add_argument("--force", action="store_true", help="Overwrite config file when used with --init-config")
-    parser.add_argument("--log-level", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)", default=None)
-    parser.add_argument("--log-format", help="Override log format (text|json)", default=None)
-    parser.add_argument("--log-file", help="Write logs to file path", default=None)
-    parser.add_argument("--debug", action="store_true", help="Shortcut for --log-level DEBUG")
-    parser.add_argument("--self-test-audio", action="store_true", help="Run event sound + Kokoro synth/playback diagnostics")
-    parser.add_argument("--doctor", action="store_true", help="Run Kokoro CLI health check")
-    return parser
+
+def _get_config_for_default(
+    config: Optional[Path],
+    debug: bool,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file: Optional[Path],
+) -> Config:
+    """Load config for default command callback."""
+    cfg = Config.load(config)
+    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+    return cfg
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(
+    ctx: typer.Context,
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config.json"
+    ),
+    message: Optional[str] = typer.Option(
+        None, "--message", "-m", help="Raw message text"
+    ),
+    event: str = typer.Option(
+        "final", "--event", "-e", help="final|error|needs_input|progress|info"
+    ),
+    session_name: Optional[str] = typer.Option(
+        None, "--session-name", "-s", help="Optional session label spoken at the start"
+    ),
+    input_json: Optional[str] = typer.Option(
+        None, "--input-json", "-j", help="JSON payload string using NotifyRequest schema"
+    ),
+    input_file: Optional[Path] = typer.Option(
+        None, "--input-file", "-f", help="Path to JSON payload using NotifyRequest schema"
+    ),
+    no_play: bool = typer.Option(
+        False, "--no-play", help="Synthesize audio but skip local playback"
+    ),
+    no_summarize: bool = typer.Option(
+        False, "--no-summarize", help="Skip summarization, use raw message for TTS"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None, "--log-level", "-l", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
+    ),
+    log_format: Optional[str] = typer.Option(
+        None, "--log-format", help="Override log format (text|json)"
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Write logs to file path"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
+    ),
+    tts_provider: Optional[str] = typer.Option(
+        None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
+    ),
+    legacy_init_config: bool = typer.Option(
+        False,
+        "--init-config",
+        help="[legacy] Write default config to ~/.config/let-me-know-agent/config.json",
+        hidden=True,
+    ),
+    legacy_self_test: bool = typer.Option(
+        False,
+        "--self-test",
+        help="[legacy] Run event sound + Kokoro diagnostics",
+        hidden=True,
+    ),
+    legacy_doctor: bool = typer.Option(
+        False,
+        "--doctor",
+        help="[legacy] Run Kokoro CLI health check",
+        hidden=True,
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="[legacy] Overwrite config file when used with --init-config",
+        hidden=True,
+    ),
+) -> None:
+    """let-me-know: Speak concise agent status updates."""
+    if ctx.invoked_subcommand is None:
+        # Backward-compatibility for legacy argparse-style flags.
+        if legacy_init_config:
+            ctx.invoke(init_config, force=force)
+            raise typer.Exit()
+        if legacy_self_test:
+            ctx.invoke(
+                self_test,
+                config=config,
+                log_level=log_level,
+                log_format=log_format,
+                log_file=log_file,
+                debug=debug,
+            )
+            raise typer.Exit()
+        if legacy_doctor:
+            ctx.invoke(
+                doctor,
+                config=config,
+                log_level=log_level,
+                log_format=log_format,
+                log_file=log_file,
+                debug=debug,
+            )
+            raise typer.Exit()
+
+        # Default behavior: run notify with the provided options
+        _setup_logging_from_options(None, debug, log_level, log_format, log_file)
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "cli_start",
+            extra={
+                "has_message": bool(message),
+                "has_input_json": bool(input_json),
+                "has_input_file": bool(input_file),
+            },
+        )
+
+        cfg = Config.load(config)
+        _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+        logger.info("config_loaded", extra={"config_path": config or "default"})
+
+        if no_play:
+            cfg.raw.setdefault("tts", {})["play_audio"] = False
+            logger.info("playback_disabled_via_cli")
+
+        if tts_provider:
+            cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
+            logger.info("tts_provider_overridden", extra={"provider": tts_provider})
+
+        request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
+        request.skip_summarization = no_summarize
+        logger.info(
+            "request_loaded",
+            extra={
+                "event": request.event.value,
+                "message_length": len(request.message),
+                "skip_summarization": request.skip_summarization,
+            },
+        )
+
+        result = NotifyService(cfg).notify(request)
+        logger.info(
+            "notify_completed",
+            extra={"status": result.status, "backend": result.backend, "played": result.played},
+        )
+        json.dump(result.to_dict(), sys.stdout)
+        sys.stdout.write("\n")
+        raise typer.Exit()
+
+
+def _setup_logging_from_options(
+    config: Optional[Config],
+    debug: bool,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file: Optional[str],
+) -> None:
+    if config:
+        setup_logging(
+            config.get("logging", default={}),
+            level_override="DEBUG" if debug else log_level,
+            format_override=log_format,
+            file_override=log_file,
+        )
+    else:
+        setup_logging(
+            {},
+            level_override="DEBUG" if debug else log_level,
+            format_override=log_format,
+            file_override=log_file,
+        )
 
 
 def _self_test_audio(config: Config) -> dict:
@@ -156,84 +319,245 @@ def _doctor(config: Config) -> dict:
     return {"status": "ok" if overall_ok else "error", "checks": checks}
 
 
-def _load_payload(args: argparse.Namespace) -> NotifyRequest:
-    if args.input_json:
-        payload = json.loads(args.input_json)
+def _load_payload(
+    message: Optional[str],
+    event: str,
+    session_name: Optional[str],
+    input_json: Optional[str],
+    input_file: Optional[str],
+) -> NotifyRequest:
+    if input_json:
+        payload = json.loads(input_json)
         return NotifyRequest(**payload)
 
-    if args.input_file:
-        payload = json.loads(open(args.input_file).read())
+    if input_file:
+        payload = json.loads(open(input_file).read())
         return NotifyRequest(**payload)
 
-    if not args.message:
-        raise SystemExit("Provide --message or --input-json/--input-file")
+    if not message:
+        raise typer.BadParameter("Provide --message or --input-json/--input-file")
 
     try:
-        event = MessageEvent(args.event)
+        msg_event = MessageEvent(event)
     except Exception:
-        event = MessageEvent.FINAL
-    return NotifyRequest(message=args.message, event=event, session_name=args.session_name)
+        msg_event = MessageEvent.FINAL
+    return NotifyRequest(message=message, event=msg_event, session_name=session_name)
 
 
-def main() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
-
-    setup_logging(
-        {},
-        level_override="DEBUG" if args.debug else args.log_level,
-        format_override=args.log_format,
-        file_override=args.log_file,
-    )
+@app.command()
+def notify(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config.json"
+    ),
+    message: Optional[str] = typer.Option(
+        None, "--message", "-m", help="Raw message text"
+    ),
+    event: str = typer.Option(
+        "final", "--event", "-e", help="final|error|needs_input|progress|info"
+    ),
+    session_name: Optional[str] = typer.Option(
+        None, "--session-name", "-s", help="Optional session label spoken at the start"
+    ),
+    input_json: Optional[str] = typer.Option(
+        None, "--input-json", "-j", help="JSON payload string using NotifyRequest schema"
+    ),
+    input_file: Optional[Path] = typer.Option(
+        None, "--input-file", "-f", help="Path to JSON payload using NotifyRequest schema"
+    ),
+    no_play: bool = typer.Option(
+        False, "--no-play", help="Synthesize audio but skip local playback"
+    ),
+    no_summarize: bool = typer.Option(
+        False, "--no-summarize", help="Skip summarization, use raw message for TTS"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None, "--log-level", "-l", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
+    ),
+    log_format: Optional[str] = typer.Option(
+        None, "--log-format", help="Override log format (text|json)"
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Write logs to file path"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
+    ),
+    tts_provider: Optional[str] = typer.Option(
+        None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
+    ),
+) -> None:
+    """Send a notification (default command)."""
+    _setup_logging_from_options(None, debug, log_level, log_format, log_file)
     logger = logging.getLogger(__name__)
-    logger.info("cli_start", extra={"has_message": bool(args.message), "has_input_json": bool(args.input_json), "has_input_file": bool(args.input_file)})
-
-    if args.init_config:
-        try:
-            path = write_default_config(force=args.force)
-        except FileExistsError as exc:
-            json.dump({"status": "error", "error": str(exc)}, sys.stdout)
-            sys.stdout.write("\n")
-            raise SystemExit(2)
-        json.dump({"status": "ok", "config_path": str(path)}, sys.stdout)
-        sys.stdout.write("\n")
-        return
-
-    config = Config.load(args.config)
-    setup_logging(
-        config.get("logging", default={}),
-        level_override="DEBUG" if args.debug else args.log_level,
-        format_override=args.log_format,
-        file_override=args.log_file,
+    logger.info(
+        "cli_start",
+        extra={
+            "has_message": bool(message),
+            "has_input_json": bool(input_json),
+            "has_input_file": bool(input_file),
+        },
     )
-    logger.info("config_loaded", extra={"config_path": args.config or "default"})
-    if args.doctor:
-        result = _doctor(config)
-        json.dump(result, sys.stdout)
-        sys.stdout.write("\n")
-        if result["status"] != "ok":
-            raise SystemExit(1)
-        return
 
-    if args.self_test_audio:
-        result = _self_test_audio(config)
-        json.dump(result, sys.stdout)
-        sys.stdout.write("\n")
-        if result["status"] != "ok":
-            raise SystemExit(1)
-        return
+    cfg = Config.load(config)
+    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+    logger.info("config_loaded", extra={"config_path": config or "default"})
 
-    if args.no_play:
-        config.raw.setdefault("tts", {})["play_audio"] = False
+    if no_play:
+        cfg.raw.setdefault("tts", {})["play_audio"] = False
         logger.info("playback_disabled_via_cli")
-    request = _load_payload(args)
-    logger.info("request_loaded", extra={"event": request.event.value, "message_length": len(request.message)})
 
-    result = NotifyService(config).notify(request)
-    logger.info("notify_completed", extra={"status": result.status, "backend": result.backend, "played": result.played})
+    if tts_provider:
+        cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
+        logger.info("tts_provider_overridden", extra={"provider": tts_provider})
+
+    request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
+    request.skip_summarization = no_summarize
+    logger.info(
+        "request_loaded",
+        extra={
+            "event": request.event.value,
+            "message_length": len(request.message),
+            "skip_summarization": request.skip_summarization,
+        },
+    )
+
+    result = NotifyService(cfg).notify(request)
+    logger.info(
+        "notify_completed",
+        extra={"status": result.status, "backend": result.backend, "played": result.played},
+    )
     json.dump(result.to_dict(), sys.stdout)
     sys.stdout.write("\n")
 
 
+@app.command()
+def init_config(
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite config file if it exists"
+    ),
+) -> None:
+    """Write default config to ~/.config/let-me-know-agent/config.json."""
+    try:
+        path = write_default_config(force=force)
+    except FileExistsError as exc:
+        json.dump({"status": "error", "error": str(exc)}, sys.stdout)
+        sys.stdout.write("\n")
+        raise typer.Exit(2)
+    json.dump({"status": "ok", "config_path": str(path)}, sys.stdout)
+    sys.stdout.write("\n")
+
+
+@app.command("self-test")
+def self_test(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config.json"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None, "--log-level", "-l", help="Override logging level"
+    ),
+    log_format: Optional[str] = typer.Option(
+        None, "--log-format", help="Override log format"
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Write logs to file path"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
+    ),
+) -> None:
+    """Run event sound + Kokoro synth/playback diagnostics."""
+    cfg = Config.load(config)
+    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+
+    result = _self_test_audio(cfg)
+    json.dump(result, sys.stdout)
+    sys.stdout.write("\n")
+    if result["status"] != "ok":
+        raise typer.Exit(1)
+
+
+@app.command()
+def doctor(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config.json"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None, "--log-level", "-l", help="Override logging level"
+    ),
+    log_format: Optional[str] = typer.Option(
+        None, "--log-format", help="Override log format"
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Write logs to file path"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
+    ),
+) -> None:
+    """Run Kokoro CLI health check."""
+    cfg = Config.load(config)
+    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+
+    result = _doctor(cfg)
+    json.dump(result, sys.stdout)
+    sys.stdout.write("\n")
+    if result["status"] != "ok":
+        raise typer.Exit(1)
+
+
+@app.command()
+def pi(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+    input_file: Optional[Path] = typer.Option(
+        None, "--input-file", "-f", help="Path to Pi payload JSON. Defaults to stdin."
+    ),
+) -> None:
+    """Pi coding agent wrapper command."""
+    from .config import ConfigValidationError
+    from .integrations.pi_extension import request_from_pi_payload
+
+    _setup_logging_from_options(None, False, None, None, None)
+    logger = logging.getLogger(__name__)
+
+    try:
+        cfg = Config.load(config)
+    except ConfigValidationError as exc:
+        json.dump({"status": "error", "error": str(exc)}, sys.stdout)
+        sys.stdout.write("\n")
+        raise typer.Exit(2)
+
+    _setup_logging_from_options(cfg, False, None, None, None)
+    logger.info(
+        "pi_wrapper_start",
+        extra={"has_input_file": bool(input_file), "config_path": config or "default"},
+    )
+
+    # Load Pi payload
+    if input_file:
+        payload = json.loads(input_file.read_text())
+    else:
+        raw = sys.stdin.read().strip()
+        if not raw:
+            json.dump({"status": "error", "error": "Expected Pi JSON payload via stdin or --input-file"}, sys.stdout)
+            sys.stdout.write("\n")
+            raise typer.Exit(1)
+        payload = json.loads(raw)
+
+    request = request_from_pi_payload(payload)
+    result = NotifyService(cfg).notify(request)
+    logger.info(
+        "pi_wrapper_completed",
+        extra={"status": result.status, "state": result.state.value, "backend": result.backend},
+    )
+    json.dump(result.to_dict(), sys.stdout)
+    sys.stdout.write("\n")
+
+
+def main() -> None:
+    app()
+
+
 if __name__ == "__main__":
-    main()
+    app()

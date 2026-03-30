@@ -6,10 +6,11 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "kokoro>=0.7.16",
+    "typer>=0.15.0",
 ]
 
 [project.scripts]
-let-me-know = "let_me_know_agent.cli:main"
+let-me-know = "let_me_know_agent.cli:app"
 let-me-know-pi = "let_me_know_agent.pi_command:main"
 
 [build-system]

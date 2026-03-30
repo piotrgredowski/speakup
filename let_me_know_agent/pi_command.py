@@ -1,53 +1,13 @@
-from __future__ import annotations
+"""Backward-compatible entry point for let-me-know-pi command."""
 
-import argparse
-import json
-import logging
 import sys
 
-from .app_logging import setup_logging
-from .config import Config, ConfigValidationError
-from .integrations.pi_extension import request_from_pi_payload
-from .service import NotifyService
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Pi wrapper command for let-me-know-agent")
-    parser.add_argument("--config", default=None, help="Path to config JSON")
-    parser.add_argument("--input-file", default=None, help="Path to Pi payload JSON. Defaults to stdin.")
-    return parser
-
-
-def _load_pi_payload(input_file: str | None) -> dict:
-    if input_file:
-        with open(input_file) as f:
-            return json.load(f)
-    raw = sys.stdin.read().strip()
-    if not raw:
-        raise SystemExit("Expected Pi JSON payload via stdin or --input-file")
-    return json.loads(raw)
+from .cli import app
 
 
 def main() -> None:
-    args = build_parser().parse_args()
-    setup_logging({})
-    logger = logging.getLogger(__name__)
-    try:
-        config = Config.load(args.config)
-    except ConfigValidationError as exc:
-        json.dump({"status": "error", "error": str(exc)}, sys.stdout)
-        sys.stdout.write("\n")
-        raise SystemExit(2)
-
-    setup_logging(config.get("logging", default={}))
-    logger.info("pi_wrapper_start", extra={"has_input_file": bool(args.input_file), "config_path": args.config or "default"})
-
-    payload = _load_pi_payload(args.input_file)
-    request = request_from_pi_payload(payload)
-    result = NotifyService(config).notify(request)
-    logger.info("pi_wrapper_completed", extra={"status": result.status, "state": result.state.value, "backend": result.backend})
-    json.dump(result.to_dict(), sys.stdout)
-    sys.stdout.write("\n")
+    """Thin wrapper that delegates to the unified Typer app."""
+    app(["pi", *sys.argv[1:]])
 
 
 if __name__ == "__main__":
