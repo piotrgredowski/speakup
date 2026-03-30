@@ -3,9 +3,32 @@ from __future__ import annotations
 import json
 import os
 import stat
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from .conftest import run_cli
+
+
+class _SummaryHandler(BaseHTTPRequestHandler):
+    def do_POST(self):  # noqa: N802
+        body = b'{"choices":[{"message":{"content":"LM summary from forced provider"}}]}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):  # noqa: A003
+        return
+
+
+def _start_summary_server() -> tuple[HTTPServer, int]:
+    server = HTTPServer(("127.0.0.1", 0), _SummaryHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, port
 
 
 def test_cli_given_needs_input_message_then_returns_spoken_summary(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -110,3 +133,63 @@ def test_cli_given_playback_failure_then_returns_partial_success(tmp_path: Path,
     assert payload["played"] is False
     assert payload["backend"] == "macos"
     assert payload["error"] is not None
+
+
+def test_cli_given_forced_tts_provider_then_uses_it_over_config_order(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    config = json.loads(base_config.read_text())
+    config["tts"]["provider_order"] = ["lmstudio"]
+    cfg_path = tmp_path / "cfg_force_tts.json"
+    cfg_path.write_text(json.dumps(config))
+
+    result = run_cli(
+        [
+            "--config",
+            str(cfg_path),
+            "--force-tts-provider",
+            "macos",
+            "--message",
+            "Done",
+            "--event",
+            "final",
+        ],
+        env=env_with_fake_audio,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["backend"] == "macos"
+
+
+def test_cli_given_forced_summary_provider_then_uses_it_over_config_order(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    server, port = _start_summary_server()
+    try:
+        config = json.loads(base_config.read_text())
+        config["summarization"]["provider_order"] = ["rule_based"]
+        config.setdefault("providers", {})["lmstudio"] = {
+            "base_url": f"http://127.0.0.1:{port}",
+            "model": "fake",
+            "tts_model": "fake-tts",
+        }
+        cfg_path = tmp_path / "cfg_force_summary.json"
+        cfg_path.write_text(json.dumps(config))
+
+        result = run_cli(
+            [
+                "--config",
+                str(cfg_path),
+                "--force-summary-provider",
+                "lmstudio",
+                "--message",
+                "Original message should be replaced by LM summary",
+                "--event",
+                "final",
+            ],
+            env=env_with_fake_audio,
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "ok"
+        assert payload["summary"] == "LM summary from forced provider"
+    finally:
+        server.shutdown()
+        server.server_close()

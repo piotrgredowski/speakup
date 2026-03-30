@@ -16,6 +16,9 @@ from .service import NotifyService
 from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
 
+_ALLOWED_SUMMARY_PROVIDERS = {"rule_based", "lmstudio", "openai"}
+_ALLOWED_TTS_PROVIDERS = {"kokoro_cli", "macos", "kokoro", "orpheus", "lmstudio", "elevenlabs", "openai"}
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="let-me-know-agent CLI")
@@ -32,6 +35,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-format", help="Override log format (text|json)", default=None)
     parser.add_argument("--log-file", help="Write logs to file path", default=None)
     parser.add_argument("--debug", action="store_true", help="Shortcut for --log-level DEBUG")
+    parser.add_argument(
+        "--force-summary-provider",
+        choices=sorted(_ALLOWED_SUMMARY_PROVIDERS),
+        default=None,
+        help="Force a single summarization provider for this run",
+    )
+    parser.add_argument(
+        "--force-tts-provider",
+        choices=sorted(_ALLOWED_TTS_PROVIDERS),
+        default=None,
+        help="Force a single TTS provider for this run",
+    )
     parser.add_argument("--self-test-audio", action="store_true", help="Run event sound + Kokoro synth/playback diagnostics")
     parser.add_argument("--doctor", action="store_true", help="Run Kokoro CLI health check")
     return parser
@@ -226,6 +241,13 @@ def main() -> None:
     if args.no_play:
         config.raw.setdefault("tts", {})["play_audio"] = False
         logger.info("playback_disabled_via_cli")
+    if args.force_summary_provider:
+        config.raw.setdefault("summarization", {})["provider_order"] = [args.force_summary_provider]
+        logger.info("summary_provider_forced_via_cli", extra={"provider": args.force_summary_provider})
+    if args.force_tts_provider:
+        config.raw.setdefault("tts", {})["provider_order"] = [args.force_tts_provider]
+        logger.info("tts_provider_forced_via_cli", extra={"provider": args.force_tts_provider})
+
     request = _load_payload(args)
     logger.info("request_loaded", extra={"event": request.event.value, "message_length": len(request.message)})
 
