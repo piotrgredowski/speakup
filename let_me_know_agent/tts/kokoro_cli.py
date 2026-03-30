@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from .base import TTSAdapter
@@ -67,6 +68,13 @@ class KokoroCliTTSAdapter(TTSAdapter):
         if not out_path.exists() or out_path.stat().st_size == 0:
             raise AdapterError(f"Kokoro CLI succeeded but did not produce audio file: {out_path}")
 
+        detected_format = self._detect_audio_format(out_path)
+        if detected_format and detected_format != audio_format:
+            normalized_path = out_path.with_suffix(f".{detected_format}")
+            out_path.rename(normalized_path)
+            out_path = normalized_path
+            audio_format = detected_format
+
         mime = "audio/mpeg" if audio_format == "mp3" else "audio/wav"
         return AudioResult(kind="file", value=str(out_path), provider=self.name, mime_type=mime)
 
@@ -99,3 +107,18 @@ class KokoroCliTTSAdapter(TTSAdapter):
             "--input_file": "-i",
         }
         return [mapping.get(arg, arg) for arg in args]
+
+    @staticmethod
+    def _detect_audio_format(path: Path) -> Literal["wav", "mp3"] | None:
+        try:
+            header = path.read_bytes()[:12]
+        except Exception:
+            return None
+
+        if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE":
+            return "wav"
+        if header[:3] == b"ID3":
+            return "mp3"
+        if len(header) >= 2 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0:
+            return "mp3"
+        return None
