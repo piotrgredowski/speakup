@@ -89,6 +89,12 @@ def main_callback(
     tts_provider: Optional[str] = typer.Option(
         None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
     ),
+    summary_model: Optional[str] = typer.Option(
+        None, "--summary-model", help="Override LM Studio summary model for this run"
+    ),
+    tts_model: Optional[str] = typer.Option(
+        None, "--tts-model", help="Override LM Studio TTS model for this run"
+    ),
     legacy_init_config: bool = typer.Option(
         False,
         "--init-config",
@@ -172,6 +178,14 @@ def main_callback(
         if tts_provider:
             cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
             logger.info("tts_provider_overridden", extra={"provider": tts_provider})
+
+        if summary_model:
+            cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["model"] = summary_model
+            logger.info("summary_model_overridden", extra={"provider": "lmstudio", "model": summary_model})
+
+        if tts_model:
+            cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["tts_model"] = tts_model
+            logger.info("tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model})
 
         if fail_fast:
             cfg.raw.setdefault("fallback", {})["fail_fast"] = True
@@ -412,6 +426,12 @@ def notify(
     tts_provider: Optional[str] = typer.Option(
         None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
     ),
+    summary_model: Optional[str] = typer.Option(
+        None, "--summary-model", help="Override LM Studio summary model for this run"
+    ),
+    tts_model: Optional[str] = typer.Option(
+        None, "--tts-model", help="Override LM Studio TTS model for this run"
+    ),
 ) -> None:
     """Send a notification (default command)."""
     _setup_logging_from_options(None, debug, log_level, log_format, log_file)
@@ -444,6 +464,14 @@ def notify(
     if tts_provider:
         cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
         logger.info("tts_provider_overridden", extra={"provider": tts_provider})
+
+    if summary_model:
+        cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["model"] = summary_model
+        logger.info("summary_model_overridden", extra={"provider": "lmstudio", "model": summary_model})
+
+    if tts_model:
+        cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["tts_model"] = tts_model
+        logger.info("tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model})
 
     request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
     request.skip_summarization = no_summarize

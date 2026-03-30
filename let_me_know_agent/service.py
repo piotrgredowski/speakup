@@ -271,7 +271,12 @@ class NotifyService:
             )
         if provider == "lmstudio":
             lm = self.config.get("providers", "lmstudio", default={})
-            return LMStudioTTSAdapter(lm.get("base_url", "http://localhost:1234/v1"), lm.get("tts_model", lm.get("model", "local-model")))
+            return LMStudioTTSAdapter(
+                lm.get("base_url", "http://localhost:1234/v1"),
+                lm.get("tts_model", lm.get("model", "local-model")),
+                tts_mode=lm.get("tts_mode", "openai_speech"),
+                orpheus_voice=lm.get("orpheus_voice", "tara"),
+            )
         if provider == "elevenlabs":
             el = self.config.get("providers", "elevenlabs", default={})
             return ElevenLabsTTSAdapter(el.get("api_key_env", "ELEVENLABS_API_KEY"), el.get("voice_id", ""), model=el.get("model", "eleven_multilingual_v2"))
