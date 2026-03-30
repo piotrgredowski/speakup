@@ -247,6 +247,82 @@ def test_cli_given_forced_summary_provider_then_uses_it_over_config_order(tmp_pa
         server.server_close()
 
 
+def test_cli_given_command_summary_provider_then_uses_pi_command_output(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    pi_script = bin_dir / "pi"
+    pi_script.write_text("#!/bin/sh\necho 'Pi summary from command'\n")
+    pi_script.chmod(pi_script.stat().st_mode | stat.S_IEXEC)
+
+    env = dict(env_with_fake_audio)
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+
+    config = json.loads(base_config.read_text())
+    config["summarization"]["provider_order"] = ["command", "rule_based"]
+    config.setdefault("providers", {})["command_summary"] = {
+        "command": "pi",
+        "args": ["-p", "{message}"],
+        "timeout_seconds": 5,
+        "trim_output": True,
+    }
+    cfg_path = tmp_path / "cfg_command_summary.json"
+    cfg_path.write_text(json.dumps(config))
+
+    result = run_cli(
+        [
+            "--config",
+            str(cfg_path),
+            "--message",
+            "Original message",
+            "--event",
+            "final",
+        ],
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["summary"] == "Pi summary from command"
+
+
+def test_cli_given_failing_command_summary_then_falls_back_to_rule_based(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    pi_script = bin_dir / "pi"
+    pi_script.write_text("#!/bin/sh\necho 'broken' >&2\nexit 7\n")
+    pi_script.chmod(pi_script.stat().st_mode | stat.S_IEXEC)
+
+    env = dict(env_with_fake_audio)
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+
+    config = json.loads(base_config.read_text())
+    config["summarization"]["provider_order"] = ["command", "rule_based"]
+    config.setdefault("providers", {})["command_summary"] = {
+        "command": "pi",
+        "args": ["-p", "{message}"],
+        "timeout_seconds": 5,
+        "trim_output": True,
+    }
+    cfg_path = tmp_path / "cfg_command_summary_fallback.json"
+    cfg_path.write_text(json.dumps(config))
+
+    result = run_cli(
+        [
+            "--config",
+            str(cfg_path),
+            "--message",
+            "Original message",
+            "--event",
+            "final",
+        ],
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["summary"] == "Original message"
+
+
 def test_cli_given_summary_model_override_then_lmstudio_uses_it(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     _SummaryModelEchoHandler.last_model = None
     server, port = _start_server(_SummaryModelEchoHandler)

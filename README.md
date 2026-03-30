@@ -109,7 +109,7 @@ Set `fallback.fail_fast` to `true` to stop on the first provider failure instead
   },
   "summarization": {
     "max_chars": 220,
-    "provider_order": ["rule_based", "lmstudio", "openai"]
+    "provider_order": ["command", "rule_based", "lmstudio", "openai"]
   },
   "fallback": {
     "fail_fast": false
@@ -150,6 +150,12 @@ Set `fallback.fail_fast` to `true` to stop on the first provider failure instead
       "model": "gpt-4o-mini-tts",
       "summary_model": "gpt-4o-mini",
       "voice": "alloy"
+    },
+    "command_summary": {
+      "command": "pi",
+      "args": ["-p", "{message}"],
+      "timeout_seconds": 30,
+      "trim_output": true
     }
   }
 }
@@ -213,7 +219,7 @@ You can set a custom command/path and args (for example explicit `--config`).
 
 You can also enable agent-driven headless summarization in the extension:
 
-- `summaryMode: "internal"` (default): let Python backends summarize (`rule_based`/`lmstudio`/`openai`).
+- `summaryMode: "internal"` (default): let Python backends summarize (`command`/`rule_based`/`lmstudio`/`openai`).
 - `summaryMode: "agent_headless"`: extension first runs a headless command and passes its summary into `let-me-know-pi`.
 
 When `agent_headless` is enabled, configure `headlessSummary.command/args/model/promptTemplate` as needed.

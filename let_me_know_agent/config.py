@@ -13,7 +13,7 @@ class ConfigValidationError(ValueError):
 
 
 _ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
-_ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai"}
+_ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command"}
 _ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"}
 _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
@@ -182,6 +182,18 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_bool(log_cfg.get("redact_sensitive", True), "logging.redact_sensitive")
 
     providers = _require_dict(raw.get("providers", {}), "providers")
+    command_summary = _require_dict(providers.get("command_summary", {}), "providers.command_summary")
+    for key, value in command_summary.items():
+        if key in {"command"}:
+            _require_str(value, f"providers.command_summary.{key}")
+        elif key == "args":
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ConfigValidationError("providers.command_summary.args must be an array of strings")
+        elif key == "timeout_seconds":
+            _require_positive_int(value, "providers.command_summary.timeout_seconds")
+        elif key == "trim_output":
+            _require_bool(value, "providers.command_summary.trim_output")
+
     for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
@@ -213,7 +225,7 @@ def default_config() -> dict[str, Any]:
         },
         "summarization": {
             "max_chars": 220,
-            "provider_order": ["rule_based", "lmstudio", "openai"],
+            "provider_order": ["command", "rule_based", "lmstudio", "openai"],
         },
         "fallback": {
             "fail_fast": False,
@@ -285,6 +297,12 @@ def default_config() -> dict[str, Any]:
                 "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
                 "voice": "af_heart",
                 "timeout_seconds": 60,
+            },
+            "command_summary": {
+                "command": "pi",
+                "args": ["-p", "{message}"],
+                "timeout_seconds": 30,
+                "trim_output": True,
             },
         },
     }

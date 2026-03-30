@@ -21,7 +21,7 @@
   },
   "summarization": {
     "max_chars": 220,
-    "provider_order": ["rule_based", "lmstudio", "openai"]
+    "provider_order": ["command", "rule_based", "lmstudio", "openai"]
   },
   "fallback": {
     "fail_fast": false
@@ -83,6 +83,12 @@
       "model": "gpt-4o-mini-tts",
       "summary_model": "gpt-4o-mini",
       "voice": "alloy"
+    },
+    "command_summary": {
+      "command": "pi",
+      "args": ["-p", "{message}"],
+      "timeout_seconds": 30,
+      "trim_output": true
     }
   }
 }

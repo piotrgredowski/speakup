@@ -25,6 +25,11 @@ def test_default_config_prefers_kokoro_cli_before_macos() -> None:
     assert cfg["tts"]["provider_order"][:2] == ["kokoro_cli", "macos"]
 
 
+def test_default_config_prefers_command_summarizer_first() -> None:
+    cfg = default_config()
+    assert cfg["summarization"]["provider_order"][0] == "command"
+
+
 @pytest.mark.parametrize(
     "mutator,expected",
     [
@@ -38,6 +43,7 @@ def test_default_config_prefers_kokoro_cli_before_macos() -> None:
         (lambda c: c.setdefault("logging", {}).update({"destination": "console"}), "logging.destination"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
         (lambda c: c.setdefault("providers", {}).setdefault("lmstudio", {}).update({"tts_mode": "bad"}), "providers.lmstudio.tts_mode"),
+        (lambda c: c.setdefault("providers", {}).setdefault("command_summary", {}).update({"args": "-p {message}"}), "providers.command_summary.args"),
     ],
 )
 def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path) -> None:
