@@ -80,6 +80,12 @@ def main_callback(
     debug: bool = typer.Option(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
+    force_summary_provider: Optional[str] = typer.Option(
+        None, "--force-summary-provider", help="Force a single summarization provider for this run"
+    ),
+    force_tts_provider: Optional[str] = typer.Option(
+        None, "--force-tts-provider", help="Force a single TTS provider for this run"
+    ),
     tts_provider: Optional[str] = typer.Option(
         None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
     ),
@@ -154,6 +160,14 @@ def main_callback(
         if no_play:
             cfg.raw.setdefault("tts", {})["play_audio"] = False
             logger.info("playback_disabled_via_cli")
+
+        if force_summary_provider:
+            cfg.raw.setdefault("summarization", {})["provider_order"] = [force_summary_provider]
+            logger.info("summary_provider_forced_via_cli", extra={"provider": force_summary_provider})
+
+        if force_tts_provider:
+            cfg.raw.setdefault("tts", {})["provider_order"] = [force_tts_provider]
+            logger.info("tts_provider_forced_via_cli", extra={"provider": force_tts_provider})
 
         if tts_provider:
             cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
@@ -389,6 +403,12 @@ def notify(
     debug: bool = typer.Option(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
+    force_summary_provider: Optional[str] = typer.Option(
+        None, "--force-summary-provider", help="Force a single summarization provider for this run"
+    ),
+    force_tts_provider: Optional[str] = typer.Option(
+        None, "--force-tts-provider", help="Force a single TTS provider for this run"
+    ),
     tts_provider: Optional[str] = typer.Option(
         None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
     ),
@@ -412,6 +432,14 @@ def notify(
     if no_play:
         cfg.raw.setdefault("tts", {})["play_audio"] = False
         logger.info("playback_disabled_via_cli")
+
+    if force_summary_provider:
+        cfg.raw.setdefault("summarization", {})["provider_order"] = [force_summary_provider]
+        logger.info("summary_provider_forced_via_cli", extra={"provider": force_summary_provider})
+
+    if force_tts_provider:
+        cfg.raw.setdefault("tts", {})["provider_order"] = [force_tts_provider]
+        logger.info("tts_provider_forced_via_cli", extra={"provider": force_tts_provider})
 
     if tts_provider:
         cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
