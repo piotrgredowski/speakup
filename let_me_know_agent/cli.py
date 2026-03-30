@@ -65,6 +65,9 @@ def main_callback(
     no_summarize: bool = typer.Option(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
+    fail_fast: bool = typer.Option(
+        False, "--fail-fast", help="Do not fall back to later providers after a provider error"
+    ),
     log_level: Optional[str] = typer.Option(
         None, "--log-level", "-l", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
     ),
@@ -155,6 +158,10 @@ def main_callback(
         if tts_provider:
             cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
             logger.info("tts_provider_overridden", extra={"provider": tts_provider})
+
+        if fail_fast:
+            cfg.raw.setdefault("fallback", {})["fail_fast"] = True
+            logger.info("fallback_fail_fast_enabled_via_cli")
 
         request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
         request.skip_summarization = no_summarize

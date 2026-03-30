@@ -9,6 +9,7 @@ Python library + CLI to turn agent responses into short spoken updates.
 - Kokoro TTS included as Python dependency (`kokoro`)
 - Per-event sound cues (earcons) before speech
 - Provider fallback chains for summarization and TTS
+- Optional fail-fast mode to stop on first provider error
 - Privacy modes (`local_only`, `prefer_local`)
 - Agent-agnostic core CLI + dedicated Pi wrapper command
 
@@ -34,6 +35,12 @@ You can skip local playback (useful in headless runs):
 
 ```bash
 let-me-know --no-play --message "Done implementing the feature." --event final
+```
+
+You can also force fail-fast provider behavior from CLI:
+
+```bash
+let-me-know --fail-fast --message "Done implementing the feature." --event final
 ```
 
 
@@ -76,6 +83,7 @@ If `--config` is omitted, the tool checks:
 2. built-in defaults (if no file is found)
 
 Config is validated on load (types, enums, provider names, event sound keys).
+Set `fallback.fail_fast` to `true` to stop on the first provider failure instead of trying later providers.
 
 ```json
 {
@@ -102,6 +110,9 @@ Config is validated on load (types, enums, provider names, event sound keys).
   "summarization": {
     "max_chars": 220,
     "provider_order": ["rule_based", "lmstudio", "openai"]
+  },
+  "fallback": {
+    "fail_fast": false
   },
   "tts": {
     "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],

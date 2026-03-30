@@ -134,6 +134,9 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_positive_int(summarization.get("max_chars", 220), "summarization.max_chars")
     _require_list_of_known(summarization.get("provider_order", ["rule_based"]), _ALLOWED_SUMMARIZERS, "summarization.provider_order")
 
+    fallback = _require_dict(raw.get("fallback", {}), "fallback")
+    _require_bool(fallback.get("fail_fast", False), "fallback.fail_fast")
+
     event_sounds = _require_dict(raw.get("event_sounds", {}), "event_sounds")
     _require_bool(event_sounds.get("enabled", True), "event_sounds.enabled")
     files = _require_dict(event_sounds.get("files", {}), "event_sounds.files")
@@ -209,6 +212,9 @@ def default_config() -> dict[str, Any]:
         "summarization": {
             "max_chars": 220,
             "provider_order": ["rule_based", "lmstudio", "openai"],
+        },
+        "fallback": {
+            "fail_fast": False,
         },
         "event_sounds": {
             "enabled": True,

@@ -178,6 +178,7 @@ class NotifyService:
         max_chars = int(self.config.get("summarization", "max_chars", default=220))
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
+        fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
         for provider in provider_order:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
@@ -193,6 +194,8 @@ class NotifyService:
                     return result
                 except AdapterError as exc:
                     self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
+                    if fail_fast:
+                        raise
                     continue
             if provider == "openai":
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
@@ -205,7 +208,12 @@ class NotifyService:
                     return result
                 except AdapterError as exc:
                     self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
+                    if fail_fast:
+                        raise
                     continue
+
+        if fail_fast:
+            raise AdapterError("No summarizer backend succeeded")
 
         self.logger.info("summarizer_fallback_rule_based", extra={"request_id": request_id})
         return RuleBasedSummarizer().summarize(message, event, max_chars)
@@ -218,6 +226,7 @@ class NotifyService:
         audio_format = self.config.get("tts", "audio_format", default="mp3")
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
+        fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
         for provider in provider_order:
             if provider in {"elevenlabs", "openai"} and (privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote)):
@@ -235,6 +244,8 @@ class NotifyService:
                 return audio, provider
             except AdapterError as exc:
                 self.logger.warning("tts_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
+                if fail_fast:
+                    raise
                 continue
 
         return None, "none"
