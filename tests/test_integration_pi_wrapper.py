@@ -44,6 +44,34 @@ def test_pi_wrapper_given_input_file_then_processes_payload(base_config: Path, t
     assert output["state"] == "final"
 
 
+def test_pi_wrapper_given_session_name_then_prefixes_summary(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    payload = {
+        "message": "Need your sign-off",
+        "session-name": "release-42",
+        "event": "needs_input",
+        "agent": "pi",
+    }
+    result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
+
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["summary"] == "release-42: Need your sign-off"
+
+
+def test_pi_wrapper_given_no_session_name_then_falls_back_to_conversation_id(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    payload = {
+        "message": "Need your sign-off",
+        "conversationId": "conv-123",
+        "event": "needs_input",
+        "agent": "pi",
+    }
+    result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
+
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["summary"] == "conv-123: Need your sign-off"
+
+
 def test_pi_wrapper_given_precomputed_summary_then_uses_it(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     payload = {
         "message": "Very long content that normally would be summarized differently",

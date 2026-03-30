@@ -40,7 +40,7 @@ let-me-know --no-play --message "Done implementing the feature." --event final
 Pi payload through dedicated wrapper command:
 
 ```bash
-echo '{"message":"Could you confirm deployment region?","event":"needs_input"}' | let-me-know-pi --config config.json
+echo '{"session-name":"agent-1","message":"Could you confirm deployment region?","event":"needs_input"}' | let-me-know-pi --config config.json
 ```
 
 Returns JSON result:

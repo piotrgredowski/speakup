@@ -56,6 +56,26 @@ def test_cli_given_event_sound_mapping_then_plays_sound_and_tts(tmp_path: Path, 
     assert any("tts-" in line for line in lines)
 
 
+def test_cli_given_session_name_then_prefixes_spoken_summary(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    result = run_cli(
+        [
+            "--config",
+            str(base_config),
+            "--message",
+            "Done implementing the feature",
+            "--event",
+            "final",
+            "--session-name",
+            "nightly-fix",
+        ],
+        env=env_with_fake_audio,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "nightly-fix: Done implementing the feature"
+
+
 def test_cli_given_playback_failure_then_returns_partial_success(tmp_path: Path, base_config: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

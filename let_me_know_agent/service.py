@@ -86,6 +86,9 @@ class NotifyService:
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
+        if request.session_name:
+            summary_text = f"{request.session_name}: {summary_text}" if summary_text else str(request.session_name)
+
         self.logger.debug(
             "summary_and_input",
             extra={

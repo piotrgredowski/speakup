@@ -22,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="Path to config.json", default=None)
     parser.add_argument("--message", help="Raw message text", default=None)
     parser.add_argument("--event", help="final|error|needs_input|progress|info", default="final")
+    parser.add_argument("--session-name", help="Optional session label spoken at the start", default=None)
     parser.add_argument("--input-json", help="JSON payload string using NotifyRequest schema", default=None)
     parser.add_argument("--input-file", help="Path to JSON payload using NotifyRequest schema", default=None)
     parser.add_argument("--no-play", action="store_true", help="Synthesize audio but skip local playback")
@@ -171,7 +172,7 @@ def _load_payload(args: argparse.Namespace) -> NotifyRequest:
         event = MessageEvent(args.event)
     except Exception:
         event = MessageEvent.FINAL
-    return NotifyRequest(message=args.message, event=event)
+    return NotifyRequest(message=args.message, event=event, session_name=args.session_name)
 
 
 def main() -> None:
