@@ -70,7 +70,11 @@ def _make_formatter(config: dict[str, Any], *, colors: bool = False) -> logging.
         pre_chain.append(structlog.processors.CallsiteParameterAdder(parameters={structlog.processors.CallsiteParameter.PROCESS}))
 
     if fmt == "json":
-        processor = structlog.processors.JSONRenderer(serializer=lambda obj, **kwargs: json.dumps(obj, default=str, **kwargs))
+        def _safe_json_dumps(obj: Any, **kwargs: Any) -> str:
+            kwargs.setdefault("default", str)
+            return json.dumps(obj, **kwargs)
+
+        processor = structlog.processors.JSONRenderer(serializer=_safe_json_dumps)
     else:
         processor = structlog.dev.ConsoleRenderer(colors=colors)
 
