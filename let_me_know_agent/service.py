@@ -14,6 +14,7 @@ from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
 from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
+from .summarizers.command import CommandSummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .tts.elevenlabs import ElevenLabsTTSAdapter
 from .tts.kokoro_cli import KokoroCliTTSAdapter
@@ -186,6 +187,27 @@ class NotifyService:
                 result = RuleBasedSummarizer().summarize(message, event, max_chars)
                 self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
                 return result
+            if provider == "command":
+                try:
+                    command_cfg = self.config.get("providers", "command_summary", default={})
+                    result = CommandSummarizer(
+                        command=command_cfg.get("command", "pi"),
+                        args=command_cfg.get("args", ["-p", "{message}"]),
+                        timeout_seconds=int(command_cfg.get("timeout_seconds", 30)),
+                        trim_output=bool(command_cfg.get("trim_output", True)),
+                    ).summarize(message, event, max_chars)
+                    if not result.summary.strip():
+                        self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
+                        if fail_fast:
+                            raise AdapterError("Command summarizer returned empty output")
+                        continue
+                    self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
+                    return result
+                except AdapterError as exc:
+                    self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
+                    if fail_fast:
+                        raise
+                    continue
             if provider == "lmstudio":
                 try:
                     lm = self.config.get("providers", "lmstudio", default={})
