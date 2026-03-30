@@ -104,7 +104,7 @@ Config is validated on load (types, enums, provider names, event sound keys).
     "provider_order": ["rule_based", "lmstudio", "openai"]
   },
   "tts": {
-    "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+    "provider_order": ["kokoro_cli", "macos", "kokoro", "orpheus", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
     "speed": 1.0,
     "play_audio": true,
@@ -122,6 +122,13 @@ Config is validated on load (types, enums, provider names, event sound keys).
       "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
       "voice": "af_heart",
       "timeout_seconds": 60
+    },
+    "orpheus": {
+      "model_name": "canopylabs/orpheus-tts-0.1-finetune-prod",
+      "voice": "tara",
+      "max_model_len": 2048,
+      "offline": true,
+      "timeout_seconds": 120
     },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",

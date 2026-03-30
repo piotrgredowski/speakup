@@ -23,6 +23,7 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
 def test_default_config_prefers_kokoro_cli_before_macos() -> None:
     cfg = default_config()
     assert cfg["tts"]["provider_order"][:2] == ["kokoro_cli", "macos"]
+    assert "orpheus" in cfg["tts"]["provider_order"]
 
 
 @pytest.mark.parametrize(
@@ -36,6 +37,7 @@ def test_default_config_prefers_kokoro_cli_before_macos() -> None:
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
         (lambda c: c.setdefault("logging", {}).update({"destination": "stdout"}), "logging.destination"),
+        (lambda c: c.setdefault("providers", {}).setdefault("orpheus", {}).update({"max_model_len": 0}), "providers.orpheus.max_model_len"),
     ],
 )
 def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path) -> None:
