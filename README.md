@@ -156,7 +156,8 @@ Set `fallback.fail_fast` to `true` to stop on the first provider failure instead
 ```
 
 LM Studio TTS uses Orpheus mode only: `providers.lmstudio.tts_mode = "orpheus_completions"`.
-It uses `/v1/completions` token streaming and decodes audio locally (requires optional `snac`, `torch`, `numpy`).
+It uses `/v1/completions` token streaming and decodes audio locally.
+Install Orpheus extras with `uv sync --group orpheus` (installs `snac`, `torch`, `numpy`).
 
 ## Pi extension install
 

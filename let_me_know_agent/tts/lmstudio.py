@@ -93,7 +93,6 @@ class LMStudioTTSAdapter(TTSAdapter):
 
     def _read_orpheus_stream(self, resp) -> list[int]:
         token_ids: list[int] = []
-        token_index = 0
 
         for raw_line in resp:
             line = raw_line.decode("utf-8", errors="replace").strip()
@@ -115,8 +114,7 @@ class LMStudioTTSAdapter(TTSAdapter):
 
             for match in self._CUSTOM_TOKEN_RE.findall(token_text):
                 token_number = int(match)
-                token_id = token_number - 10 - ((token_index % 7) * 4096)
-                token_index += 1
+                token_id = token_number - 10 - ((len(token_ids) % 7) * 4096)
                 if token_id > 0:
                     token_ids.append(token_id)
 

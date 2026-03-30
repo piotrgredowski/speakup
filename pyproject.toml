@@ -24,3 +24,8 @@ packages = ["let_me_know_agent", "let_me_know_agent.summarizers", "let_me_know_a
 dev = [
     "pytest>=9.0.2",
 ]
+orpheus = [
+    "numpy>=2.4.3",
+    "snac>=1.2.1",
+    "torch>=2.11.0",
+]
