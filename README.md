@@ -137,7 +137,9 @@ Set `fallback.fail_fast` to `true` to stop on the first provider failure instead
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",
-      "tts_model": "local-tts-model"
+      "tts_model": "local-tts-model",
+      "tts_mode": "orpheus_completions",
+      "orpheus_voice": "tara"
     },
     "elevenlabs": {
       "api_key_env": "ELEVENLABS_API_KEY",
@@ -152,6 +154,9 @@ Set `fallback.fail_fast` to `true` to stop on the first provider failure instead
   }
 }
 ```
+
+LM Studio TTS uses Orpheus mode only: `providers.lmstudio.tts_mode = "orpheus_completions"`.
+It uses `/v1/completions` token streaming and decodes audio locally (requires optional `snac`, `torch`, `numpy`).
 
 ## Pi extension install
 

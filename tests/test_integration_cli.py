@@ -23,8 +23,47 @@ class _SummaryHandler(BaseHTTPRequestHandler):
         return
 
 
+class _SummaryModelEchoHandler(BaseHTTPRequestHandler):
+    last_model: str | None = None
+
+    def do_POST(self):  # noqa: N802
+        payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode("utf-8"))
+        _SummaryModelEchoHandler.last_model = payload.get("model")
+        summary = f"summary-model={_SummaryModelEchoHandler.last_model}"
+        body = json.dumps({"choices": [{"message": {"content": summary}}]}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):  # noqa: A003
+        return
+
+
+class _TTSModelEchoHandler(BaseHTTPRequestHandler):
+    last_model: str | None = None
+
+    def do_POST(self):  # noqa: N802
+        payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode("utf-8"))
+        _TTSModelEchoHandler.last_model = payload.get("model")
+        body = b'data: {"choices":[{"text":"<custom_token_50000>"}]}\n\n' + b"data: [DONE]\n\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):  # noqa: A003
+        return
+
+
 def _start_summary_server() -> tuple[HTTPServer, int]:
-    server = HTTPServer(("127.0.0.1", 0), _SummaryHandler)
+    return _start_server(_SummaryHandler)
+
+
+def _start_server(handler_cls: type[BaseHTTPRequestHandler]) -> tuple[HTTPServer, int]:
+    server = HTTPServer(("127.0.0.1", 0), handler_cls)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -190,6 +229,83 @@ def test_cli_given_forced_summary_provider_then_uses_it_over_config_order(tmp_pa
         payload = json.loads(result.stdout)
         assert payload["status"] == "ok"
         assert payload["summary"] == "LM summary from forced provider"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cli_given_summary_model_override_then_lmstudio_uses_it(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    _SummaryModelEchoHandler.last_model = None
+    server, port = _start_server(_SummaryModelEchoHandler)
+    try:
+        config = json.loads(base_config.read_text())
+        config["summarization"]["provider_order"] = ["lmstudio"]
+        config.setdefault("providers", {})["lmstudio"] = {
+            "base_url": f"http://127.0.0.1:{port}",
+            "model": "base-summary-model",
+            "tts_model": "base-tts-model",
+        }
+        cfg_path = tmp_path / "cfg_summary_model.json"
+        cfg_path.write_text(json.dumps(config))
+
+        result = run_cli(
+            [
+                "--config",
+                str(cfg_path),
+                "--summary-model",
+                "override-summary-model",
+                "--message",
+                "Original message",
+                "--event",
+                "final",
+            ],
+            env=env_with_fake_audio,
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "ok"
+        assert payload["summary"] == "summary-model=override-summary-model"
+        assert _SummaryModelEchoHandler.last_model == "override-summary-model"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cli_given_tts_model_override_then_lmstudio_uses_it(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    _TTSModelEchoHandler.last_model = None
+    server, port = _start_server(_TTSModelEchoHandler)
+    try:
+        config = json.loads(base_config.read_text())
+        config["tts"]["provider_order"] = ["lmstudio", "macos"]
+        config["summarization"]["provider_order"] = ["rule_based"]
+        config.setdefault("providers", {})["lmstudio"] = {
+            "base_url": f"http://127.0.0.1:{port}",
+            "model": "base-summary-model",
+            "tts_model": "base-tts-model",
+            "tts_mode": "orpheus_completions",
+        }
+        cfg_path = tmp_path / "cfg_tts_model.json"
+        cfg_path.write_text(json.dumps(config))
+
+        result = run_cli(
+            [
+                "--config",
+                str(cfg_path),
+                "--tts-model",
+                "override-tts-model",
+                "--no-play",
+                "--message",
+                "Done",
+                "--event",
+                "final",
+            ],
+            env=env_with_fake_audio,
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "ok"
+        assert payload["backend"] == "macos"
+        assert _TTSModelEchoHandler.last_model == "override-tts-model"
     finally:
         server.shutdown()
         server.server_close()

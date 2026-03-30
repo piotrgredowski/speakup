@@ -185,7 +185,7 @@ def validate_config(raw: dict[str, Any]) -> None:
     for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
-            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id"}:
+            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id", "tts_mode", "orpheus_voice"}:
                 _require_str(value, f"providers.{provider_name}.{key}")
             if provider_name == "kokoro" and key == "offline":
                 _require_bool(value, f"providers.{provider_name}.{key}")
@@ -194,6 +194,8 @@ def validate_config(raw: dict[str, Any]) -> None:
                     raise ConfigValidationError("providers.kokoro_cli.args must be an array of strings")
             if provider_name == "kokoro_cli" and key == "timeout_seconds":
                 _require_positive_int(value, "providers.kokoro_cli.timeout_seconds")
+            if provider_name == "lmstudio" and key == "tts_mode" and value not in {"orpheus_completions"}:
+                raise ConfigValidationError("providers.lmstudio.tts_mode must be 'orpheus_completions'")
 
 
 def default_config() -> dict[str, Any]:
@@ -259,6 +261,8 @@ def default_config() -> dict[str, Any]:
                 "base_url": "http://localhost:1234/v1",
                 "model": "local-model",
                 "tts_model": "local-tts-model",
+                "tts_mode": "orpheus_completions",
+                "orpheus_voice": "tara",
             },
             "elevenlabs": {
                 "api_key_env": "ELEVENLABS_API_KEY",
