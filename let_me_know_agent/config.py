@@ -14,7 +14,7 @@ class ConfigValidationError(ValueError):
 
 _ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
 _ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai"}
-_ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"}
+_ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "orpheus", "lmstudio", "elevenlabs", "openai"}
 _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
 _ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
@@ -182,10 +182,10 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_bool(log_cfg.get("redact_sensitive", True), "logging.redact_sensitive")
 
     providers = _require_dict(raw.get("providers", {}), "providers")
-    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli"):
+    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "orpheus"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
-            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id"}:
+            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id", "model_name"}:
                 _require_str(value, f"providers.{provider_name}.{key}")
             if provider_name == "kokoro" and key == "offline":
                 _require_bool(value, f"providers.{provider_name}.{key}")
@@ -194,6 +194,10 @@ def validate_config(raw: dict[str, Any]) -> None:
                     raise ConfigValidationError("providers.kokoro_cli.args must be an array of strings")
             if provider_name == "kokoro_cli" and key == "timeout_seconds":
                 _require_positive_int(value, "providers.kokoro_cli.timeout_seconds")
+            if provider_name == "orpheus" and key in {"offline"}:
+                _require_bool(value, f"providers.{provider_name}.{key}")
+            if provider_name == "orpheus" and key in {"max_model_len", "timeout_seconds"}:
+                _require_positive_int(value, f"providers.{provider_name}.{key}")
 
 
 def default_config() -> dict[str, Any]:
@@ -227,7 +231,7 @@ def default_config() -> dict[str, Any]:
             },
         },
         "tts": {
-            "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+            "provider_order": ["kokoro_cli", "macos", "kokoro", "orpheus", "lmstudio", "elevenlabs", "openai"],
             "voice": "default",
             "speed": 1.0,
             "play_audio": True,
@@ -281,6 +285,13 @@ def default_config() -> dict[str, Any]:
                 "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
                 "voice": "af_heart",
                 "timeout_seconds": 60,
+            },
+            "orpheus": {
+                "model_name": "canopylabs/orpheus-tts-0.1-finetune-prod",
+                "voice": "tara",
+                "max_model_len": 2048,
+                "offline": True,
+                "timeout_seconds": 120,
             },
         },
     }

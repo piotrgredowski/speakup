@@ -34,55 +34,72 @@ class KokoroTTSAdapter(TTSAdapter):
         selected_voice = self.default_voice if voice == "default" else voice
 
         try:
+            self._synthesize_to_wav(text, selected_voice, speed, wav_path, offline_mode=self.offline)
+
+        except BaseException as exc:
+            if isinstance(exc, KeyboardInterrupt):
+                raise
             if self.offline:
-                # Force Hugging Face/Transformers to use local cache only.
-                # This must happen before importing kokoro/transformers modules,
-                # otherwise they may perform network/cache checks during import.
-                os.environ["HF_HUB_OFFLINE"] = "1"
-                os.environ["TRANSFORMERS_OFFLINE"] = "1"
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message="dropout option adds dropout after all but last recurrent layer",
-                    category=UserWarning,
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    message="`torch.nn.utils.weight_norm` is deprecated",
-                    category=FutureWarning,
-                )
-                import torch
-                from kokoro import KPipeline
-
-            if self._pipeline is None:
-                self._pipeline = KPipeline(lang_code=self.lang_code, repo_id=self.repo_id)
-
-            chunks = []
-            for result in self._pipeline(text, voice=selected_voice, speed=speed):
-                if result.audio is not None:
-                    chunks.append(result.audio.detach().cpu().flatten())
-
-            if not chunks:
-                raise AdapterError("Kokoro TTS produced no audio")
-
-            audio = torch.cat(chunks).clamp(-1, 1)
-            pcm = (audio * 32767).to(torch.int16).numpy().tobytes()
-
-            with wave.open(str(wav_path), "wb") as wav:
-                wav.setnchannels(1)
-                wav.setsampwidth(2)
-                wav.setframerate(24000)
-                wav.writeframes(pcm)
-
-        except Exception as exc:
-            if self.offline:
-                raise AdapterError(
-                    f"Kokoro TTS failed in offline mode: {exc}. "
-                    "Ensure model files are already cached locally for repo_id="
-                    f"{self.repo_id}"
-                ) from exc
-            raise AdapterError(f"Kokoro TTS failed: {exc}") from exc
+                prev_hf_offline = os.environ.pop("HF_HUB_OFFLINE", None)
+                prev_transformers_offline = os.environ.pop("TRANSFORMERS_OFFLINE", None)
+                try:
+                    self._pipeline = None
+                    self._synthesize_to_wav(text, selected_voice, speed, wav_path, offline_mode=False)
+                except BaseException as retry_exc:
+                    if isinstance(retry_exc, KeyboardInterrupt):
+                        raise
+                    raise AdapterError(
+                        f"Kokoro TTS failed in offline mode: {exc}. "
+                        f"Online retry also failed: {retry_exc}"
+                    ) from retry_exc
+                finally:
+                    os.environ["HF_HUB_OFFLINE"] = "1"
+                    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+                    if prev_hf_offline is None and prev_transformers_offline is None:
+                        pass
+            else:
+                raise AdapterError(f"Kokoro TTS failed: {exc}") from exc
 
         return AudioResult(kind="file", value=str(out_path), provider=self.name, mime_type="audio/wav")
 
+    def _synthesize_to_wav(self, text: str, voice: str, speed: float, wav_path: Path, *, offline_mode: bool) -> None:
+        if offline_mode:
+            # Force Hugging Face/Transformers to use local cache only.
+            # This must happen before importing kokoro/transformers modules,
+            # otherwise they may perform network/cache checks during import.
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="dropout option adds dropout after all but last recurrent layer",
+                category=UserWarning,
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message="`torch.nn.utils.weight_norm` is deprecated",
+                category=FutureWarning,
+            )
+            import torch
+            from kokoro import KPipeline
+
+        if self._pipeline is None:
+            self._pipeline = KPipeline(lang_code=self.lang_code, repo_id=self.repo_id)
+
+        chunks = []
+        for result in self._pipeline(text, voice=voice, speed=speed):
+            if result.audio is not None:
+                chunks.append(result.audio.detach().cpu().flatten())
+
+        if not chunks:
+            raise AdapterError("Kokoro TTS produced no audio")
+
+        audio = torch.cat(chunks).clamp(-1, 1)
+        pcm = (audio * 32767).to(torch.int16).numpy().tobytes()
+
+        with wave.open(str(wav_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(24000)
+            wav.writeframes(pcm)

@@ -21,6 +21,7 @@ from .tts.kokoro import KokoroTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
 from .tts.openai import OpenAITTSAdapter
+from .tts.orpheus import OrpheusTTSAdapter
 
 
 class NotifyService:
@@ -272,6 +273,15 @@ class NotifyService:
         if provider == "lmstudio":
             lm = self.config.get("providers", "lmstudio", default={})
             return LMStudioTTSAdapter(lm.get("base_url", "http://localhost:1234/v1"), lm.get("tts_model", lm.get("model", "local-model")))
+        if provider == "orpheus":
+            orp = self.config.get("providers", "orpheus", default={})
+            return OrpheusTTSAdapter(
+                model_name=orp.get("model_name", "canopylabs/orpheus-tts-0.1-finetune-prod"),
+                default_voice=orp.get("voice", "tara"),
+                max_model_len=int(orp.get("max_model_len", 2048)),
+                offline=bool(orp.get("offline", True)),
+                timeout_seconds=int(orp.get("timeout_seconds", 120)),
+            )
         if provider == "elevenlabs":
             el = self.config.get("providers", "elevenlabs", default={})
             return ElevenLabsTTSAdapter(el.get("api_key_env", "ELEVENLABS_API_KEY"), el.get("voice_id", ""), model=el.get("model", "eleven_multilingual_v2"))

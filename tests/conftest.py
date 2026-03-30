@@ -67,7 +67,7 @@ def base_config(tmp_path: Path) -> Path:
             "save_audio_dir": str(tmp_path / "audio"),
         },
         "dedup": {"enabled": True, "window_seconds": 30, "cache_file": str(tmp_path / "dedup.json")},
-        "providers": {"lmstudio": {}, "elevenlabs": {}, "openai": {}},
+        "providers": {"lmstudio": {}, "elevenlabs": {}, "openai": {}, "orpheus": {}},
     }
     path = tmp_path / "config.json"
     path.write_text(json.dumps(config))
