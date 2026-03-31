@@ -17,13 +17,27 @@ class ElevenLabsTTSAdapter(TTSAdapter):
 
     name: ClassVar[str] = "elevenlabs"
 
-    def __init__(self, api_key_env: str, voice_id: str, model: str = "eleven_multilingual_v2", timeout: float = 20.0):
+    def __init__(
+        self,
+        api_key_env: str,
+        voice_id: str,
+        model: str = "eleven_turbo_v2_5",
+        timeout: float = 20.0,
+    ):
         self.api_key_env = api_key_env
         self.voice_id = voice_id
         self.model = model
         self.timeout = timeout
 
-    def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
+    def synthesize(
+        self,
+        text: str,
+        output_dir: Path,
+        *,
+        voice: str = "default",
+        speed: float = 1.0,
+        audio_format: str = "mp3",
+    ) -> AudioResult:
         api_key = os.environ.get(self.api_key_env)
         if not api_key:
             raise AdapterError(f"Missing ElevenLabs API key in env: {self.api_key_env}")
@@ -33,7 +47,11 @@ class ElevenLabsTTSAdapter(TTSAdapter):
         payload = {
             "text": text,
             "model_id": self.model,
-            "voice_settings": {"stability": 0.4, "similarity_boost": 0.8, "speed": speed},
+            "voice_settings": {
+                "stability": 0.4,
+                "similarity_boost": 0.8,
+                "speed": speed,
+            },
         }
         req = urllib.request.Request(
             f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}",
@@ -54,9 +72,13 @@ class ElevenLabsTTSAdapter(TTSAdapter):
 
         if not content_type.lower().startswith("audio/"):
             preview = audio[:200].decode("utf-8", errors="replace")
-            raise AdapterError(f"ElevenLabs TTS returned non-audio response (Content-Type: {content_type}): {preview}")
+            raise AdapterError(
+                f"ElevenLabs TTS returned non-audio response (Content-Type: {content_type}): {preview}"
+            )
 
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"tts-{uuid4().hex}.mp3"
         out_path.write_bytes(audio)
-        return AudioResult(kind="file", value=str(out_path), provider=self.name, mime_type="audio/mpeg")
+        return AudioResult(
+            kind="file", value=str(out_path), provider=self.name, mime_type="audio/mpeg"
+        )
