@@ -180,15 +180,6 @@ pi install https://github.com/piotrgredowski/let-me-know-agent
 This works because the repo is a Pi package (`package.json` + `pi.extensions`).
 After install, run `/reload` in Pi.
 
-### Manual install
-
-```bash
-./pi-extensions/install.sh
-```
-
-This copies the extension to `~/.pi/agent/extensions/let-me-know-agent.ts`.
-Then inside Pi run `/reload`.
-
 ### Configuration
 
 Copy and edit the example config:
