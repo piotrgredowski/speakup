@@ -76,14 +76,18 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
 
 export default function (pi: ExtensionAPI) {
   let config: Required<ExtensionConfig> | undefined;
+  let sessionTitle = "Pi";
 
   const getConfig = (ctx: any): Required<ExtensionConfig> => {
     if (!config) config = loadConfig(ctx);
     return config;
   };
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     config = loadConfig(ctx);
+    if (event?.session?.name) {
+      sessionTitle = event.session.name;
+    }
     if (config.enabled) {
       ctx.ui.notify("let-me-know extension active", "info");
     }
@@ -104,9 +108,11 @@ export default function (pi: ExtensionAPI) {
       message: text,
       event: eventType,
       agent: "pi",
+      title: `Message from Pi: ${sessionTitle}`,
       metadata: {
         source: "pi-message_end",
         role,
+        sessionName: sessionTitle,
       },
     };
 
