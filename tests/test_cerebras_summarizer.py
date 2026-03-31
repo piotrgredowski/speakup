@@ -190,5 +190,5 @@ def test_cerebras_summarizer_given_correct_system_prompt_then_uses_it(monkeypatc
 
     system_content = request_data["body"]["messages"][0]["content"]
     assert "100 characters" in system_content
-    assert "event=error" in system_content.lower()
-    assert "TTS engine" in system_content
+    assert "event type is: error" in system_content.lower()
+    assert "notification system" in system_content.lower()
