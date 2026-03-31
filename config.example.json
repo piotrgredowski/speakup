@@ -84,6 +84,11 @@
       "summary_model": "gpt-4o-mini",
       "voice": "alloy"
     },
+    "cerebras": {
+      "api_key_env": "CEREBRAS_API_KEY",
+      "model": "llama3.1-8b",
+      "base_url": "https://api.cerebras.ai/v1"
+    },
     "command_summary": {
       "command": "pi",
       "args": ["-p", "{message}"],
