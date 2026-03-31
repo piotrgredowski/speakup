@@ -12,7 +12,6 @@ dependencies = [
 
 [project.scripts]
 let-me-know = "let_me_know_agent.cli:app"
-let-me-know-pi = "let_me_know_agent.pi_command:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -30,6 +29,9 @@ markers = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+]
+kokoro = [
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]
 orpheus = [
     "numpy>=2.4.3",
