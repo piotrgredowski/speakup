@@ -13,7 +13,7 @@ class ConfigValidationError(ValueError):
 
 
 _ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
-_ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command"}
+_ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command", "cerebras"}
 _ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"}
 _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
@@ -220,7 +220,7 @@ def validate_config(raw: dict[str, Any]) -> None:
         elif key == "trim_output":
             _require_bool(value, "providers.command_summary.trim_output")
 
-    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli"):
+    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "cerebras"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
             if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id", "tts_mode", "orpheus_voice"}:
@@ -311,6 +311,11 @@ def default_config() -> dict[str, Any]:
                 "model": "gpt-4o-mini-tts",
                 "summary_model": "gpt-4o-mini",
                 "voice": "alloy",
+            },
+            "cerebras": {
+                "api_key_env": "CEREBRAS_API_KEY",
+                "model": "llama3.1-8b",
+                "base_url": "https://api.cerebras.ai/v1",
             },
             "kokoro": {
                 "lang_code": "a",

@@ -13,6 +13,7 @@ from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
 from .registry import AdapterRegistry
+from .summarizers.cerebras import CerebrasSummarizer
 from .summarizers.command import CommandSummarizer
 from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
@@ -117,10 +118,19 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             model=op.get("summary_model", "gpt-4o-mini"),
         )
 
+    def make_cerebras_summarizer() -> CerebrasSummarizer:
+        cb = config.get("providers", "cerebras", default={})
+        return CerebrasSummarizer(
+            api_key_env=cb.get("api_key_env", "CEREBRAS_API_KEY"),
+            model=cb.get("model", "llama-3.3-70b"),
+            base_url=cb.get("base_url", "https://api.cerebras.ai/v1"),
+        )
+
     registry.register_summarizer("rule_based", make_rule_based)
     registry.register_summarizer("command", make_command_summarizer)
     registry.register_summarizer("lmstudio", make_lmstudio_summarizer)
     registry.register_summarizer("openai", make_openai_summarizer)
+    registry.register_summarizer("cerebras", make_cerebras_summarizer)
 
     return registry
 
@@ -288,7 +298,7 @@ class NotifyService:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
 
             # Skip remote providers based on privacy settings
-            if provider in {"openai"}:
+            if provider in {"openai", "cerebras"}:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("summarizer_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue
