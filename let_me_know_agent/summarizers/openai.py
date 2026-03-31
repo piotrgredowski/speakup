@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.request
+from typing import ClassVar
 
 from .base import Summarizer
 from ..errors import AdapterError
@@ -10,7 +11,9 @@ from ..models import MessageEvent, SummaryResult
 
 
 class OpenAISummarizer(Summarizer):
-    name = "openai"
+    """OpenAI-based summarizer using the Chat Completions API."""
+
+    name: ClassVar[str] = "openai"
 
     def __init__(self, api_key_env: str, model: str = "gpt-4o-mini", timeout: float = 10.0):
         self.api_key_env = api_key_env
@@ -55,7 +58,7 @@ Use only letters, numbers, and spaces. Do not use punctuation or symbols.""",
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception as exc:
-            raise AdapterError(f"OpenAI summarization failed: {exc}") from exc
+            raise AdapterError(f"OpenAI summarization request failed: {exc}") from exc
 
         text = data["choices"][0]["message"]["content"].strip()
         if len(text) > max_chars:

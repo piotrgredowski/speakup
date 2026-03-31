@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.request
+from typing import ClassVar
 
 from .base import Summarizer
 from ..errors import AdapterError
@@ -9,7 +10,9 @@ from ..models import MessageEvent, SummaryResult
 
 
 class LMStudioSummarizer(Summarizer):
-    name = "lmstudio"
+    """LM Studio-based summarizer using local LLM endpoints."""
+
+    name: ClassVar[str] = "lmstudio"
 
     def __init__(self, base_url: str, model: str, timeout: float = 10.0):
         self.base_url = base_url.rstrip("/")
@@ -48,7 +51,7 @@ Text to summarize:"""
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception as exc:
-            raise AdapterError(f"LMStudio summarization failed: {exc}") from exc
+            raise AdapterError(f"LM Studio summarization request failed: {exc}") from exc
 
         text = data["choices"][0]["message"]["content"].strip()
         if len(text) > max_chars:

@@ -15,8 +15,8 @@ from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
-from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
+from .tts.kokoro_cli import KokoroCliTTSAdapter
 
 app = typer.Typer(
     name="let-me-know",
@@ -25,17 +25,46 @@ app = typer.Typer(
 )
 
 
-def _get_config_for_default(
-    config: Optional[Path],
-    debug: bool,
-    log_level: Optional[str],
-    log_format: Optional[str],
-    log_file: Optional[Path],
-) -> Config:
-    """Load config for default command callback."""
-    cfg = Config.load(config)
-    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
-    return cfg
+def _apply_cli_overrides(
+    cfg: Config,
+    *,
+    no_play: bool = False,
+    fail_fast: bool = False,
+    force_summary_provider: Optional[str] = None,
+    force_tts_provider: Optional[str] = None,
+    tts_provider: Optional[str] = None,
+    summary_model: Optional[str] = None,
+    tts_model: Optional[str] = None,
+) -> None:
+    """Apply CLI overrides to config using proper Config methods."""
+    logger = logging.getLogger(__name__)
+
+    if no_play:
+        cfg.set_tts_play_audio(False)
+        logger.info("playback_disabled_via_cli")
+
+    if fail_fast:
+        cfg.set_fail_fast(True)
+        logger.info("fallback_fail_fast_enabled_via_cli")
+
+    if force_summary_provider:
+        cfg.set_summarizer_provider_order([force_summary_provider])
+        logger.info("summary_provider_forced_via_cli", extra={"provider": force_summary_provider})
+
+    if force_tts_provider:
+        cfg.set_tts_provider_order([force_tts_provider])
+        logger.info("tts_provider_forced_via_cli", extra={"provider": force_tts_provider})
+    elif tts_provider:
+        cfg.set_tts_provider_order([tts_provider])
+        logger.info("tts_provider_overridden", extra={"provider": tts_provider})
+
+    if summary_model:
+        cfg.set_provider_config("lmstudio", "model", summary_model)
+        logger.info("summary_model_overridden", extra={"provider": "lmstudio", "model": summary_model})
+
+    if tts_model:
+        cfg.set_provider_config("lmstudio", "tts_model", tts_model)
+        logger.info("tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model})
 
 
 @app.callback(invoke_without_command=True)
@@ -163,33 +192,16 @@ def main_callback(
         _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
         logger.info("config_loaded", extra={"config_path": config or "default"})
 
-        if no_play:
-            cfg.raw.setdefault("tts", {})["play_audio"] = False
-            logger.info("playback_disabled_via_cli")
-
-        if force_summary_provider:
-            cfg.raw.setdefault("summarization", {})["provider_order"] = [force_summary_provider]
-            logger.info("summary_provider_forced_via_cli", extra={"provider": force_summary_provider})
-
-        if force_tts_provider:
-            cfg.raw.setdefault("tts", {})["provider_order"] = [force_tts_provider]
-            logger.info("tts_provider_forced_via_cli", extra={"provider": force_tts_provider})
-
-        if tts_provider:
-            cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
-            logger.info("tts_provider_overridden", extra={"provider": tts_provider})
-
-        if summary_model:
-            cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["model"] = summary_model
-            logger.info("summary_model_overridden", extra={"provider": "lmstudio", "model": summary_model})
-
-        if tts_model:
-            cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["tts_model"] = tts_model
-            logger.info("tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model})
-
-        if fail_fast:
-            cfg.raw.setdefault("fallback", {})["fail_fast"] = True
-            logger.info("fallback_fail_fast_enabled_via_cli")
+        _apply_cli_overrides(
+            cfg,
+            no_play=no_play,
+            fail_fast=fail_fast,
+            force_summary_provider=force_summary_provider,
+            force_tts_provider=force_tts_provider,
+            tts_provider=tts_provider,
+            summary_model=summary_model,
+            tts_model=tts_model,
+        )
 
         request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
         request.skip_summarization = no_summarize
@@ -405,6 +417,9 @@ def notify(
     no_summarize: bool = typer.Option(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
+    fail_fast: bool = typer.Option(
+        False, "--fail-fast", help="Do not fall back to later providers after a provider error"
+    ),
     log_level: Optional[str] = typer.Option(
         None, "--log-level", "-l", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
     ),
@@ -449,29 +464,16 @@ def notify(
     _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
     logger.info("config_loaded", extra={"config_path": config or "default"})
 
-    if no_play:
-        cfg.raw.setdefault("tts", {})["play_audio"] = False
-        logger.info("playback_disabled_via_cli")
-
-    if force_summary_provider:
-        cfg.raw.setdefault("summarization", {})["provider_order"] = [force_summary_provider]
-        logger.info("summary_provider_forced_via_cli", extra={"provider": force_summary_provider})
-
-    if force_tts_provider:
-        cfg.raw.setdefault("tts", {})["provider_order"] = [force_tts_provider]
-        logger.info("tts_provider_forced_via_cli", extra={"provider": force_tts_provider})
-
-    if tts_provider:
-        cfg.raw.setdefault("tts", {})["provider_order"] = [tts_provider]
-        logger.info("tts_provider_overridden", extra={"provider": tts_provider})
-
-    if summary_model:
-        cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["model"] = summary_model
-        logger.info("summary_model_overridden", extra={"provider": "lmstudio", "model": summary_model})
-
-    if tts_model:
-        cfg.raw.setdefault("providers", {}).setdefault("lmstudio", {})["tts_model"] = tts_model
-        logger.info("tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model})
+    _apply_cli_overrides(
+        cfg,
+        no_play=no_play,
+        fail_fast=fail_fast,
+        force_summary_provider=force_summary_provider,
+        force_tts_provider=force_tts_provider,
+        tts_provider=tts_provider,
+        summary_model=summary_model,
+        tts_model=tts_model,
+    )
 
     request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
     request.skip_summarization = no_summarize

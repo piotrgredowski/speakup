@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 from uuid import uuid4
 
 from .base import TTSAdapter
@@ -10,7 +11,9 @@ from ..models import AudioResult
 
 
 class MacOSTTSAdapter(TTSAdapter):
-    name = "macos"
+    """macOS TTS adapter using the built-in 'say' command."""
+
+    name: ClassVar[str] = "macos"
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "aiff") -> AudioResult:
         output_dir.mkdir(parents=True, exist_ok=True)

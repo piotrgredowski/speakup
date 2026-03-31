@@ -5,6 +5,7 @@ import re
 import urllib.request
 import wave
 from pathlib import Path
+from typing import ClassVar
 from uuid import uuid4
 
 from .base import TTSAdapter
@@ -12,13 +13,48 @@ from ..errors import AdapterError
 from ..models import AudioResult
 
 
-class LMStudioTTSAdapter(TTSAdapter):
-    name = "lmstudio"
+class SnacModelCache:
+    """Explicit singleton for SNAC model caching with lifecycle management."""
 
-    _CUSTOM_TOKEN_RE = re.compile(r"<custom_token_(\d+)>")
-    _ORPHEUS_SAMPLE_RATE = 24000
-    _snac_model = None
-    _snac_device = None
+    _instance: SnacModelCache | None = None
+
+    def __init__(self) -> None:
+        self._model = None
+        self._device: str | None = None
+
+    @classmethod
+    def get_instance(cls) -> SnacModelCache:
+        """Get the singleton instance."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton (useful for testing)."""
+        cls._instance = None
+
+    def get_model(self):
+        """Get or initialize the SNAC model."""
+        if self._model is None:
+            try:
+                import torch
+                from snac import SNAC
+            except Exception as exc:
+                raise AdapterError(
+                    "Orpheus decoding requires optional dependencies: snac, torch, numpy"
+                ) from exc
+
+            self._device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+            self._model = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().to(self._device)
+        return self._model, self._device
+
+
+class LMStudioTTSAdapter(TTSAdapter):
+    name: ClassVar[str] = "lmstudio"
+
+    _CUSTOM_TOKEN_RE: ClassVar[re.Pattern] = re.compile(r"<custom_token_(\d+)>")
+    _ORPHEUS_SAMPLE_RATE: ClassVar[int] = 24000
 
     def __init__(
         self,
@@ -135,7 +171,6 @@ class LMStudioTTSAdapter(TTSAdapter):
         try:
             import numpy as np
             import torch
-            from snac import SNAC
         except Exception as exc:
             raise AdapterError(
                 "Orpheus decoding requires optional dependencies: snac, torch, numpy"
@@ -144,12 +179,7 @@ class LMStudioTTSAdapter(TTSAdapter):
         if len(multiframe) < 7:
             return None
 
-        if LMStudioTTSAdapter._snac_device is None:
-            LMStudioTTSAdapter._snac_device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-        device = LMStudioTTSAdapter._snac_device
-        if LMStudioTTSAdapter._snac_model is None:
-            LMStudioTTSAdapter._snac_model = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().to(device)
-        model = LMStudioTTSAdapter._snac_model
+        model, device = SnacModelCache.get_instance().get_model()
 
         codes_0 = torch.tensor([], device=device, dtype=torch.int32)
         codes_1 = torch.tensor([], device=device, dtype=torch.int32)

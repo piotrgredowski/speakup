@@ -4,6 +4,7 @@ import json
 import os
 import urllib.request
 from pathlib import Path
+from typing import ClassVar
 from uuid import uuid4
 
 from .base import TTSAdapter
@@ -12,7 +13,9 @@ from ..models import AudioResult
 
 
 class OpenAITTSAdapter(TTSAdapter):
-    name = "openai"
+    """OpenAI TTS adapter using the OpenAI Audio API."""
+
+    name: ClassVar[str] = "openai"
 
     def __init__(self, api_key_env: str, model: str = "gpt-4o-mini-tts", voice: str = "alloy", timeout: float = 20.0):
         self.api_key_env = api_key_env
@@ -49,11 +52,11 @@ class OpenAITTSAdapter(TTSAdapter):
                 content_type = resp.headers.get("Content-Type", "")
                 audio = resp.read()
         except Exception as exc:
-            raise AdapterError(f"OpenAI TTS failed: {exc}") from exc
+            raise AdapterError(f"OpenAI TTS request failed: {exc}") from exc
 
         if not content_type.lower().startswith("audio/"):
             preview = audio[:200].decode("utf-8", errors="replace")
-            raise AdapterError(f"OpenAI TTS returned non-audio response ({content_type}): {preview}")
+            raise AdapterError(f"OpenAI TTS returned non-audio response (Content-Type: {content_type}): {preview}")
 
         suffix = "mp3" if format_value == "mp3" else "wav"
         mime = "audio/mpeg" if suffix == "mp3" else "audio/wav"

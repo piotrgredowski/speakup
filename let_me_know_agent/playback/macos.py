@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
 from .base import PlaybackAdapter
 from ..errors import AdapterError
 
 
 class MacOSPlaybackAdapter(PlaybackAdapter):
-    name = "macos_afplay"
+    """macOS audio playback using the 'afplay' command."""
+
+    name: ClassVar[str] = "macos_afplay"
 
     def play_file(self, path: Path) -> None:
         if not path.exists():

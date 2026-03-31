@@ -110,7 +110,7 @@ def test_kokoro_cli_given_wav_payload_with_mp3_suffix_then_normalizes_extension(
         "  if [ \"$1\" = \"-o\" ]; then shift; OUT=\"$1\"; fi\n"
         "  shift\n"
         "done\n"
-        "python - <<'PY' \"$OUT\"\n"
+        "python3 - <<'PY' \"$OUT\"\n"
         "import struct\n"
         "import sys\n"
         "from pathlib import Path\n"

@@ -32,6 +32,8 @@ def runtime_temp_dir() -> Path:
 
 @dataclass(slots=True)
 class Config:
+    """Configuration wrapper with validation and typed accessor methods."""
+
     raw: dict[str, Any]
 
     @classmethod
@@ -70,6 +72,30 @@ class Config:
             if current is None:
                 return default
         return current
+
+    def set_tts_play_audio(self, enabled: bool) -> None:
+        """Set whether audio playback is enabled."""
+        self.raw.setdefault("tts", {})["play_audio"] = enabled
+
+    def set_tts_provider_order(self, providers: list[str]) -> None:
+        """Set TTS provider order with validation."""
+        _require_list_of_known(providers, _ALLOWED_TTS, "tts.provider_order")
+        self.raw.setdefault("tts", {})["provider_order"] = providers
+
+    def set_summarizer_provider_order(self, providers: list[str]) -> None:
+        """Set summarizer provider order with validation."""
+        _require_list_of_known(providers, _ALLOWED_SUMMARIZERS, "summarization.provider_order")
+        self.raw.setdefault("summarization", {})["provider_order"] = providers
+
+    def set_fail_fast(self, enabled: bool) -> None:
+        """Set fail_fast mode for provider fallbacks."""
+        self.raw.setdefault("fallback", {})["fail_fast"] = enabled
+
+    def set_provider_config(self, provider: str, key: str, value: Any) -> None:
+        """Set a provider-specific configuration value."""
+        if provider not in _ALLOWED_SUMMARIZERS and provider not in _ALLOWED_TTS:
+            raise ConfigValidationError(f"Unknown provider: {provider}")
+        self.raw.setdefault("providers", {}).setdefault(provider, {})[key] = value
 
 
 def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:

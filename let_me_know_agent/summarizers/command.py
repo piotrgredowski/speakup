@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from typing import ClassVar
 
 from .base import Summarizer
 from ..errors import AdapterError
@@ -8,7 +9,9 @@ from ..models import MessageEvent, SummaryResult
 
 
 class CommandSummarizer(Summarizer):
-    name = "command"
+    """Summarizer that delegates to an external command."""
+
+    name: ClassVar[str] = "command"
 
     def __init__(
         self,

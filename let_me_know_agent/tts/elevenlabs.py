@@ -4,6 +4,7 @@ import json
 import os
 import urllib.request
 from pathlib import Path
+from typing import ClassVar
 from uuid import uuid4
 
 from .base import TTSAdapter
@@ -12,7 +13,9 @@ from ..models import AudioResult
 
 
 class ElevenLabsTTSAdapter(TTSAdapter):
-    name = "elevenlabs"
+    """ElevenLabs TTS adapter using the ElevenLabs API."""
+
+    name: ClassVar[str] = "elevenlabs"
 
     def __init__(self, api_key_env: str, voice_id: str, model: str = "eleven_multilingual_v2", timeout: float = 20.0):
         self.api_key_env = api_key_env
@@ -47,11 +50,11 @@ class ElevenLabsTTSAdapter(TTSAdapter):
                 content_type = resp.headers.get("Content-Type", "")
                 audio = resp.read()
         except Exception as exc:
-            raise AdapterError(f"ElevenLabs TTS failed: {exc}") from exc
+            raise AdapterError(f"ElevenLabs TTS request failed: {exc}") from exc
 
         if not content_type.lower().startswith("audio/"):
             preview = audio[:200].decode("utf-8", errors="replace")
-            raise AdapterError(f"ElevenLabs TTS returned non-audio response ({content_type}): {preview}")
+            raise AdapterError(f"ElevenLabs TTS returned non-audio response (Content-Type: {content_type}): {preview}")
 
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"tts-{uuid4().hex}.mp3"

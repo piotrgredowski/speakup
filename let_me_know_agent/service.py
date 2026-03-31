@@ -12,22 +12,125 @@ from .dedup import should_skip_progress
 from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
+from .registry import AdapterRegistry
+from .summarizers.command import CommandSummarizer
 from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
-from .summarizers.command import CommandSummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .tts.elevenlabs import ElevenLabsTTSAdapter
-from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
+from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
 from .tts.openai import OpenAITTSAdapter
 
 
+def build_registry_from_config(config: Config) -> AdapterRegistry:
+    """Build an adapter registry from configuration.
+
+    This factory function creates all adapter factories based on config,
+    enabling dependency injection for the NotifyService.
+    """
+    registry = AdapterRegistry()
+
+    # Playback adapter (singleton)
+    registry.set_playback(MacOSPlaybackAdapter())
+
+    # TTS adapters (factories for lazy instantiation)
+    def make_kokoro_cli() -> KokoroCliTTSAdapter:
+        kk_cli = config.get("providers", "kokoro_cli", default={})
+        return KokoroCliTTSAdapter(
+            command=kk_cli.get("command", "kokoro"),
+            args=kk_cli.get("args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]),
+            timeout_seconds=int(kk_cli.get("timeout_seconds", 60)),
+            default_voice=kk_cli.get("voice", config.get("providers", "kokoro", "voice", default="af_heart")),
+        )
+
+    def make_macos() -> MacOSTTSAdapter:
+        return MacOSTTSAdapter()
+
+    def make_kokoro() -> KokoroTTSAdapter:
+        kk = config.get("providers", "kokoro", default={})
+        return KokoroTTSAdapter(
+            lang_code=kk.get("lang_code", "a"),
+            default_voice=kk.get("voice", "af_heart"),
+            repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
+            offline=bool(kk.get("offline", True)),
+        )
+
+    def make_lmstudio_tts() -> LMStudioTTSAdapter:
+        lm = config.get("providers", "lmstudio", default={})
+        return LMStudioTTSAdapter(
+            lm.get("base_url", "http://localhost:1234/v1"),
+            lm.get("tts_model", lm.get("model", "local-model")),
+            tts_mode=lm.get("tts_mode", "openai_speech"),
+            orpheus_voice=lm.get("orpheus_voice", "tara"),
+        )
+
+    def make_elevenlabs() -> ElevenLabsTTSAdapter:
+        el = config.get("providers", "elevenlabs", default={})
+        return ElevenLabsTTSAdapter(
+            el.get("api_key_env", "ELEVENLABS_API_KEY"),
+            el.get("voice_id", ""),
+            model=el.get("model", "eleven_multilingual_v2"),
+        )
+
+    def make_openai_tts() -> OpenAITTSAdapter:
+        op = config.get("providers", "openai", default={})
+        return OpenAITTSAdapter(
+            op.get("api_key_env", "OPENAI_API_KEY"),
+            model=op.get("model", "gpt-4o-mini-tts"),
+            voice=op.get("voice", "alloy"),
+        )
+
+    registry.register_tts("kokoro_cli", make_kokoro_cli)
+    registry.register_tts("macos", make_macos)
+    registry.register_tts("kokoro", make_kokoro)
+    registry.register_tts("lmstudio", make_lmstudio_tts)
+    registry.register_tts("elevenlabs", make_elevenlabs)
+    registry.register_tts("openai", make_openai_tts)
+
+    # Summarizer adapters (factories)
+    def make_rule_based() -> RuleBasedSummarizer:
+        return RuleBasedSummarizer()
+
+    def make_command_summarizer() -> CommandSummarizer:
+        command_cfg = config.get("providers", "command_summary", default={})
+        return CommandSummarizer(
+            command=command_cfg.get("command", "pi"),
+            args=command_cfg.get("args", ["-p", "{message}"]),
+            timeout_seconds=int(command_cfg.get("timeout_seconds", 30)),
+            trim_output=bool(command_cfg.get("trim_output", True)),
+        )
+
+    def make_lmstudio_summarizer() -> LMStudioSummarizer:
+        lm = config.get("providers", "lmstudio", default={})
+        return LMStudioSummarizer(
+            lm.get("base_url", "http://localhost:1234/v1"),
+            lm.get("model", "local-model"),
+        )
+
+    def make_openai_summarizer() -> OpenAISummarizer:
+        op = config.get("providers", "openai", default={})
+        return OpenAISummarizer(
+            op.get("api_key_env", "OPENAI_API_KEY"),
+            model=op.get("summary_model", "gpt-4o-mini"),
+        )
+
+    registry.register_summarizer("rule_based", make_rule_based)
+    registry.register_summarizer("command", make_command_summarizer)
+    registry.register_summarizer("lmstudio", make_lmstudio_summarizer)
+    registry.register_summarizer("openai", make_openai_summarizer)
+
+    return registry
+
+
 class NotifyService:
-    def __init__(self, config: Config):
+    """Service for processing notification requests with TTS and summarization."""
+
+    def __init__(self, config: Config, registry: AdapterRegistry | None = None):
         self.config = config
-        self.playback = MacOSPlaybackAdapter()
+        self.registry = registry or build_registry_from_config(config)
         self.logger = logging.getLogger(__name__)
 
     @contextmanager
@@ -129,7 +232,7 @@ class NotifyService:
                     self._play_event_sound(event, request_id=request_id)
 
                 self.logger.info("playback_start", extra={"request_id": request_id, "audio_path": str(audio_path)})
-                self.playback.play_file(audio_path)
+                self.registry.get_playback().play_file(audio_path)
                 played = True
                 self.logger.info("playback_success", extra={"request_id": request_id, "audio_path": str(audio_path)})
             except AdapterError as exc:
@@ -183,68 +286,37 @@ class NotifyService:
 
         for provider in provider_order:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
-            if provider == "rule_based":
-                result = RuleBasedSummarizer().summarize(message, event, max_chars)
-                self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
-                return result
-            if provider == "command":
-                try:
-                    command_cfg = self.config.get("providers", "command_summary", default={})
-                    result = CommandSummarizer(
-                        command=command_cfg.get("command", "pi"),
-                        args=command_cfg.get("args", ["-p", "{message}"]),
-                        timeout_seconds=int(command_cfg.get("timeout_seconds", 30)),
-                        trim_output=bool(command_cfg.get("trim_output", True)),
-                    ).summarize(message, event, max_chars)
-                    if not result.summary.strip():
-                        self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
-                        if fail_fast:
-                            raise AdapterError("Command summarizer returned empty output")
-                        continue
-                    self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
-                    return result
-                except AdapterError as exc:
-                    self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
-                    if fail_fast:
-                        raise
-                    continue
-            if provider == "lmstudio":
-                try:
-                    lm = self.config.get("providers", "lmstudio", default={})
-                    result = LMStudioSummarizer(lm.get("base_url", "http://localhost:1234/v1"), lm.get("model", "local-model")).summarize(message, event, max_chars)
-                    if not result.summary.strip():
-                        self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
-                        return RuleBasedSummarizer().summarize(message, event, max_chars)
-                    self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
-                    return result
-                except AdapterError as exc:
-                    self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
-                    if fail_fast:
-                        raise
-                    continue
-            if provider == "openai":
+
+            # Skip remote providers based on privacy settings
+            if provider in {"openai"}:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("summarizer_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue
-                try:
-                    op = self.config.get("providers", "openai", default={})
-                    result = OpenAISummarizer(op.get("api_key_env", "OPENAI_API_KEY"), model=op.get("summary_model", "gpt-4o-mini")).summarize(message, event, max_chars)
-                    if not result.summary.strip():
-                        self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
-                        return RuleBasedSummarizer().summarize(message, event, max_chars)
-                    self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
-                    return result
-                except AdapterError as exc:
-                    self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
+
+            try:
+                summarizer = self.registry.get_summarizer(provider)
+                result = summarizer.summarize(message, event, max_chars)
+
+                if not result.summary.strip():
+                    self.logger.warning("summarizer_empty_output_fallback", extra={"request_id": request_id, "provider": provider})
                     if fail_fast:
-                        raise
+                        raise AdapterError(f"{provider} summarizer returned empty output")
                     continue
+
+                self.logger.info("summarizer_selected", extra={"request_id": request_id, "provider": provider})
+                return result
+
+            except AdapterError as exc:
+                self.logger.warning("summarizer_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
+                if fail_fast:
+                    raise
+                continue
 
         if fail_fast:
             raise AdapterError("No summarizer backend succeeded")
 
         self.logger.info("summarizer_fallback_rule_based", extra={"request_id": request_id})
-        return RuleBasedSummarizer().summarize(message, event, max_chars)
+        return self.registry.get_summarizer("rule_based").summarize(message, event, max_chars)
 
     def _synthesize(self, text: str, *, request_id: str):
         provider_order = self.config.get("tts", "provider_order", default=["kokoro_cli", "macos"])
@@ -257,15 +329,18 @@ class NotifyService:
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
         for provider in provider_order:
-            if provider in {"elevenlabs", "openai"} and (privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote)):
-                self.logger.info("tts_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
-                continue
+            # Skip remote providers based on privacy settings
+            if provider in {"elevenlabs", "openai"}:
+                if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
+                    self.logger.info("tts_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
+                    continue
 
-            adapter = self._make_tts(provider)
-            if not adapter:
+            if not self.registry.has_tts(provider):
                 self.logger.warning("tts_unknown_provider", extra={"request_id": request_id, "provider": provider})
                 continue
+
             try:
+                adapter = self.registry.get_tts(provider)
                 self.logger.debug("tts_try", extra={"request_id": request_id, "provider": provider})
                 audio = adapter.synthesize(text, output_dir, voice=voice, speed=speed, audio_format=audio_format)
                 self.logger.info("tts_selected", extra={"request_id": request_id, "provider": provider, "audio_kind": audio.kind})
@@ -277,41 +352,6 @@ class NotifyService:
                 continue
 
         return None, "none"
-
-    def _make_tts(self, provider: str):
-        if provider == "kokoro_cli":
-            kk_cli = self.config.get("providers", "kokoro_cli", default={})
-            return KokoroCliTTSAdapter(
-                command=kk_cli.get("command", "kokoro"),
-                args=kk_cli.get("args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]),
-                timeout_seconds=int(kk_cli.get("timeout_seconds", 60)),
-                default_voice=kk_cli.get("voice", self.config.get("providers", "kokoro", "voice", default="af_heart")),
-            )
-        if provider == "macos":
-            return MacOSTTSAdapter()
-        if provider == "kokoro":
-            kk = self.config.get("providers", "kokoro", default={})
-            return KokoroTTSAdapter(
-                lang_code=kk.get("lang_code", "a"),
-                default_voice=kk.get("voice", "af_heart"),
-                repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
-                offline=bool(kk.get("offline", True)),
-            )
-        if provider == "lmstudio":
-            lm = self.config.get("providers", "lmstudio", default={})
-            return LMStudioTTSAdapter(
-                lm.get("base_url", "http://localhost:1234/v1"),
-                lm.get("tts_model", lm.get("model", "local-model")),
-                tts_mode=lm.get("tts_mode", "openai_speech"),
-                orpheus_voice=lm.get("orpheus_voice", "tara"),
-            )
-        if provider == "elevenlabs":
-            el = self.config.get("providers", "elevenlabs", default={})
-            return ElevenLabsTTSAdapter(el.get("api_key_env", "ELEVENLABS_API_KEY"), el.get("voice_id", ""), model=el.get("model", "eleven_multilingual_v2"))
-        if provider == "openai":
-            op = self.config.get("providers", "openai", default={})
-            return OpenAITTSAdapter(op.get("api_key_env", "OPENAI_API_KEY"), model=op.get("model", "gpt-4o-mini-tts"), voice=op.get("voice", "alloy"))
-        return None
 
     def _play_event_sound(self, event: MessageEvent, *, request_id: str) -> None:
         event_key = event.value
@@ -328,7 +368,7 @@ class NotifyService:
 
         try:
             self.logger.debug("event_sound_play_start", extra={"request_id": request_id, "event": event_key, "path": path_value})
-            self.playback.play_file(Path(path_value))
+            self.registry.get_playback().play_file(Path(path_value))
             self.logger.debug("event_sound_play_success", extra={"request_id": request_id, "event": event_key, "path": path_value})
         except AdapterError as exc:
             self.logger.warning("event_sound_play_failed", extra={"request_id": request_id, "event": event_key, "path": path_value, "error": str(exc)})

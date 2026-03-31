@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 from uuid import uuid4
 
 from .base import TTSAdapter
@@ -11,7 +11,10 @@ from ..models import AudioResult
 
 
 class KokoroCliTTSAdapter(TTSAdapter):
-    name = "kokoro_cli"
+    """Kokoro CLI TTS adapter using external kokoro command."""
+
+    name: ClassVar[str] = "kokoro_cli"
+    _SUPPORTED_FORMATS: ClassVar[set[str]] = {"wav", "mp3"}
 
     def __init__(
         self,
@@ -26,8 +29,8 @@ class KokoroCliTTSAdapter(TTSAdapter):
         self.default_voice = default_voice
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
-        if audio_format not in {"mp3", "wav"}:
-            raise AdapterError(f"Kokoro CLI adapter supports only mp3/wav output, got: {audio_format}")
+        if audio_format not in self._SUPPORTED_FORMATS:
+            raise AdapterError(f"Kokoro CLI adapter supports only {'/'.join(self._SUPPORTED_FORMATS)} output, got: {audio_format}")
 
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"tts-{uuid4().hex}.{audio_format}"

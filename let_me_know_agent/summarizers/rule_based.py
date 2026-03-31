@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from .base import Summarizer
 from ..models import MessageEvent, SummaryResult
 
 
 class RuleBasedSummarizer(Summarizer):
-    name = "rule_based"
+    """Rule-based summarizer using text patterns and heuristics."""
+
+    name: ClassVar[str] = "rule_based"
 
     def summarize(self, message: str, event: MessageEvent, max_chars: int) -> SummaryResult:
         cleaned = _clean(message)
