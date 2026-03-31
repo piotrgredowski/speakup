@@ -16,13 +16,13 @@ const DEFAULT_CONFIG_PATH = join(homedir(), ".config", "let-me-know-agent", "pi-
 function loadConfig(ctx: any): Required<ExtensionConfig> {
   const defaults: Required<ExtensionConfig> = {
     enabled: true,
-    command: "uvx",
-    args: ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi"],
+    command: "let-me-know",
+    args: ["pi"],
     onlyAssistant: true,
   };
 
   if (!existsSync(DEFAULT_CONFIG_PATH)) return defaults;
-  
+
   try {
     const raw = JSON.parse(readFileSync(DEFAULT_CONFIG_PATH, "utf8")) as ExtensionConfig;
     return {
@@ -118,7 +118,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       const cfg = getConfig(ctx);
       const cmd = (args || "status").trim().toLowerCase();
-      
+
       if (cmd === "on") {
         cfg.enabled = true;
         ctx.ui.notify("let-me-know enabled", "info");

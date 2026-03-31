@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -25,13 +26,32 @@ app = typer.Typer(
 )
 
 
+class SummarizerProvider(str, Enum):
+    """Available summarization providers."""
+    rule_based = "rule_based"
+    lmstudio = "lmstudio"
+    openai = "openai"
+    command = "command"
+    cerebras = "cerebras"
+
+
+class TTSProvider(str, Enum):
+    """Available TTS providers."""
+    kokoro_cli = "kokoro_cli"
+    macos = "macos"
+    kokoro = "kokoro"
+    lmstudio = "lmstudio"
+    elevenlabs = "elevenlabs"
+    openai = "openai"
+    gemini = "gemini"
+
+
 def _apply_cli_overrides(
     cfg: Config,
     *,
     no_play: bool = False,
     fail_fast: bool = False,
-    force_summary_provider: Optional[str] = None,
-    force_tts_provider: Optional[str] = None,
+    summary_provider: Optional[str] = None,
     tts_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
     tts_model: Optional[str] = None,
@@ -47,14 +67,11 @@ def _apply_cli_overrides(
         cfg.set_fail_fast(True)
         logger.info("fallback_fail_fast_enabled_via_cli")
 
-    if force_summary_provider:
-        cfg.set_summarizer_provider_order([force_summary_provider])
-        logger.info("summary_provider_forced_via_cli", extra={"provider": force_summary_provider})
+    if summary_provider:
+        cfg.set_summarizer_provider_order([summary_provider])
+        logger.info("summary_provider_overridden", extra={"provider": summary_provider})
 
-    if force_tts_provider:
-        cfg.set_tts_provider_order([force_tts_provider])
-        logger.info("tts_provider_forced_via_cli", extra={"provider": force_tts_provider})
-    elif tts_provider:
+    if tts_provider:
         cfg.set_tts_provider_order([tts_provider])
         logger.info("tts_provider_overridden", extra={"provider": tts_provider})
 
@@ -88,6 +105,9 @@ def main_callback(
     input_file: Optional[Path] = typer.Option(
         None, "--input-file", "-f", help="Path to JSON payload using NotifyRequest schema"
     ),
+    message_file: Optional[Path] = typer.Option(
+        None, "--message-file", help="Path to file containing raw message text to summarize"
+    ),
     no_play: bool = typer.Option(
         False, "--no-play", help="Synthesize audio but skip local playback"
     ),
@@ -109,14 +129,11 @@ def main_callback(
     debug: bool = typer.Option(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
-    force_summary_provider: Optional[str] = typer.Option(
-        None, "--force-summary-provider", help="Force a single summarization provider for this run"
+    summary_provider: Optional[SummarizerProvider] = typer.Option(
+        None, "--summary-provider", help="Override summarization provider"
     ),
-    force_tts_provider: Optional[str] = typer.Option(
-        None, "--force-tts-provider", help="Force a single TTS provider for this run"
-    ),
-    tts_provider: Optional[str] = typer.Option(
-        None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
+    tts_provider: Optional[TTSProvider] = typer.Option(
+        None, "--tts-provider", "-t", help="Override TTS provider"
     ),
     summary_model: Optional[str] = typer.Option(
         None, "--summary-model", help="Override LM Studio summary model for this run"
@@ -177,7 +194,7 @@ def main_callback(
             raise typer.Exit()
 
         # Default behavior: run notify with the provided options
-        _setup_logging_from_options(None, debug, log_level, log_format, log_file)
+        _setup_logging_from_options(None, debug, log_level, log_format, str(log_file) if log_file else None)
         logger = logging.getLogger(__name__)
         logger.info(
             "cli_start",
@@ -189,21 +206,24 @@ def main_callback(
         )
 
         cfg = Config.load(config)
-        _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+        _setup_logging_from_options(cfg, debug, log_level, log_format, str(log_file) if log_file else None)
         logger.info("config_loaded", extra={"config_path": config or "default"})
 
         _apply_cli_overrides(
             cfg,
             no_play=no_play,
             fail_fast=fail_fast,
-            force_summary_provider=force_summary_provider,
-            force_tts_provider=force_tts_provider,
-            tts_provider=tts_provider,
+            summary_provider=summary_provider.value if summary_provider else None,
+            tts_provider=tts_provider.value if tts_provider else None,
             summary_model=summary_model,
             tts_model=tts_model,
         )
 
-        request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
+        request = _load_payload(
+            message, event, session_name, input_json,
+            str(input_file) if input_file else None,
+            str(message_file) if message_file else None,
+        )
         request.skip_summarization = no_summarize
         logger.info(
             "request_loaded",
@@ -372,6 +392,7 @@ def _load_payload(
     session_name: Optional[str],
     input_json: Optional[str],
     input_file: Optional[str],
+    message_file: Optional[str] = None,
 ) -> NotifyRequest:
     if input_json:
         payload = json.loads(input_json)
@@ -381,8 +402,13 @@ def _load_payload(
         payload = json.loads(open(input_file).read())
         return NotifyRequest(**payload)
 
+    if message_file:
+        message = Path(message_file).read_text().strip()
+        if not message:
+            raise typer.BadParameter(f"Message file is empty: {message_file}")
+
     if not message:
-        raise typer.BadParameter("Provide --message or --input-json/--input-file")
+        raise typer.BadParameter("Provide --message, --message-file, or --input-json/--input-file")
 
     try:
         msg_event = MessageEvent(event)
@@ -411,6 +437,9 @@ def notify(
     input_file: Optional[Path] = typer.Option(
         None, "--input-file", "-f", help="Path to JSON payload using NotifyRequest schema"
     ),
+    message_file: Optional[Path] = typer.Option(
+        None, "--message-file", help="Path to file containing raw message text to summarize"
+    ),
     no_play: bool = typer.Option(
         False, "--no-play", help="Synthesize audio but skip local playback"
     ),
@@ -432,14 +461,11 @@ def notify(
     debug: bool = typer.Option(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
-    force_summary_provider: Optional[str] = typer.Option(
-        None, "--force-summary-provider", help="Force a single summarization provider for this run"
+    summary_provider: Optional[SummarizerProvider] = typer.Option(
+        None, "--summary-provider", help="Override summarization provider"
     ),
-    force_tts_provider: Optional[str] = typer.Option(
-        None, "--force-tts-provider", help="Force a single TTS provider for this run"
-    ),
-    tts_provider: Optional[str] = typer.Option(
-        None, "--tts-provider", "-t", help="Override TTS provider (kokoro|kokoro_cli|macos|elevenlabs|openai|lmstudio)"
+    tts_provider: Optional[TTSProvider] = typer.Option(
+        None, "--tts-provider", "-t", help="Override TTS provider"
     ),
     summary_model: Optional[str] = typer.Option(
         None, "--summary-model", help="Override LM Studio summary model for this run"
@@ -449,7 +475,7 @@ def notify(
     ),
 ) -> None:
     """Send a notification (default command)."""
-    _setup_logging_from_options(None, debug, log_level, log_format, log_file)
+    _setup_logging_from_options(None, debug, log_level, log_format, str(log_file) if log_file else None)
     logger = logging.getLogger(__name__)
     logger.info(
         "cli_start",
@@ -461,21 +487,24 @@ def notify(
     )
 
     cfg = Config.load(config)
-    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+    _setup_logging_from_options(cfg, debug, log_level, log_format, str(log_file) if log_file else None)
     logger.info("config_loaded", extra={"config_path": config or "default"})
 
     _apply_cli_overrides(
         cfg,
         no_play=no_play,
         fail_fast=fail_fast,
-        force_summary_provider=force_summary_provider,
-        force_tts_provider=force_tts_provider,
-        tts_provider=tts_provider,
+        summary_provider=summary_provider.value if summary_provider else None,
+        tts_provider=tts_provider.value if tts_provider else None,
         summary_model=summary_model,
         tts_model=tts_model,
     )
 
-    request = _load_payload(message, event, session_name, input_json, str(input_file) if input_file else None)
+    request = _load_payload(
+        message, event, session_name, input_json,
+        str(input_file) if input_file else None,
+        str(message_file) if message_file else None,
+    )
     request.skip_summarization = no_summarize
     logger.info(
         "request_loaded",
@@ -561,7 +590,7 @@ def doctor(
 ) -> None:
     """Run Kokoro CLI health check."""
     cfg = Config.load(config)
-    _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
+    _setup_logging_from_options(cfg, debug, log_level, log_format, str(log_file) if log_file else None)
 
     result = _doctor(cfg)
     json.dump(result, sys.stdout)

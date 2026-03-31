@@ -197,7 +197,7 @@ def test_cli_given_forced_tts_provider_then_uses_it_over_config_order(tmp_path: 
         [
             "--config",
             str(cfg_path),
-            "--force-tts-provider",
+            "--tts-provider",
             "macos",
             "--message",
             "Done",
@@ -229,7 +229,7 @@ def test_cli_given_forced_summary_provider_then_uses_it_over_config_order(tmp_pa
             [
                 "--config",
                 str(cfg_path),
-                "--force-summary-provider",
+                "--summary-provider",
                 "lmstudio",
                 "--message",
                 "Original message should be replaced by LM summary",

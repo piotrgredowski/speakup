@@ -80,7 +80,7 @@ def run_cli(args: list[str], *, env: dict[str, str] | None = None, stdin: str | 
 
 
 def run_pi_cli(args: list[str], *, env: dict[str, str] | None = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
-    command = [sys.executable, "-m", "let_me_know_agent.pi_command", *args]
+    command = [sys.executable, "-m", "let_me_know_agent.cli", "pi", *args]
     return subprocess.run(command, text=True, capture_output=True, env=env, input=stdin)
 
 

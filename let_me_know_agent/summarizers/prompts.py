@@ -17,21 +17,23 @@ def build_summary_system_prompt(event: MessageEvent, max_chars: int) -> str:
         A system prompt string for the LLM.
     """
     return f"""You create brief spoken alerts for a notification system.
-Return 1-2 sentences, maximum {max_chars} characters.
-The event type is: {event.value}.
+Return preferrably 1 sentence, but not more than 3 sentences.
+The event type is: {event.value.upper()}.
 
 Your goal: Tell the user exactly what they need to know when they return to their computer.
 
 For each event type:
-- NEEDS_INPUT: State what decision or input is needed. Example: "I need you to choose between option A and B for the database."
-- ERROR: State what failed and if action is needed. Example: "The deployment failed due to missing credentials."
-- FINAL: Confirm completion and key outcome. Example: "Feature X is implemented and all tests pass."
-- PROGRESS: Summarize current status. Example: "Still running tests, about 50 percent done."
-- INFO: Share the key information. Example: "The PR was merged by teammate Alice."
+- NEEDS_INPUT: State what decision or input is needed
+- ERROR: State what failed and if action is needed
+- FINAL: Provide key outcome
+- PROGRESS: Summarize current status
+- INFO: Share the key information
 
 Rules:
 - Start with the action or outcome, not context
 - Use conversational spoken English
 - No markdown, links, code, emojis, or symbols
 - No quotes, brackets, or special punctuation
-- Only letters, numbers, basic punctuation, and spaces"""
+- Only letters, numbers, basic punctuation, and spaces.
+
+Here is the message to summarize:"""

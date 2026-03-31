@@ -20,8 +20,14 @@
     }
   },
   "summarization": {
-    "max_chars": 220,
-    "provider_order": ["command", "rule_based", "lmstudio", "openai"]
+    "max_chars": 500,
+    "provider_order": [
+      "cerebras",
+      "openai",
+      "lmstudio",
+      "command",
+      "rule_based"
+    ]
   },
   "fallback": {
     "fail_fast": false
@@ -57,7 +63,16 @@
   "providers": {
     "kokoro_cli": {
       "command": "kokoro",
-      "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
+      "args": [
+        "-o",
+        "{output}",
+        "-m",
+        "{voice}",
+        "-s",
+        "{speed}",
+        "-t",
+        "{text}"
+      ],
       "voice": "af_heart",
       "timeout_seconds": 60
     },

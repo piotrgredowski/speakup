@@ -28,7 +28,9 @@ class CerebrasSummarizer(Summarizer):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def summarize(self, message: str, event: MessageEvent, max_chars: int) -> SummaryResult:
+    def summarize(
+        self, message: str, event: MessageEvent, max_chars: int
+    ) -> SummaryResult:
         api_key = os.environ.get(self.api_key_env)
         if not api_key:
             raise AdapterError(f"Missing Cerebras API key in env: {self.api_key_env}")
@@ -36,7 +38,10 @@ class CerebrasSummarizer(Summarizer):
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": build_summary_system_prompt(event, max_chars)},
+                {
+                    "role": "system",
+                    "content": build_summary_system_prompt(event, max_chars),
+                },
                 {"role": "user", "content": message},
             ],
             "temperature": 0.2,

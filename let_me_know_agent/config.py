@@ -12,9 +12,12 @@ class ConfigValidationError(ValueError):
     """Raised when config JSON is invalid."""
 
 
+ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command", "cerebras"}
+ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"}
+
 _ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
-_ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command", "cerebras"}
-_ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"}
+_ALLOWED_SUMMARIZERS = ALLOWED_SUMMARIZERS
+_ALLOWED_TTS = ALLOWED_TTS
 _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
 _ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
