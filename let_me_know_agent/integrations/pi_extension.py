@@ -12,7 +12,8 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
         event = MessageEvent.FINAL
 
     conversation_id = payload.get("conversationId")
-    session_name = payload.get("session-name") or payload.get("sessionName") or conversation_id
+    title = payload.get("title")
+    session_name = title or payload.get("session-name") or payload.get("sessionName") or conversation_id
 
     return NotifyRequest(
         message=message,
