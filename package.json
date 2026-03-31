@@ -6,5 +6,20 @@
     "type": "git",
     "url": "https://github.com/piotrgredowski/let-me-know-agent.git"
   },
-  "readme": "README.md"
+  "readme": "README.md",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "tts",
+    "agent-notifications"
+  ],
+  "pi": {
+    "extensions": [
+      "./pi-extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
 }

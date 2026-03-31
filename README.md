@@ -167,6 +167,47 @@ Install Orpheus extras with `uv sync --group orpheus` (installs `snac`, `torch`,
 
 
 
+## Pi extension install
+
+The Pi integration uses a simple TypeScript extension that calls `let-me-know-pi`.
+
+### Install via `pi install` (recommended)
+
+```bash
+pi install https://github.com/piotrgredowski/let-me-know-agent
+```
+
+This works because the repo is a Pi package (`package.json` + `pi.extensions`).
+After install, run `/reload` in Pi.
+
+### Manual install
+
+```bash
+./pi-extensions/install.sh
+```
+
+This copies the extension to `~/.pi/agent/extensions/let-me-know-agent.ts`.
+Then inside Pi run `/reload`.
+
+### Configuration
+
+Copy and edit the example config:
+
+```bash
+mkdir -p ~/.config/let-me-know-agent
+cp pi-extensions/pi-extension.example.json ~/.config/let-me-know-agent/pi-extension.json
+```
+
+### Runtime control in Pi
+
+Use command:
+
+```text
+/letmeknow on
+/letmeknow off
+/letmeknow status
+```
+
 ## Notes
 
 - Lightweight audio format default is `mp3` for remote providers.

@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "command": "uvx",
+  "args": ["--from", "git+https://github.com/piotrgredowski/let-me-know-agent", "let-me-know-pi", "--config", "/Users/you/.config/let-me-know-agent/config.json"],
+  "onlyAssistant": true
+}
