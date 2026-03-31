@@ -165,75 +165,7 @@ LM Studio TTS uses Orpheus mode only: `providers.lmstudio.tts_mode = "orpheus_co
 It uses `/v1/completions` token streaming and decodes audio locally.
 Install Orpheus extras with `uv sync --group orpheus` (installs `snac`, `torch`, `numpy`).
 
-## Pi extension install
 
-The Pi integration is intentionally separate from core logic:
-- Core logic: Python package (`let_me_know_agent/*`)
-- Pi adapter: `pi-extensions/let-me-know-agent.ts` (defaults to `uvx --from git+https://github.com/piotrgredowski/let-me-know-agent let-me-know-pi`)
-
-### Install via `pi install` (recommended)
-
-```bash
-pi install https://github.com/piotrgredowski/let-me-know-agent
-```
-
-This works because the repo is a Pi package (`package.json` + `pi.extensions`).
-After install, run `/reload` in Pi.
-
-> By default the extension uses `uvx --from git+https://github.com/piotrgredowski/let-me-know-agent let-me-know-pi` for near zero setup (no PyPI publish required).
-> If `uvx` is unavailable, it will fall back to local `python -m let_me_know_agent.pi_command` / `let-me-know-pi` when present.
-
-### 1) Install Python package
-
-```bash
-pip install let-me-know-agent
-# or for local dev
-pip install -e .
-```
-
-### 2) (Alternative manual install) copy Pi extension file
-
-```bash
-./pi-extensions/install.sh
-```
-
-This copies the extension to:
-`~/.pi/agent/extensions/let-me-know-agent.ts`
-
-Then inside Pi run:
-
-```text
-/reload
-```
-
-### 3) Optional extension config
-
-Copy and edit:
-
-```bash
-mkdir -p ~/.config/let-me-know-agent
-cp pi-extensions/pi-extension.example.json ~/.config/let-me-know-agent/pi-extension.json
-```
-
-You can set a custom command/path and args (for example explicit `--config`).
-
-You can also enable agent-driven headless summarization in the extension:
-
-- `summaryMode: "internal"` (default): let Python backends summarize (`command`/`rule_based`/`lmstudio`/`openai`).
-- `summaryMode: "agent_headless"`: extension first runs a headless command and passes its summary into `let-me-know-pi`.
-
-When `agent_headless` is enabled, configure `headlessSummary.command/args/model/promptTemplate` as needed.
-The command args support placeholders: `{model}`, `{prompt}`, `{text}`, `{event}`, `{maxChars}`.
-
-### 4) Runtime control in Pi
-
-Use command:
-
-```text
-/letmeknow on
-/letmeknow off
-/letmeknow status
-```
 
 ## Notes
 

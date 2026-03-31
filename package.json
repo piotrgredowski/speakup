@@ -1,27 +1,10 @@
 {
   "name": "let-me-know-agent",
   "version": "0.1.0",
-  "description": "Spoken agent status updates with pluggable local/remote backends and Pi extension",
+  "description": "Spoken agent status updates with pluggable local/remote backends",
   "repository": {
     "type": "git",
     "url": "https://github.com/piotrgredowski/let-me-know-agent.git"
   },
-  "readme": "README.md",
-  "type": "module",
-  "keywords": [
-    "pi-package",
-    "pi-extension",
-    "tts",
-    "agent-notifications"
-  ],
-  "pi": {
-    "extensions": [
-      "./pi-extensions"
-    ]
-  },
-  "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-tui": "*"
-  }
+  "readme": "README.md"
 }
