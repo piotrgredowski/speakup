@@ -44,6 +44,7 @@ class TTSProvider(str, Enum):
     elevenlabs = "elevenlabs"
     openai = "openai"
     gemini = "gemini"
+    omlx = "omlx"
 
 
 def _apply_cli_overrides(

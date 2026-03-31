@@ -21,6 +21,7 @@ from .summarizers.rule_based import RuleBasedSummarizer
 from .tts.elevenlabs import ElevenLabsTTSAdapter
 from .tts.gemini import GeminiTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
+from .tts.omlx import OmlxTTSAdapter
 from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
@@ -93,6 +94,16 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             voice=op.get("voice", "alloy"),
         )
 
+    def make_omlx() -> OmlxTTSAdapter:
+        ok = config.get("providers", "omlx", default={})
+        return OmlxTTSAdapter(
+            base_url=ok.get("base_url", "http://127.0.0.1:8000/v1"),
+            api_key_env=ok.get("api_key_env", "OMLX_API_KEY"),
+            model=ok.get("model", "Kokoro-82M-bf16"),
+            voice=ok.get("voice", "af_heart"),
+            timeout=float(ok.get("timeout", 60.0)),
+        )
+
     registry.register_tts("kokoro_cli", make_kokoro_cli)
     registry.register_tts("macos", make_macos)
     registry.register_tts("kokoro", make_kokoro)
@@ -100,6 +111,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
     registry.register_tts("elevenlabs", make_elevenlabs)
     registry.register_tts("openai", make_openai_tts)
     registry.register_tts("gemini", make_gemini_tts)
+    registry.register_tts("omlx", make_omlx)
 
     # Summarizer adapters (factories)
     def make_rule_based() -> RuleBasedSummarizer:
@@ -343,7 +355,7 @@ class NotifyService:
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         voice = self.config.get("tts", "voice", default="default")
         speed = float(self.config.get("tts", "speed", default=1.0))
-        audio_format = self.config.get("tts", "audio_format", default="mp3")
+        audio_format = self.config.get("tts", "audio_format", default="wav")
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))

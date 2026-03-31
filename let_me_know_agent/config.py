@@ -13,7 +13,7 @@ class ConfigValidationError(ValueError):
 
 
 ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command", "cerebras"}
-ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"}
+ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"}
 
 _ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
 _ALLOWED_SUMMARIZERS = ALLOWED_SUMMARIZERS
@@ -179,7 +179,7 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_str(tts.get("voice", "default"), "tts.voice")
     _require_number(tts.get("speed", 1.0), "tts.speed")
     _require_bool(tts.get("play_audio", True), "tts.play_audio")
-    audio_format = tts.get("audio_format", "mp3")
+    audio_format = tts.get("audio_format", "wav")
     if audio_format not in _ALLOWED_AUDIO_FORMATS:
         raise ConfigValidationError(f"tts.audio_format must be one of {_ALLOWED_AUDIO_FORMATS}")
     _require_str(tts.get("save_audio_dir", ".cache/audio"), "tts.save_audio_dir")
@@ -223,7 +223,7 @@ def validate_config(raw: dict[str, Any]) -> None:
         elif key == "trim_output":
             _require_bool(value, "providers.command_summary.trim_output")
 
-    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "cerebras", "gemini"):
+    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "cerebras", "gemini", "omlx"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
             if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id", "tts_mode", "orpheus_voice"}:
@@ -237,6 +237,8 @@ def validate_config(raw: dict[str, Any]) -> None:
                 _require_positive_int(value, "providers.kokoro_cli.timeout_seconds")
             if provider_name == "lmstudio" and key == "tts_mode" and value not in {"orpheus_completions"}:
                 raise ConfigValidationError("providers.lmstudio.tts_mode must be 'orpheus_completions'")
+            if provider_name == "omlx" and key == "timeout":
+                _require_number(value, "providers.omlx.timeout")
 
 
 def default_config() -> dict[str, Any]:
@@ -274,7 +276,7 @@ def default_config() -> dict[str, Any]:
             "voice": "default",
             "speed": 1.0,
             "play_audio": True,
-            "audio_format": "mp3",
+            "audio_format": "wav",
             "save_audio_dir": str(runtime_dir / "audio"),
         },
         "dedup": {
@@ -336,6 +338,13 @@ def default_config() -> dict[str, Any]:
                 "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
                 "voice": "af_heart",
                 "timeout_seconds": 60,
+            },
+            "omlx": {
+                "base_url": "http://127.0.0.1:8000/v1",
+                "api_key_env": "OMLX_API_KEY",
+                "model": "Kokoro-82M-bf16",
+                "voice": "af_heart",
+                "timeout": 60.0,
             },
             "command_summary": {
                 "command": "pi",

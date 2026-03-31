@@ -37,7 +37,7 @@
     "voice": "default",
     "speed": 1.0,
     "play_audio": true,
-    "audio_format": "mp3",
+    "audio_format": "wav",
     "save_audio_dir": "/tmp/let-me-know-agent/audio"
   },
   "dedup": {
@@ -108,6 +108,13 @@
       "api_key_env": "GOOGLE_API_KEY",
       "model": "gemini-2.5-flash-preview-tts",
       "voice": "Kore"
+    },
+    "omlx": {
+      "base_url": "http://127.0.0.1:8000/v1",
+      "api_key_env": "OMLX_API_KEY",
+      "model": "Kokoro-82M-bf16",
+      "voice": "af_heart",
+      "timeout": 60.0
     },
     "command_summary": {
       "command": "pi",
