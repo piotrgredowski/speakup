@@ -6,6 +6,7 @@ import urllib.request
 from typing import ClassVar
 
 from .base import Summarizer
+from .prompts import build_summary_system_prompt
 from ..errors import AdapterError
 from ..models import MessageEvent, SummaryResult
 
@@ -35,19 +36,7 @@ class CerebrasSummarizer(Summarizer):
         payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system",
-                    "content": f"""You create very short spoken summaries for a TTS engine.
-Return only plain text, maximum 2 to 3 short sentences, and stay within {max_chars} characters.
-Event={event.value}.
-Focus only on what the user must know now:
-- required user actions
-- important breakthroughs or successes
-- important answers or final outcomes
-Keep it easy to understand when read aloud.
-Do not include markdown, links, code, tables, emojis, or formatting.
-Use only letters, numbers, and spaces. Do not use punctuation or symbols.""",
-                },
+                {"role": "system", "content": build_summary_system_prompt(event, max_chars)},
                 {"role": "user", "content": message},
             ],
             "temperature": 0.2,
