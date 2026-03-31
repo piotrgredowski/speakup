@@ -89,6 +89,11 @@
       "model": "llama3.1-8b",
       "base_url": "https://api.cerebras.ai/v1"
     },
+    "gemini": {
+      "api_key_env": "GOOGLE_API_KEY",
+      "model": "gemini-2.5-flash-preview-tts",
+      "voice": "Kore"
+    },
     "command_summary": {
       "command": "pi",
       "args": ["-p", "{message}"],

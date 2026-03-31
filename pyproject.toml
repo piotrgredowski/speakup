@@ -24,6 +24,7 @@ packages = ["let_me_know_agent", "let_me_know_agent.summarizers", "let_me_know_a
 [tool.pytest.ini_options]
 markers = [
     "integration_cerebras: marks tests as Cerebras API integration tests (deselect with '-m \"not integration_cerebras\"')",
+    "integration_gemini: marks tests as Gemini API integration tests (deselect with '-m \"not integration_gemini\"')",
 ]
 
 [dependency-groups]

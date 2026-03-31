@@ -19,6 +19,7 @@ from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .tts.elevenlabs import ElevenLabsTTSAdapter
+from .tts.gemini import GeminiTTSAdapter
 from .tts.kokoro import KokoroTTSAdapter
 from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
@@ -68,6 +69,14 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             orpheus_voice=lm.get("orpheus_voice", "tara"),
         )
 
+    def make_gemini_tts() -> GeminiTTSAdapter:
+        gem = config.get("providers", "gemini", default={})
+        return GeminiTTSAdapter(
+            gem.get("api_key_env", "GOOGLE_API_KEY"),
+            model=gem.get("model", "gemini-2.5-flash-preview-tts"),
+            voice=gem.get("voice", "en-US-Neural2-C"),
+        )
+
     def make_elevenlabs() -> ElevenLabsTTSAdapter:
         el = config.get("providers", "elevenlabs", default={})
         return ElevenLabsTTSAdapter(
@@ -90,6 +99,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
     registry.register_tts("lmstudio", make_lmstudio_tts)
     registry.register_tts("elevenlabs", make_elevenlabs)
     registry.register_tts("openai", make_openai_tts)
+    registry.register_tts("gemini", make_gemini_tts)
 
     # Summarizer adapters (factories)
     def make_rule_based() -> RuleBasedSummarizer:
@@ -340,7 +350,7 @@ class NotifyService:
 
         for provider in provider_order:
             # Skip remote providers based on privacy settings
-            if provider in {"elevenlabs", "openai"}:
+            if provider in {"elevenlabs", "openai", "gemini"}:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("tts_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue

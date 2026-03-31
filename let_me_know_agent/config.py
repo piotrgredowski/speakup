@@ -14,7 +14,7 @@ class ConfigValidationError(ValueError):
 
 _ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
 _ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command", "cerebras"}
-_ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"}
+_ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"}
 _ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
 _ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
 _ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
@@ -220,7 +220,7 @@ def validate_config(raw: dict[str, Any]) -> None:
         elif key == "trim_output":
             _require_bool(value, "providers.command_summary.trim_output")
 
-    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "cerebras"):
+    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "cerebras", "gemini"):
         provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
         for key, value in provider.items():
             if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id", "tts_mode", "orpheus_voice"}:
@@ -267,7 +267,7 @@ def default_config() -> dict[str, Any]:
             },
         },
         "tts": {
-            "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+            "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"],
             "voice": "default",
             "speed": 1.0,
             "play_audio": True,
@@ -322,6 +322,11 @@ def default_config() -> dict[str, Any]:
                 "voice": "af_heart",
                 "repo_id": "hexgrad/Kokoro-82M",
                 "offline": True,
+            },
+            "gemini": {
+                "api_key_env": "GOOGLE_API_KEY",
+                "model": "gemini-2.5-flash-preview-tts",
+                "voice": "Kore",
             },
             "kokoro_cli": {
                 "command": "kokoro",
