@@ -149,6 +149,9 @@ def validate_config(raw: dict[str, Any]) -> None:
     if not isinstance(raw, dict):
         raise ConfigValidationError("Config root must be an object")
 
+    playback = _require_dict(raw.get("playback", {}), "playback")
+    _require_bool(playback.get("queue_enabled", True), "playback.queue_enabled")
+
     privacy = _require_dict(raw.get("privacy", {}), "privacy")
     mode = privacy.get("mode", "prefer_local")
     if mode not in _ALLOWED_PRIVACY_MODES:
@@ -244,6 +247,9 @@ def validate_config(raw: dict[str, Any]) -> None:
 def default_config() -> dict[str, Any]:
     runtime_dir = runtime_temp_dir()
     return {
+        "playback": {
+            "queue_enabled": True,
+        },
         "privacy": {
             "mode": "prefer_local",
             "allow_remote_fallback": True,
