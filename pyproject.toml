@@ -5,6 +5,7 @@ description = "Speak concise agent status updates with pluggable local/remote ba
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "dunamai>=1.20.0",
     "kokoro>=0.7.16",
     "structlog>=25.5.0",
     "typer>=0.15.0",

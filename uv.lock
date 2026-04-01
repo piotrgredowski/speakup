@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-24T13:00:22.676839Z"
+exclude-newer = "2026-03-25T08:36:47.726714Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -368,6 +368,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/55/8f8cab2afd404cf578136ef2cc5dfb50baa1761b68c9da1fb1e4eed343c9/docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491", size = 25901, upload-time = "2014-06-16T11:18:57.406Z" }
 
 [[package]]
+name = "dunamai"
+version = "1.26.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1c/c4/346cef905782df6152f29f02d9c8ed4acf7ae66b0e66210b7156c5575ccb/dunamai-1.26.0.tar.gz", hash = "sha256:5396ac43aa20ed059040034e9f9798c7464cf4334c6fc3da3732e29273a2f97d", size = 45500, upload-time = "2026-02-15T02:58:55.534Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/10/2c7edbf230e5c507d38367af498fa94258ed97205d9b4b6f63a921fe9c49/dunamai-1.26.0-py3-none-any.whl", hash = "sha256:f584edf0fda0d308cce0961f807bc90a8fe3d9ff4d62f94e72eca7b43f0ed5f6", size = 27322, upload-time = "2026-02-15T02:58:54.143Z" },
+]
+
+[[package]]
 name = "einops"
 version = "0.8.2"
 source = { registry = "https://pypi.org/simple" }
@@ -610,6 +622,7 @@ name = "let-me-know-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "dunamai" },
     { name = "kokoro" },
     { name = "structlog" },
     { name = "typer" },
@@ -630,6 +643,7 @@ orpheus = [
 
 [package.metadata]
 requires-dist = [
+    { name = "dunamai", specifier = ">=1.20.0" },
     { name = "kokoro", specifier = ">=0.7.16" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "typer", specifier = ">=0.15.0" },

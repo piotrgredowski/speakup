@@ -18,6 +18,7 @@ from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
 from .tts.kokoro import KokoroTTSAdapter
 from .tts.kokoro_cli import KokoroCliTTSAdapter
+from .version import get_version
 
 app = typer.Typer(
     name="let-me-know",
@@ -186,8 +187,19 @@ def main_callback(
         help="[legacy] Overwrite config file when used with --init-config",
         hidden=True,
     ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show version and exit",
+        is_eager=True,
+    ),
 ) -> None:
     """let-me-know: Speak concise agent status updates."""
+    if version:
+        print(get_version())
+        raise typer.Exit()
+
     if ctx.invoked_subcommand is None:
         # Backward-compatibility for legacy argparse-style flags.
         if legacy_init_config:
@@ -729,6 +741,12 @@ def pi(
     )
     json.dump(result.to_dict(), sys.stdout)
     sys.stdout.write("\n")
+
+
+@app.command()
+def version() -> None:
+    """Show version information."""
+    print(get_version())
 
 
 def main() -> None:
