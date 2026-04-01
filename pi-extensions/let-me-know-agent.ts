@@ -108,7 +108,6 @@ export default function (pi: ExtensionAPI) {
       message: text,
       event: eventType,
       agent: "pi",
-      title: `Message from Pi: ${sessionTitle}`,
       metadata: {
         source: "pi-message_end",
         role,
