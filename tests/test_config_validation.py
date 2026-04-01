@@ -33,6 +33,7 @@ def test_default_config_prefers_command_summarizer_first() -> None:
 @pytest.mark.parametrize(
     "mutator,expected",
     [
+        (lambda c: c.setdefault("playback", {}).update({"queue_enabled": "yes"}), "playback.queue_enabled"),
         (lambda c: c["privacy"].update({"mode": "remote_only"}), "privacy.mode"),
         (lambda c: c["tts"].update({"audio_format": "flac"}), "tts.audio_format"),
         (lambda c: c["tts"].update({"play_audio": "yes"}), "tts.play_audio"),

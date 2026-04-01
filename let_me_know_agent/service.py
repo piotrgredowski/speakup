@@ -12,6 +12,7 @@ from .dedup import should_skip_progress
 from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
+from .playback.queued import SQLiteQueuedPlayback
 from .registry import AdapterRegistry
 from .summarizers.cerebras import CerebrasSummarizer
 from .summarizers.command import CommandSummarizer
@@ -37,7 +38,10 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
     registry = AdapterRegistry()
 
     # Playback adapter (singleton)
-    registry.set_playback(MacOSPlaybackAdapter())
+    playback = MacOSPlaybackAdapter()
+    if config.get("playback", "queue_enabled", default=True):
+        playback = SQLiteQueuedPlayback(playback)
+    registry.set_playback(playback)
 
     # TTS adapters (factories for lazy instantiation)
     def make_kokoro_cli() -> KokoroCliTTSAdapter:
@@ -259,12 +263,21 @@ class NotifyService:
         play_audio = bool(self.config.get("tts", "play_audio", default=True))
         if audio_path and play_audio:
             try:
-                # Play the event cue immediately before spoken TTS to avoid a gap.
-                with self._timed("event_sound", request_id, event=event.value):
-                    self._play_event_sound(event, request_id=request_id)
+                audio_paths: list[Path] = []
+                event_sound_path = self._event_sound_path(event, request_id=request_id)
+                if event_sound_path is not None:
+                    audio_paths.append(event_sound_path)
+                audio_paths.append(audio_path)
 
-                self.logger.info("playback_start", extra={"request_id": request_id, "audio_path": str(audio_path)})
-                self.registry.get_playback().play_file(audio_path)
+                self.logger.info(
+                    "playback_start",
+                    extra={
+                        "request_id": request_id,
+                        "audio_path": str(audio_path),
+                        "queue_length": len(audio_paths),
+                    },
+                )
+                self.registry.get_playback().play_files(audio_paths)
                 played = True
                 self.logger.info("playback_success", extra={"request_id": request_id, "audio_path": str(audio_path)})
             except AdapterError as exc:
@@ -385,23 +398,26 @@ class NotifyService:
 
         return None, "none"
 
-    def _play_event_sound(self, event: MessageEvent, *, request_id: str) -> None:
+    def _event_sound_path(self, event: MessageEvent, *, request_id: str) -> Path | None:
         event_key = event.value
         enabled = bool(self.config.get("event_sounds", "enabled", default=True))
         if not enabled:
             self.logger.debug("event_sound_disabled", extra={"request_id": request_id, "event": event_key})
-            return
+            return None
 
         mapping = self.config.get("event_sounds", "files", default={})
         path_value = mapping.get(event_key)
         if not path_value:
             self.logger.debug("event_sound_not_configured", extra={"request_id": request_id, "event": event_key})
-            return
+            return None
 
-        try:
-            self.logger.debug("event_sound_play_start", extra={"request_id": request_id, "event": event_key, "path": path_value})
-            self.registry.get_playback().play_file(Path(path_value))
-            self.logger.debug("event_sound_play_success", extra={"request_id": request_id, "event": event_key, "path": path_value})
-        except AdapterError as exc:
-            self.logger.warning("event_sound_play_failed", extra={"request_id": request_id, "event": event_key, "path": path_value, "error": str(exc)})
-            return
+        path = Path(path_value)
+        if not path.exists():
+            self.logger.warning(
+                "event_sound_missing",
+                extra={"request_id": request_id, "event": event_key, "path": path_value},
+            )
+            return None
+
+        self.logger.debug("event_sound_selected", extra={"request_id": request_id, "event": event_key, "path": path_value})
+        return path

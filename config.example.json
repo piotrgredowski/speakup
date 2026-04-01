@@ -1,4 +1,7 @@
 {
+  "playback": {
+    "queue_enabled": true
+  },
   "privacy": {
     "mode": "prefer_local",
     "allow_remote_fallback": true
