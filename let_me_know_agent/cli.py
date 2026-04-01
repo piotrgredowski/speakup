@@ -28,6 +28,7 @@ app = typer.Typer(
 
 class SummarizerProvider(str, Enum):
     """Available summarization providers."""
+
     rule_based = "rule_based"
     lmstudio = "lmstudio"
     openai = "openai"
@@ -37,6 +38,7 @@ class SummarizerProvider(str, Enum):
 
 class TTSProvider(str, Enum):
     """Available TTS providers."""
+
     kokoro_cli = "kokoro_cli"
     macos = "macos"
     kokoro = "kokoro"
@@ -78,11 +80,16 @@ def _apply_cli_overrides(
 
     if summary_model:
         cfg.set_provider_config("lmstudio", "model", summary_model)
-        logger.info("summary_model_overridden", extra={"provider": "lmstudio", "model": summary_model})
+        logger.info(
+            "summary_model_overridden",
+            extra={"provider": "lmstudio", "model": summary_model},
+        )
 
     if tts_model:
         cfg.set_provider_config("lmstudio", "tts_model", tts_model)
-        logger.info("tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model})
+        logger.info(
+            "tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model}
+        )
 
 
 @app.callback(invoke_without_command=True)
@@ -101,13 +108,21 @@ def main_callback(
         None, "--session-name", "-s", help="Optional session label spoken at the start"
     ),
     input_json: Optional[str] = typer.Option(
-        None, "--input-json", "-j", help="JSON payload string using NotifyRequest schema"
+        None,
+        "--input-json",
+        "-j",
+        help="JSON payload string using NotifyRequest schema",
     ),
     input_file: Optional[Path] = typer.Option(
-        None, "--input-file", "-f", help="Path to JSON payload using NotifyRequest schema"
+        None,
+        "--input-file",
+        "-f",
+        help="Path to JSON payload using NotifyRequest schema",
     ),
     message_file: Optional[Path] = typer.Option(
-        None, "--message-file", help="Path to file containing raw message text to summarize"
+        None,
+        "--message-file",
+        help="Path to file containing raw message text to summarize",
     ),
     no_play: bool = typer.Option(
         False, "--no-play", help="Synthesize audio but skip local playback"
@@ -116,10 +131,15 @@ def main_callback(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
     fail_fast: bool = typer.Option(
-        False, "--fail-fast", help="Do not fall back to later providers after a provider error"
+        False,
+        "--fail-fast",
+        help="Do not fall back to later providers after a provider error",
     ),
     log_level: Optional[str] = typer.Option(
-        None, "--log-level", "-l", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
+        None,
+        "--log-level",
+        "-l",
+        help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)",
     ),
     log_format: Optional[str] = typer.Option(
         None, "--log-format", help="Override log format (text|json)"
@@ -195,7 +215,9 @@ def main_callback(
             raise typer.Exit()
 
         # Default behavior: run notify with the provided options
-        _setup_logging_from_options(None, debug, log_level, log_format, str(log_file) if log_file else None)
+        _setup_logging_from_options(
+            None, debug, log_level, log_format, str(log_file) if log_file else None
+        )
         logger = logging.getLogger(__name__)
         logger.info(
             "cli_start",
@@ -207,7 +229,9 @@ def main_callback(
         )
 
         cfg = Config.load(config)
-        _setup_logging_from_options(cfg, debug, log_level, log_format, str(log_file) if log_file else None)
+        _setup_logging_from_options(
+            cfg, debug, log_level, log_format, str(log_file) if log_file else None
+        )
         logger.info("config_loaded", extra={"config_path": config or "default"})
 
         _apply_cli_overrides(
@@ -221,7 +245,10 @@ def main_callback(
         )
 
         request = _load_payload(
-            message, event, session_name, input_json,
+            message,
+            event,
+            session_name,
+            input_json,
             str(input_file) if input_file else None,
             str(message_file) if message_file else None,
         )
@@ -238,7 +265,11 @@ def main_callback(
         result = NotifyService(cfg).notify(request)
         logger.info(
             "notify_completed",
-            extra={"status": result.status, "backend": result.backend, "played": result.played},
+            extra={
+                "status": result.status,
+                "backend": result.backend,
+                "played": result.played,
+            },
         )
         json.dump(result.to_dict(), sys.stdout)
         sys.stdout.write("\n")
@@ -272,7 +303,11 @@ def _self_test_audio(config: Config) -> dict:
     logger = logging.getLogger(__name__)
     playback = MacOSPlaybackAdapter()
     checks: dict[str, dict[str, str | bool | None]] = {
-        "event_sound": {"ok": False, "error": None, "path": "/System/Library/Sounds/Ping.aiff"},
+        "event_sound": {
+            "ok": False,
+            "error": None,
+            "path": "/System/Library/Sounds/Ping.aiff",
+        },
         "kokoro_tts": {"ok": False, "error": None, "audio_path": None},
     }
 
@@ -320,7 +355,9 @@ def _self_test_audio(config: Config) -> dict:
                 audio_path = _run_kokoro_self_test(offline=False)
             except AdapterError as retry_exc:
                 checks["kokoro_tts"]["error"] = str(retry_exc)
-                logger.warning("self_test_kokoro_failed", extra={"error": str(retry_exc)})
+                logger.warning(
+                    "self_test_kokoro_failed", extra={"error": str(retry_exc)}
+                )
                 audio_path = None
             finally:
                 if prev_hf_offline is not None:
@@ -346,7 +383,9 @@ def _doctor(config: Config) -> dict:
     tts = config.get("tts", default={})
 
     command = kk_cli.get("command", "kokoro")
-    args = kk_cli.get("args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"])
+    args = kk_cli.get(
+        "args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]
+    )
     timeout_seconds = int(kk_cli.get("timeout_seconds", 60))
     output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
     voice = tts.get("voice", "default")
@@ -369,7 +408,9 @@ def _doctor(config: Config) -> dict:
             command=command,
             args=args,
             timeout_seconds=timeout_seconds,
-            default_voice=kk_cli.get("voice", config.get("providers", "kokoro", "voice", default="af_heart")),
+            default_voice=kk_cli.get(
+                "voice", config.get("providers", "kokoro", "voice", default="af_heart")
+            ),
         )
         audio = adapter.synthesize(
             "Doctor test. If you hear this, Kokoro CLI is working.",
@@ -409,7 +450,9 @@ def _load_payload(
             raise typer.BadParameter(f"Message file is empty: {message_file}")
 
     if not message:
-        raise typer.BadParameter("Provide --message, --message-file, or --input-json/--input-file")
+        raise typer.BadParameter(
+            "Provide --message, --message-file, or --input-json/--input-file"
+        )
 
     try:
         msg_event = MessageEvent(event)
@@ -433,13 +476,21 @@ def notify(
         None, "--session-name", "-s", help="Optional session label spoken at the start"
     ),
     input_json: Optional[str] = typer.Option(
-        None, "--input-json", "-j", help="JSON payload string using NotifyRequest schema"
+        None,
+        "--input-json",
+        "-j",
+        help="JSON payload string using NotifyRequest schema",
     ),
     input_file: Optional[Path] = typer.Option(
-        None, "--input-file", "-f", help="Path to JSON payload using NotifyRequest schema"
+        None,
+        "--input-file",
+        "-f",
+        help="Path to JSON payload using NotifyRequest schema",
     ),
     message_file: Optional[Path] = typer.Option(
-        None, "--message-file", help="Path to file containing raw message text to summarize"
+        None,
+        "--message-file",
+        help="Path to file containing raw message text to summarize",
     ),
     no_play: bool = typer.Option(
         False, "--no-play", help="Synthesize audio but skip local playback"
@@ -448,10 +499,15 @@ def notify(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
     fail_fast: bool = typer.Option(
-        False, "--fail-fast", help="Do not fall back to later providers after a provider error"
+        False,
+        "--fail-fast",
+        help="Do not fall back to later providers after a provider error",
     ),
     log_level: Optional[str] = typer.Option(
-        None, "--log-level", "-l", help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
+        None,
+        "--log-level",
+        "-l",
+        help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)",
     ),
     log_format: Optional[str] = typer.Option(
         None, "--log-format", help="Override log format (text|json)"
@@ -476,7 +532,9 @@ def notify(
     ),
 ) -> None:
     """Send a notification (default command)."""
-    _setup_logging_from_options(None, debug, log_level, log_format, str(log_file) if log_file else None)
+    _setup_logging_from_options(
+        None, debug, log_level, log_format, str(log_file) if log_file else None
+    )
     logger = logging.getLogger(__name__)
     logger.info(
         "cli_start",
@@ -488,7 +546,9 @@ def notify(
     )
 
     cfg = Config.load(config)
-    _setup_logging_from_options(cfg, debug, log_level, log_format, str(log_file) if log_file else None)
+    _setup_logging_from_options(
+        cfg, debug, log_level, log_format, str(log_file) if log_file else None
+    )
     logger.info("config_loaded", extra={"config_path": config or "default"})
 
     _apply_cli_overrides(
@@ -502,7 +562,10 @@ def notify(
     )
 
     request = _load_payload(
-        message, event, session_name, input_json,
+        message,
+        event,
+        session_name,
+        input_json,
         str(input_file) if input_file else None,
         str(message_file) if message_file else None,
     )
@@ -519,7 +582,11 @@ def notify(
     result = NotifyService(cfg).notify(request)
     logger.info(
         "notify_completed",
-        extra={"status": result.status, "backend": result.backend, "played": result.played},
+        extra={
+            "status": result.status,
+            "backend": result.backend,
+            "played": result.played,
+        },
     )
     json.dump(result.to_dict(), sys.stdout)
     sys.stdout.write("\n")
@@ -591,7 +658,9 @@ def doctor(
 ) -> None:
     """Run Kokoro CLI health check."""
     cfg = Config.load(config)
-    _setup_logging_from_options(cfg, debug, log_level, log_format, str(log_file) if log_file else None)
+    _setup_logging_from_options(
+        cfg, debug, log_level, log_format, str(log_file) if log_file else None
+    )
 
     result = _doctor(cfg)
     json.dump(result, sys.stdout)
@@ -635,16 +704,28 @@ def pi(
     else:
         raw = sys.stdin.read().strip()
         if not raw:
-            json.dump({"status": "error", "error": "Expected Pi JSON payload via stdin or --input-file"}, sys.stdout)
+            json.dump(
+                {
+                    "status": "error",
+                    "error": "Expected Pi JSON payload via stdin or --input-file",
+                },
+                sys.stdout,
+            )
             sys.stdout.write("\n")
             raise typer.Exit(1)
         payload = json.loads(raw)
+
+    logger.info("pi_payload", extra={"payload": payload})
 
     request = request_from_pi_payload(payload)
     result = NotifyService(cfg).notify(request)
     logger.info(
         "pi_wrapper_completed",
-        extra={"status": result.status, "state": result.state.value, "backend": result.backend},
+        extra={
+            "status": result.status,
+            "state": result.state.value,
+            "backend": result.backend,
+        },
     )
     json.dump(result.to_dict(), sys.stdout)
     sys.stdout.write("\n")
