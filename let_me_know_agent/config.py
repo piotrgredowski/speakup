@@ -201,6 +201,8 @@ def validate_config(raw: dict[str, Any]) -> None:
     if destination not in _ALLOWED_LOG_DESTINATIONS:
         raise ConfigValidationError(f"logging.destination must be one of {_ALLOWED_LOG_DESTINATIONS}")
     _require_str(log_cfg.get("file_path", str(runtime_temp_dir() / "let-me-know-agent.log")), "logging.file_path")
+    if "file_path_color" in log_cfg:
+        _require_str(log_cfg.get("file_path_color"), "logging.file_path_color")
     _require_positive_int(log_cfg.get("rotate_max_bytes", 1_048_576), "logging.rotate_max_bytes")
     _require_positive_int(log_cfg.get("rotate_backup_count", 3), "logging.rotate_backup_count")
     _require_bool(log_cfg.get("include_timestamps", True), "logging.include_timestamps")
