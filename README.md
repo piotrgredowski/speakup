@@ -1,5 +1,11 @@
 # speakup
 
+[![PyPI version](https://badge.fury.io/py/speakup.svg)](https://badge.fury.io/py/speakup)
+[![Python](https://img.shields.io/pypi/pyversions/speakup.svg)](https://pypi.org/project/speakup/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/release/piotrgredowski/speakup.svg)](https://github.com/piotrgredowski/speakup/releases)
+[![CI](https://github.com/piotrgredowski/speakup/workflows/CI/badge.svg)](https://github.com/piotrgredowski/speakup/actions)
+
 Python library + CLI to turn agent responses into short spoken updates.
 
 ## Features
@@ -204,3 +210,41 @@ Use command:
 - Lightweight audio format default is `mp3` for remote providers.
 - macOS `say` currently writes `aiff`.
 - Progress dedup skips repeated progress messages in a time window.
+
+## Releases
+
+### Installation
+
+Install from PyPI:
+
+```bash
+pip install speakup
+```
+
+Or install a specific version:
+
+```bash
+pip install speakup==1.0.0
+```
+
+### Testing Pre-releases
+
+Test packages from TestPyPI before official releases:
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ speakup
+```
+
+### Release Process
+
+This project uses automated releases with TestPyPI testing:
+
+1. **Create Release**: Run `./scripts/create_release.sh` or use GitHub workflow
+2. **Test**: Package is automatically published to TestPyPI
+3. **Promote**: Manually trigger PyPI publish workflow after testing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed release instructions.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and changes.

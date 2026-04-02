@@ -3,6 +3,25 @@ name = "speakup"
 version = "0.1.0"
 description = "Speak concise agent status updates with pluggable local/remote backends"
 readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Piotr Gredowski", email = "piotrgredowski@gmail.com"}
+]
+maintainers = [
+    {name = "Piotr Gredowski", email = "piotrgredowski@gmail.com"}
+]
+keywords = ["tts", "agent", "notifications", "voice", "speech", "ai", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Terminals",
+]
 requires-python = ">=3.13"
 dependencies = [
     "dunamai>=1.20.0",
@@ -10,6 +29,13 @@ dependencies = [
     "structlog>=25.5.0",
     "typer>=0.15.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/piotrgredowski/speakup"
+Documentation = "https://github.com/piotrgredowski/speakup#readme"
+Repository = "https://github.com/piotrgredowski/speakup.git"
+Issues = "https://github.com/piotrgredowski/speakup/issues"
+Changelog = "https://github.com/piotrgredowski/speakup/blob/main/CHANGELOG.md"
 
 [project.scripts]
 speakup = "speakup.cli:app"
@@ -30,6 +56,8 @@ markers = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "build>=1.2.0",
+    "twine>=6.1.0",
 ]
 kokoro = [
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",

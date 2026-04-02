@@ -1,0 +1,101 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., 1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish-pypi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --group dev
+          pip install requests
+
+      - name: Verify version on TestPyPI
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python -c "
+import requests
+import sys
+
+version = '$VERSION'
+url = f'https://test.pypi.org/pypi/speakup/{version}/json'
+
+try:
+    response = requests.get(url, timeout=10)
+    if response.status_code == 200:
+        print(f'✓ Version {version} found on TestPyPI')
+    else:
+        print(f'✗ Version {version} not found on TestPyPI')
+        sys.exit(1)
+except Exception as e:
+    print(f'Error checking TestPyPI: {e}')
+    sys.exit(1)
+"
+
+      - name: Download from TestPyPI
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          cd dist
+          # Download wheel and sdist from TestPyPI
+          pip download --index-url https://test.pypi.org/simple/ --no-deps speakup==$VERSION
+
+      - name: Check package
+        run: uv run twine check dist/*
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv run twine upload dist/*
+
+      - name: Update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Find the prerelease for this version
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"v$VERSION\") | .id")
+
+          if [ -n "$RELEASE_ID" ]; then
+            # Update the release to remove prerelease status
+            gh api repos/${{ github.repository }}/releases/$RELEASE_ID \
+              --method PATCH \
+              -f prerelease=false \
+              -f name="Release v$VERSION"
+            echo "✓ Updated GitHub release v$VERSION"
+          else
+            echo "⚠ No prerelease found for v$VERSION"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-packages-${{ inputs.version }}-pypi
+          path: dist/
+          retention-days: 90
