@@ -129,6 +129,17 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
         file_handler.setFormatter(_make_formatter(effective_cfg, colors=False))
         handlers.append(file_handler)
 
+        # Second file with colors
+        color_file_path = cfg.get("file_path_color") or f"{file_path}.color"
+        os.makedirs(os.path.dirname(color_file_path), exist_ok=True)
+        color_file_handler = RotatingFileHandler(
+            color_file_path,
+            maxBytes=int(cfg.get("rotate_max_bytes", 1_048_576)),
+            backupCount=int(cfg.get("rotate_backup_count", 3)),
+        )
+        color_file_handler.setFormatter(_make_formatter(effective_cfg, colors=True))
+        handlers.append(color_file_handler)
+
     if not handlers:
         fallback = logging.StreamHandler(sys.stderr)
         fallback.setFormatter(_make_formatter(effective_cfg, colors=sys.stderr.isatty()))

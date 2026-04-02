@@ -54,6 +54,7 @@
     "format": "json",
     "destination": "stderr",
     "file_path": "/tmp/let-me-know-agent/let-me-know-agent.log",
+    "file_path_color": "/tmp/let-me-know-agent/let-me-know-agent.color.log",
     "rotate_max_bytes": 1048576,
     "rotate_backup_count": 3,
     "include_timestamps": true,
