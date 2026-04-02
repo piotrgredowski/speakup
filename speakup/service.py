@@ -10,6 +10,7 @@ from .classifier import infer_event
 from .config import Config, runtime_temp_dir
 from .dedup import should_skip_progress
 from .errors import AdapterError
+from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
 from .playback.queued import SQLiteQueuedPlayback
@@ -164,9 +165,15 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
 class NotifyService:
     """Service for processing notification requests with TTS and summarization."""
 
-    def __init__(self, config: Config, registry: AdapterRegistry | None = None):
+    def __init__(
+        self,
+        config: Config,
+        registry: AdapterRegistry | None = None,
+        history: NotificationHistory | None = None,
+    ):
         self.config = config
         self.registry = registry or build_registry_from_config(config)
+        self.history = history
         self.logger = logging.getLogger(__name__)
 
     @contextmanager
@@ -294,7 +301,7 @@ class NotifyService:
             extra={"request_id": request_id, "status": status, "backend": backend, "played": played, "audio_path": str(audio_path) if audio_path else None},
         )
 
-        return NotifyResult(
+        result = NotifyResult(
             status=status,
             summary=summary_text,
             state=event,
@@ -303,6 +310,15 @@ class NotifyService:
             audio_path=audio_path,
             error=playback_error,
         )
+
+        # Save to history
+        if self.history:
+            try:
+                self.history.add(request, result)
+            except Exception as exc:
+                self.logger.warning("history_save_failed", extra={"request_id": request_id, "error": str(exc)})
+
+        return result
 
     def _should_speak(self, event: MessageEvent) -> bool:
         mapping = {

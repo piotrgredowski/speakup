@@ -789,6 +789,81 @@ def version() -> None:
     print(get_version())
 
 
+@app.command()
+def desktop(
+    dev: bool = typer.Option(False, "--dev", help="Run in development mode"),
+) -> None:
+    """Launch the desktop notification history viewer.
+    
+    This opens a native desktop application for browsing and searching
+    notification history. Requires the speakup-desktop Tauri app to be built.
+    """
+    import shutil
+    import subprocess
+    
+    # Determine the path to the desktop app
+    repo_root = Path(__file__).parent.parent
+    desktop_dir = repo_root / "speakup-desktop"
+    
+    if not desktop_dir.exists():
+        print("Desktop app not found. Please ensure speakup-desktop is built.", file=sys.stderr)
+        print(f"Expected location: {desktop_dir}", file=sys.stderr)
+        raise typer.Exit(1)
+    
+    if dev:
+        # Run in development mode with cargo tauri dev
+        cargo_cmd = shutil.which("cargo")
+        if not cargo_cmd:
+            print("Cargo not found. Please install Rust to run in dev mode.", file=sys.stderr)
+            raise typer.Exit(1)
+        
+        try:
+            subprocess.run([cargo_cmd, "tauri", "dev"], cwd=desktop_dir)
+        except KeyboardInterrupt:
+            pass
+        except FileNotFoundError:
+            print("cargo tauri not found. Install with: cargo install tauri-cli", file=sys.stderr)
+            raise typer.Exit(1)
+    else:
+        # Try to find and run the built application
+        possible_paths = [
+            desktop_dir / "src-tauri" / "target" / "release" / "speakup-desktop",
+            desktop_dir / "src-tauri" / "target" / "debug" / "speakup-desktop",
+        ]
+        
+        # On macOS, also check for .app bundle
+        if sys.platform == "darwin":
+            possible_paths.insert(
+                0,
+                desktop_dir / "src-tauri" / "target" / "release" / "bundle" / "macos" / "Speakup Desktop.app"
+            )
+        
+        app_path = None
+        for path in possible_paths:
+            if path.exists():
+                app_path = path
+                break
+        
+        if not app_path:
+            print("Built desktop app not found.", file=sys.stderr)
+            print("Please build it first:", file=sys.stderr)
+            print(f"  cd {desktop_dir} && cargo tauri build", file=sys.stderr)
+            print("\nOr run in development mode:", file=sys.stderr)
+            print("  speakup desktop --dev", file=sys.stderr)
+            raise typer.Exit(1)
+        
+        try:
+            if sys.platform == "darwin" and str(app_path).endswith(".app"):
+                subprocess.run(["open", str(app_path)])
+            else:
+                subprocess.run([str(app_path)])
+        except KeyboardInterrupt:
+            pass
+        except Exception as exc:
+            print(f"Failed to launch desktop app: {exc}", file=sys.stderr)
+            raise typer.Exit(1)
+
+
 def main() -> None:
     app()
 
