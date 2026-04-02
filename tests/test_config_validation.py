@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from let_me_know_agent.config import Config, ConfigValidationError, default_config
+from speakup.config import Config, ConfigValidationError, default_config
 
 
 def test_config_load_given_valid_default_then_succeeds() -> None:

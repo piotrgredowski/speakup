@@ -41,20 +41,20 @@
     "speed": 1.0,
     "play_audio": true,
     "audio_format": "wav",
-    "save_audio_dir": "/tmp/let-me-know-agent/audio"
+    "save_audio_dir": "/tmp/speakup/audio"
   },
   "dedup": {
     "enabled": true,
     "window_seconds": 30,
-    "cache_file": "/tmp/let-me-know-agent/last_progress.json"
+    "cache_file": "/tmp/speakup/last_progress.json"
   },
   "logging": {
     "enabled": true,
     "level": "INFO",
     "format": "json",
     "destination": "stderr",
-    "file_path": "/tmp/let-me-know-agent/let-me-know-agent.log",
-    "file_path_color": "/tmp/let-me-know-agent/let-me-know-agent.color.log",
+    "file_path": "/tmp/speakup/speakup.log",
+    "file_path_color": "/tmp/speakup/speakup.color.log",
     "rotate_max_bytes": 1048576,
     "rotate_backup_count": 3,
     "include_timestamps": true,

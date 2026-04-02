@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-25T08:36:47.726714Z"
+exclude-newer = "2026-03-26T15:08:32.906679Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -615,47 +615,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e0/7e/b6a0efe4fee11e9742c1baaedf7c574084238a70b03c1d8eb2761383848f/language_tags-1.2.0.tar.gz", hash = "sha256:e934acba3e3dc85f867703eca421847a9ab7b7679b11b5d5cfd096febbf8bde6", size = 207901, upload-time = "2023-01-11T18:38:07.893Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/42/327554649ed2dd5ce59d3f5da176c7be20f9352c7c6c51597293660b7b08/language_tags-1.2.0-py3-none-any.whl", hash = "sha256:d815604622242fdfbbfd747b40c31213617fd03734a267f2e39ee4bd73c88722", size = 213449, upload-time = "2023-01-11T18:38:05.692Z" },
-]
-
-[[package]]
-name = "let-me-know-agent"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "dunamai" },
-    { name = "kokoro" },
-    { name = "structlog" },
-    { name = "typer" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-kokoro = [
-    { name = "en-core-web-sm" },
-]
-orpheus = [
-    { name = "numpy" },
-    { name = "snac" },
-    { name = "torch" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dunamai", specifier = ">=1.20.0" },
-    { name = "kokoro", specifier = ">=0.7.16" },
-    { name = "structlog", specifier = ">=25.5.0" },
-    { name = "typer", specifier = ">=0.15.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.0.2" }]
-kokoro = [{ name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }]
-orpheus = [
-    { name = "numpy", specifier = ">=2.4.3" },
-    { name = "snac", specifier = ">=1.2.1" },
-    { name = "torch", specifier = ">=2.11.0" },
 ]
 
 [[package]]
@@ -1619,6 +1578,47 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/67/3d/926db774c9c98acf66cb4ed7faf6c377746f3e00b84b700d0868b95d0712/spacy-loggers-1.0.5.tar.gz", hash = "sha256:d60b0bdbf915a60e516cc2e653baeff946f0cfc461b452d11a4d5458c6fe5f24", size = 20811, upload-time = "2023-09-11T12:26:52.323Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/33/78/d1a1a026ef3af911159398c939b1509d5c36fe524c7b644f34a5146c4e16/spacy_loggers-1.0.5-py3-none-any.whl", hash = "sha256:196284c9c446cc0cdb944005384270d775fdeaf4f494d8e269466cfa497ef645", size = 22343, upload-time = "2023-09-11T12:26:50.586Z" },
+]
+
+[[package]]
+name = "speakup"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "dunamai" },
+    { name = "kokoro" },
+    { name = "structlog" },
+    { name = "typer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+kokoro = [
+    { name = "en-core-web-sm" },
+]
+orpheus = [
+    { name = "numpy" },
+    { name = "snac" },
+    { name = "torch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dunamai", specifier = ">=1.20.0" },
+    { name = "kokoro", specifier = ">=0.7.16" },
+    { name = "structlog", specifier = ">=25.5.0" },
+    { name = "typer", specifier = ">=0.15.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
+kokoro = [{ name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }]
+orpheus = [
+    { name = "numpy", specifier = ">=2.4.3" },
+    { name = "snac", specifier = ">=1.2.1" },
+    { name = "torch", specifier = ">=2.11.0" },
 ]
 
 [[package]]

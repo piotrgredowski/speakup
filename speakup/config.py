@@ -26,11 +26,11 @@ _ALLOWED_LOG_DESTINATIONS = {"stderr", "stdout", "file", "both"}
 
 
 def default_config_path() -> Path:
-    return Path.home() / ".config" / "let-me-know-agent" / "config.json"
+    return Path.home() / ".config" / "speakup" / "config.json"
 
 
 def runtime_temp_dir() -> Path:
-    return Path(tempfile.gettempdir()) / "let-me-know-agent"
+    return Path(tempfile.gettempdir()) / "speakup"
 
 
 @dataclass(slots=True)
@@ -203,7 +203,7 @@ def validate_config(raw: dict[str, Any]) -> None:
     destination = log_cfg.get("destination", "stderr")
     if destination not in _ALLOWED_LOG_DESTINATIONS:
         raise ConfigValidationError(f"logging.destination must be one of {_ALLOWED_LOG_DESTINATIONS}")
-    _require_str(log_cfg.get("file_path", str(runtime_temp_dir() / "let-me-know-agent.log")), "logging.file_path")
+    _require_str(log_cfg.get("file_path", str(runtime_temp_dir() / "speakup.log")), "logging.file_path")
     if "file_path_color" in log_cfg:
         _require_str(log_cfg.get("file_path_color"), "logging.file_path_color")
     _require_positive_int(log_cfg.get("rotate_max_bytes", 1_048_576), "logging.rotate_max_bytes")
@@ -300,7 +300,7 @@ def default_config() -> dict[str, Any]:
             "level": "INFO",
             "format": "json",
             "destination": "stderr",
-            "file_path": str(runtime_dir / "let-me-know-agent.log"),
+            "file_path": str(runtime_dir / "speakup.log"),
             "rotate_max_bytes": 1_048_576,
             "rotate_backup_count": 3,
             "include_timestamps": True,

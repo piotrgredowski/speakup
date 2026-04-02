@@ -6,14 +6,14 @@ import threading
 import time
 from pathlib import Path
 
-from let_me_know_agent.config import Config, default_config
-from let_me_know_agent.errors import AdapterError
-from let_me_know_agent.models import AudioResult, MessageEvent, NotifyRequest
-from let_me_know_agent.playback.base import PlaybackAdapter
-from let_me_know_agent.playback.queued import SQLiteQueuedPlayback
-from let_me_know_agent.registry import AdapterRegistry
-from let_me_know_agent.service import NotifyService
-from let_me_know_agent.tts.base import TTSAdapter
+from speakup.config import Config, default_config
+from speakup.errors import AdapterError
+from speakup.models import AudioResult, MessageEvent, NotifyRequest
+from speakup.playback.base import PlaybackAdapter
+from speakup.playback.queued import SQLiteQueuedPlayback
+from speakup.registry import AdapterRegistry
+from speakup.service import NotifyService
+from speakup.tts.base import TTSAdapter
 
 
 class _RecordingPlayback(PlaybackAdapter):

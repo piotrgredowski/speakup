@@ -11,12 +11,12 @@ type ExtensionConfig = {
   onlyAssistant?: boolean;
 };
 
-const DEFAULT_CONFIG_PATH = join(homedir(), ".config", "let-me-know-agent", "pi-extension.json");
+const DEFAULT_CONFIG_PATH = join(homedir(), ".config", "speakup", "pi-extension.json");
 
 function loadConfig(ctx: any): Required<ExtensionConfig> {
   const defaults: Required<ExtensionConfig> = {
     enabled: true,
-    command: "let-me-know",
+    command: "speakup",
     args: ["pi"],
     onlyAssistant: true,
   };
@@ -32,7 +32,7 @@ function loadConfig(ctx: any): Required<ExtensionConfig> {
       onlyAssistant: raw.onlyAssistant ?? defaults.onlyAssistant,
     };
   } catch (err: any) {
-    ctx.ui.notify(`let-me-know: invalid extension config: ${err?.message ?? err}`, "error");
+    ctx.ui.notify(`speakup: invalid extension config: ${err?.message ?? err}`, "error");
     return defaults;
   }
 }
@@ -61,12 +61,12 @@ function getVersion(command: string, ctx: any): void {
   child.stderr.on("data", (d) => (stderr += d.toString()));
 
   child.on("error", () => {
-    ctx.ui.notify(`let-me-know: version check failed`, "info");
+    ctx.ui.notify(`speakup: version check failed`, "info");
   });
 
   child.on("close", (code) => {
     if (code === 0 && stdout.trim()) {
-      ctx.ui.notify(`let-me-know: version ${stdout.trim()}`, "info");
+      ctx.ui.notify(`speakup: version ${stdout.trim()}`, "info");
     }
   });
 }
@@ -85,13 +85,13 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
   child.stderr.on("data", (d) => (stderr += d.toString()));
 
   child.on("error", (err: any) => {
-    ctx.ui.notify(`let-me-know: failed to start notifier: ${err?.message ?? err}`, "error");
+    ctx.ui.notify(`speakup: failed to start notifier: ${err?.message ?? err}`, "error");
   });
 
   child.on("close", (code) => {
     if (code === 0) return;
     const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
-    ctx.ui.notify(`let-me-know: notifier failed (${detail})`, "error");
+    ctx.ui.notify(`speakup: notifier failed (${detail})`, "error");
   });
 }
 
@@ -110,7 +110,7 @@ export default function (pi: ExtensionAPI) {
       sessionTitle = event.session.name;
     }
     if (config.enabled) {
-      ctx.ui.notify("let-me-know extension active", "info");
+      ctx.ui.notify("speakup extension active", "info");
       getVersion(config.command, ctx);
     }
   });
@@ -141,20 +141,20 @@ export default function (pi: ExtensionAPI) {
     runNotifier(cfg.command, cfg.args, payload, ctx);
   });
 
-  pi.registerCommand("letmeknow", {
-    description: "Toggle let-me-know extension notifications (on/off/status)",
+  pi.registerCommand("speakup", {
+    description: "Toggle speakup extension notifications (on/off/status)",
     handler: async (args, ctx) => {
       const cfg = getConfig(ctx);
       const cmd = (args || "status").trim().toLowerCase();
 
       if (cmd === "on") {
         cfg.enabled = true;
-        ctx.ui.notify("let-me-know enabled", "info");
+        ctx.ui.notify("speakup enabled", "info");
       } else if (cmd === "off") {
         cfg.enabled = false;
-        ctx.ui.notify("let-me-know disabled", "info");
+        ctx.ui.notify("speakup disabled", "info");
       } else {
-        ctx.ui.notify(`let-me-know is ${cfg.enabled ? "enabled" : "disabled"}`, "info");
+        ctx.ui.notify(`speakup is ${cfg.enabled ? "enabled" : "disabled"}`, "info");
       }
     },
   });

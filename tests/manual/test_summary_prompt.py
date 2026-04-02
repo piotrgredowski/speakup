@@ -6,8 +6,8 @@ Run with: python tests/manual/test_summary_prompt.py
 Requires CEREBRAS_API_KEY environment variable.
 """
 
-from let_me_know_agent.models import MessageEvent
-from let_me_know_agent.summarizers.cerebras import CerebrasSummarizer
+from speakup.models import MessageEvent
+from speakup.summarizers.cerebras import CerebrasSummarizer
 
 SAMPLES = {
     MessageEvent.FINAL: """I've completed the refactoring of the authentication module. Here's a summary of the changes:

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from let_me_know_agent.errors import AdapterError
-from let_me_know_agent.tts.kokoro_cli import KokoroCliTTSAdapter
+from speakup.errors import AdapterError
+from speakup.tts.kokoro_cli import KokoroCliTTSAdapter
 
 
 def _make_cli(tmp_path: Path, script: str) -> Path:

@@ -1,4 +1,4 @@
-# let-me-know-agent
+# speakup
 
 Python library + CLI to turn agent responses into short spoken updates.
 
@@ -22,32 +22,32 @@ pip install -e .
 ## Quick usage
 
 ```bash
-let-me-know --message "Done implementing the feature." --event final
+speakup --message "Done implementing the feature." --event final
 ```
 
 Or with normalized JSON input:
 
 ```bash
-let-me-know --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
+speakup --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
 ```
 
 You can skip local playback (useful in headless runs):
 
 ```bash
-let-me-know --no-play --message "Done implementing the feature." --event final
+speakup --no-play --message "Done implementing the feature." --event final
 ```
 
 You can also force fail-fast provider behavior from CLI:
 
 ```bash
-let-me-know --fail-fast --message "Done implementing the feature." --event final
+speakup --fail-fast --message "Done implementing the feature." --event final
 ```
 
 
 Pi payload through dedicated wrapper command:
 
 ```bash
-echo '{"session-name":"agent-1","message":"Could you confirm deployment region?","event":"needs_input"}' | let-me-know-pi --config config.json
+echo '{"session-name":"agent-1","message":"Could you confirm deployment region?","event":"needs_input"}' | speakup-pi --config config.json
 ```
 
 Returns JSON result:
@@ -59,7 +59,7 @@ Returns JSON result:
   "state": "needs_input",
   "backend": "macos",
   "played": true,
-  "audio_path": "/tmp/let-me-know-agent/audio/tts-....aiff",
+  "audio_path": "/tmp/speakup/audio/tts-....aiff",
   "dedup_skipped": false,
   "error": null
 }
@@ -70,16 +70,16 @@ Returns JSON result:
 Initialize a default config file:
 
 ```bash
-let-me-know --init-config
+speakup --init-config
 ```
 
-This writes to `~/.config/let-me-know-agent/config.json`.
+This writes to `~/.config/speakup/config.json`.
 Use `--force` to overwrite an existing file.
 
 You can also pass an explicit config path with `--config config.json`.
 
 If `--config` is omitted, the tool checks:
-1. `~/.config/let-me-know-agent/config.json`
+1. `~/.config/speakup/config.json`
 2. built-in defaults (if no file is found)
 
 Config is validated on load (types, enums, provider names, event sound keys).
@@ -120,12 +120,12 @@ Set `fallback.fail_fast` to `true` to stop on the first provider failure instead
     "speed": 1.0,
     "play_audio": true,
     "audio_format": "mp3",
-    "save_audio_dir": "/tmp/let-me-know-agent/audio"
+    "save_audio_dir": "/tmp/speakup/audio"
   },
   "dedup": {
     "enabled": true,
     "window_seconds": 30,
-    "cache_file": "/tmp/let-me-know-agent/last_progress.json"
+    "cache_file": "/tmp/speakup/last_progress.json"
   },
   "providers": {
     "kokoro_cli": {
@@ -169,12 +169,12 @@ Install Orpheus extras with `uv sync --group orpheus` (installs `snac`, `torch`,
 
 ## Pi extension install
 
-The Pi integration uses a simple TypeScript extension that calls `let-me-know-pi`.
+The Pi integration uses a simple TypeScript extension that calls `speakup-pi`.
 
 ### Install via `pi install` (recommended)
 
 ```bash
-pi install https://github.com/piotrgredowski/let-me-know-agent
+pi install https://github.com/piotrgredowski/speakup
 ```
 
 This works because the repo is a Pi package (`package.json` + `pi.extensions`).
@@ -185,8 +185,8 @@ After install, run `/reload` in Pi.
 Copy and edit the example config:
 
 ```bash
-mkdir -p ~/.config/let-me-know-agent
-cp pi-extensions/pi-extension.example.json ~/.config/let-me-know-agent/pi-extension.json
+mkdir -p ~/.config/speakup
+cp pi-extensions/pi-extension.example.json ~/.config/speakup/pi-extension.json
 ```
 
 ### Runtime control in Pi
@@ -194,9 +194,9 @@ cp pi-extensions/pi-extension.example.json ~/.config/let-me-know-agent/pi-extens
 Use command:
 
 ```text
-/letmeknow on
-/letmeknow off
-/letmeknow status
+/speakup on
+/speakup off
+/speakup status
 ```
 
 ## Notes

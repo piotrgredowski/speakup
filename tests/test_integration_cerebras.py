@@ -15,9 +15,9 @@ import os
 
 import pytest
 
-from let_me_know_agent.errors import AdapterError
-from let_me_know_agent.models import MessageEvent
-from let_me_know_agent.summarizers.cerebras import CerebrasSummarizer
+from speakup.errors import AdapterError
+from speakup.models import MessageEvent
+from speakup.summarizers.cerebras import CerebrasSummarizer
 
 
 # Skip all tests in this module if CEREBRAS_API_KEY is not set

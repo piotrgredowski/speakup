@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from let_me_know_agent.config import Config
+from speakup.config import Config
 
 
 def test_config_load_given_no_path_and_home_config_exists_then_uses_home_file(monkeypatch, tmp_path: Path) -> None:
     fake_home = tmp_path / "home"
-    config_dir = fake_home / ".config" / "let-me-know-agent"
+    config_dir = fake_home / ".config" / "speakup"
     config_dir.mkdir(parents=True)
     config_path = config_dir / "config.json"
 

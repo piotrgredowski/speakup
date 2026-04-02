@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from let_me_know_agent.errors import AdapterError
-from let_me_know_agent.tts.lmstudio import LMStudioTTSAdapter
+from speakup.errors import AdapterError
+from speakup.tts.lmstudio import LMStudioTTSAdapter
 
 
 class _FakeStreamResponse:

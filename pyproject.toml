@@ -1,5 +1,5 @@
 [project]
-name = "let-me-know-agent"
+name = "speakup"
 version = "0.1.0"
 description = "Speak concise agent status updates with pluggable local/remote backends"
 readme = "README.md"
@@ -12,14 +12,14 @@ dependencies = [
 ]
 
 [project.scripts]
-let-me-know = "let_me_know_agent.cli:app"
+speakup = "speakup.cli:app"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["let_me_know_agent", "let_me_know_agent.summarizers", "let_me_know_agent.tts", "let_me_know_agent.playback", "let_me_know_agent.integrations"]
+packages = ["speakup", "speakup.summarizers", "speakup.tts", "speakup.playback", "speakup.integrations"]
 
 [tool.pytest.ini_options]
 markers = [

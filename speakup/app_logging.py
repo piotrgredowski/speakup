@@ -119,7 +119,7 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
     if destination in {"file", "both"} or file_override:
         file_path = file_override or cfg.get("file_path")
         if not file_path:
-            file_path = "/tmp/let-me-know-agent.log"
+            file_path = "/tmp/speakup.log"
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         file_handler = RotatingFileHandler(
             file_path,

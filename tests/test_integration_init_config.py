@@ -16,7 +16,7 @@ def test_cli_init_config_writes_default_path(tmp_path: Path, env_with_fake_audio
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
 
-    cfg_path = tmp_path / ".config" / "let-me-know-agent" / "config.json"
+    cfg_path = tmp_path / ".config" / "speakup" / "config.json"
     assert cfg_path.exists()
 
 
@@ -40,7 +40,7 @@ def test_cli_init_config_with_force_overwrites(tmp_path: Path, env_with_fake_aud
 
     run_cli(["--init-config"], env=env)
 
-    cfg_path = tmp_path / ".config" / "let-me-know-agent" / "config.json"
+    cfg_path = tmp_path / ".config" / "speakup" / "config.json"
     cfg_path.write_text("{}")
 
     forced = run_cli(["--init-config", "--force"], env=env)

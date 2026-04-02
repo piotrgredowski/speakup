@@ -379,7 +379,7 @@ def test_cli_given_empty_lmstudio_summary_then_falls_back_to_rule_based_and_keep
                 "--message",
                 "Build is complete",
                 "--session-name",
-                "Pi, from session named let-me-know-agent",
+                "Pi, from session named speakup",
                 "--event",
                 "final",
             ],
@@ -388,7 +388,7 @@ def test_cli_given_empty_lmstudio_summary_then_falls_back_to_rule_based_and_keep
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert payload["status"] == "ok"
-        assert payload["summary"] == "Pi, from session named let-me-know-agent: Build is complete"
+        assert payload["summary"] == "Pi, from session named speakup: Build is complete"
     finally:
         server.shutdown()
         server.server_close()

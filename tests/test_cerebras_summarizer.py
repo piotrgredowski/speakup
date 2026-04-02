@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from let_me_know_agent.errors import AdapterError
-from let_me_know_agent.models import MessageEvent
-from let_me_know_agent.summarizers.cerebras import CerebrasSummarizer
+from speakup.errors import AdapterError
+from speakup.models import MessageEvent
+from speakup.summarizers.cerebras import CerebrasSummarizer
 
 
 class _FakeResponse:

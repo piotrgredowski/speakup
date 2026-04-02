@@ -21,7 +21,7 @@ from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .version import get_version
 
 app = typer.Typer(
-    name="let-me-know",
+    name="speakup",
     help="Speak concise agent status updates with pluggable local/remote backends",
     rich_markup_mode="rich",
 )
@@ -166,7 +166,7 @@ def main_callback(
     legacy_init_config: bool = typer.Option(
         False,
         "--init-config",
-        help="[legacy] Write default config to ~/.config/let-me-know-agent/config.json",
+        help="[legacy] Write default config to ~/.config/speakup/config.json",
         hidden=True,
     ),
     legacy_self_test: bool = typer.Option(
@@ -195,7 +195,7 @@ def main_callback(
         is_eager=True,
     ),
 ) -> None:
-    """let-me-know: Speak concise agent status updates."""
+    """speakup: Speak concise agent status updates."""
     if version:
         print(get_version())
         raise typer.Exit()
@@ -333,7 +333,7 @@ def _self_test_audio(config: Config) -> dict:
 
     kk = config.get("providers", "kokoro", default={})
     tts = config.get("tts", default={})
-    output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
+    output_dir = Path(tts.get("save_audio_dir", "/tmp/speakup/audio"))
     audio_format = tts.get("audio_format", "mp3")
     speed = float(tts.get("speed", 1.0))
     voice = tts.get("voice", "default")
@@ -399,7 +399,7 @@ def _doctor(config: Config) -> dict:
         "args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]
     )
     timeout_seconds = int(kk_cli.get("timeout_seconds", 60))
-    output_dir = Path(tts.get("save_audio_dir", "/tmp/let-me-know-agent/audio"))
+    output_dir = Path(tts.get("save_audio_dir", "/tmp/speakup/audio"))
     voice = tts.get("voice", "default")
     speed = float(tts.get("speed", 1.0))
     audio_format = tts.get("audio_format", "mp3")
@@ -610,7 +610,7 @@ def init_config(
         False, "--force", "-f", help="Overwrite config file if it exists"
     ),
 ) -> None:
-    """Write default config to ~/.config/let-me-know-agent/config.json."""
+    """Write default config to ~/.config/speakup/config.json."""
     try:
         path = write_default_config(force=force)
     except FileExistsError as exc:
@@ -754,7 +754,7 @@ def show_logs(
     import subprocess
 
     cfg = Config.load(config)
-    log_file = cfg.get("logging", "file_path", default="/tmp/let-me-know-agent/let-me-know-agent.log")
+    log_file = cfg.get("logging", "file_path", default="/tmp/speakup/speakup.log")
     color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
     viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
 

@@ -53,7 +53,7 @@ class CerebrasSummarizer(Summarizer):
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
-                    "User-Agent": "let-me-know-agent/0.1.0",
+                    "User-Agent": "speakup/0.1.0",
                 },
                 method="POST",
             )

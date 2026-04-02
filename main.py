@@ -1,4 +1,4 @@
-from let_me_know_agent.cli import main
+from speakup.cli import main
 
 
 if __name__ == "__main__":

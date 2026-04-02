@@ -73,7 +73,7 @@ def test_gemini_real_api_given_final_event_then_synthesizes_audio(config_with_ge
             "--config",
             str(config_with_gemini),
             "--session-name",
-            "Droid - let-me-know-agent.",
+            "Droid - speakup.",
             "--message",
             "Done. Removed the backward compatibility import and cleaned up unused imports. All 55 tests pass.",
             "--event",
