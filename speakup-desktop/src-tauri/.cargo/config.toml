@@ -1,0 +1,2 @@
+[alias]
+tauri = "run --package tauri-cli --"
