@@ -248,6 +248,13 @@ def validate_config(raw: dict[str, Any]) -> None:
             if provider_name == "omlx" and key == "timeout":
                 _require_number(value, "providers.omlx.timeout")
 
+    # Validate droid configuration
+    droid_cfg = _require_dict(raw.get("droid", {}), "droid")
+    _require_bool(droid_cfg.get("enabled", True), "droid.enabled")
+    droid_events = _require_dict(droid_cfg.get("events", {}), "droid.events")
+    for key in ("notification", "stop", "subagent_stop", "session_start"):
+        _require_bool(droid_events.get(key, True), f"droid.events.{key}")
+
 
 def default_config() -> dict[str, Any]:
     runtime_dir = runtime_temp_dir()
@@ -365,6 +372,15 @@ def default_config() -> dict[str, Any]:
                 "args": ["-p", "{message}"],
                 "timeout_seconds": 30,
                 "trim_output": True,
+            },
+        },
+        "droid": {
+            "enabled": True,
+            "events": {
+                "notification": True,
+                "stop": True,
+                "subagent_stop": True,
+                "session_start": True,
             },
         },
     }
