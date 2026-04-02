@@ -743,6 +743,38 @@ def pi(
     sys.stdout.write("\n")
 
 
+@app.command("show-logs")
+def show_logs(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Show and follow log file using configured command."""
+    import shlex
+    import subprocess
+
+    cfg = Config.load(config)
+    log_file = cfg.get("logging", "file_path", default="/tmp/let-me-know-agent/let-me-know-agent.log")
+    viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
+
+    log_path = Path(log_file)
+    if not log_path.exists():
+        print(f"Log file not found: {log_file}", file=sys.stderr)
+        raise typer.Exit(1)
+
+    cmd_parts = shlex.split(viewer_command) + [str(log_path)]
+    try:
+        subprocess.run(cmd_parts)
+    except KeyboardInterrupt:
+        pass
+    except FileNotFoundError:
+        print(f"Log viewer command not found: {cmd_parts[0]}", file=sys.stderr)
+        raise typer.Exit(127)
+    except Exception as exc:
+        print(f"Log viewer failed: {exc}", file=sys.stderr)
+        raise typer.Exit(1)
+
+
 @app.command()
 def version() -> None:
     """Show version information."""

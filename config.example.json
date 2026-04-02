@@ -63,6 +63,9 @@
     "log_provider_payloads": false,
     "redact_sensitive": true
   },
+  "log_viewer": {
+    "command": "tail -n 25 -f"
+  },
   "providers": {
     "kokoro_cli": {
       "command": "kokoro",

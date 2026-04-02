@@ -213,6 +213,9 @@ def validate_config(raw: dict[str, Any]) -> None:
     _require_bool(log_cfg.get("log_provider_payloads", False), "logging.log_provider_payloads")
     _require_bool(log_cfg.get("redact_sensitive", True), "logging.redact_sensitive")
 
+    log_viewer = _require_dict(raw.get("log_viewer", {}), "log_viewer")
+    _require_str(log_viewer.get("command", "tail -n 25 -f"), "log_viewer.command")
+
     providers = _require_dict(raw.get("providers", {}), "providers")
     command_summary = _require_dict(providers.get("command_summary", {}), "providers.command_summary")
     for key, value in command_summary.items():
@@ -304,6 +307,9 @@ def default_config() -> dict[str, Any]:
             "log_message_text": False,
             "log_provider_payloads": False,
             "redact_sensitive": True,
+        },
+        "log_viewer": {
+            "command": "tail -n 25 -f",
         },
         "providers": {
             "lmstudio": {
