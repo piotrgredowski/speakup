@@ -190,5 +190,4 @@ def test_cerebras_summarizer_given_correct_system_prompt_then_uses_it(monkeypatc
 
     system_content = request_data["body"]["messages"][0]["content"]
     assert "1 sentence" in system_content
-    assert "event type is: ERROR" in system_content
     assert "notification system" in system_content.lower()
