@@ -50,6 +50,27 @@ function extractText(message: any): string {
   return parts.join("\n").trim();
 }
 
+function getVersion(command: string, ctx: any): void {
+  const child = spawn(command, ["--version"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (d) => (stdout += d.toString()));
+  child.stderr.on("data", (d) => (stderr += d.toString()));
+
+  child.on("error", () => {
+    ctx.ui.notify(`let-me-know: version check failed`, "info");
+  });
+
+  child.on("close", (code) => {
+    if (code === 0 && stdout.trim()) {
+      ctx.ui.notify(`let-me-know: version ${stdout.trim()}`, "info");
+    }
+  });
+}
+
 function runNotifier(command: string, args: string[], payload: Record<string, unknown>, ctx: any) {
   const child = spawn(command, args, {
     stdio: ["pipe", "pipe", "pipe"],
@@ -90,6 +111,7 @@ export default function (pi: ExtensionAPI) {
     }
     if (config.enabled) {
       ctx.ui.notify("let-me-know extension active", "info");
+      getVersion(config.command, ctx);
     }
   });
 
