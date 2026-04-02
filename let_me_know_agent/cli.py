@@ -755,14 +755,22 @@ def show_logs(
 
     cfg = Config.load(config)
     log_file = cfg.get("logging", "file_path", default="/tmp/let-me-know-agent/let-me-know-agent.log")
+    color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
     viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
 
+    color_log_path = Path(color_log_file)
     log_path = Path(log_file)
-    if not log_path.exists():
+    
+    # Prefer color log file, fall back to regular log file
+    if color_log_path.exists():
+        target_path = color_log_path
+    elif log_path.exists():
+        target_path = log_path
+    else:
         print(f"Log file not found: {log_file}", file=sys.stderr)
         raise typer.Exit(1)
 
-    cmd_parts = shlex.split(viewer_command) + [str(log_path)]
+    cmd_parts = shlex.split(viewer_command) + [str(target_path)]
     try:
         subprocess.run(cmd_parts)
     except KeyboardInterrupt:
