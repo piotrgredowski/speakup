@@ -1,0 +1,49 @@
+{
+  "description": "Speak spoken notifications for Droid lifecycle events",
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

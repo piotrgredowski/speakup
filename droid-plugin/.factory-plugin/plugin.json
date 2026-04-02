@@ -1,0 +1,11 @@
+{
+  "name": "speakup",
+  "description": "Spoken notifications for Droid events - converts Droid lifecycle events into speech using TTS",
+  "version": "0.1.0",
+  "author": {
+    "name": "speakup"
+  },
+  "homepage": "https://github.com/piotrgredowski/speakup",
+  "repository": "https://github.com/piotrgredowski/speakup",
+  "license": "MIT"
+}
