@@ -770,6 +770,9 @@ def show_logs(
         print(f"Log file not found: {log_file}", file=sys.stderr)
         raise typer.Exit(1)
 
+    print(f"Log file: {target_path}")
+    print()
+
     cmd_parts = shlex.split(viewer_command) + [str(target_path)]
     try:
         subprocess.run(cmd_parts)

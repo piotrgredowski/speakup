@@ -24,6 +24,7 @@ class NotifyRequest:
     agent: str = "pi"
     precomputed_summary: str | None = None
     skip_summarization: bool = False
+    force_summarization: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
