@@ -11,7 +11,7 @@ from .config import Config, runtime_temp_dir
 from .dedup import should_skip_progress
 from .errors import AdapterError
 from .history import NotificationHistory
-from .models import MessageEvent, NotifyRequest, NotifyResult
+from .models import MessageEvent, NotifyRequest, NotifyResult, SummaryResult
 from .playback.macos import MacOSPlaybackAdapter
 from .playback.queued import SQLiteQueuedPlayback
 from .registry import AdapterRegistry
@@ -344,6 +344,14 @@ class NotifyService:
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
+
+        # Skip summarization for short messages
+        if len(message) <= max_chars:
+            self.logger.info(
+                "summarization_skipped_short_message",
+                extra={"request_id": request_id, "message_length": len(message), "max_chars": max_chars},
+            )
+            return SummaryResult(summary=message, state=event)
 
         for provider in provider_order:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
