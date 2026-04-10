@@ -15,6 +15,9 @@ wheels/
 # Editor
 .vscode/
 
+# OS files
+.DS_Store
+
 # Tauri
 **/src-tauri/target/
 **/src-tauri/Cargo.lock

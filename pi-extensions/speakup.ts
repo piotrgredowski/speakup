@@ -130,7 +130,7 @@ export default function (pi: ExtensionAPI) {
       message: text,
       event: eventType,
       agent: "pi",
-      "session-name": sessionTitle,
+      sessionName: sessionTitle,
       metadata: {
         source: "pi-message_end",
         role,
