@@ -16,6 +16,7 @@ from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
+from .text_transform import transform_text_for_reading
 from .tts.kokoro import KokoroTTSAdapter
 from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .version import get_version
@@ -473,6 +474,23 @@ def _load_payload(
     return NotifyRequest(message=message, event=msg_event, session_name=session_name)
 
 
+def _load_text_input(
+    text: Optional[str],
+    input_file: Optional[Path],
+) -> str:
+    if text is not None:
+        return text
+
+    if input_file is not None:
+        return input_file.read_text().rstrip("\n")
+
+    stdin_text = sys.stdin.read().rstrip("\n")
+    if stdin_text:
+        return stdin_text
+
+    raise typer.BadParameter("Provide --text, --input-file, or stdin")
+
+
 @app.command()
 def notify(
     config: Optional[Path] = typer.Option(
@@ -619,6 +637,20 @@ def init_config(
         raise typer.Exit(2)
     json.dump({"status": "ok", "config_path": str(path)}, sys.stdout)
     sys.stdout.write("\n")
+
+
+@app.command()
+def verbalize(
+    text: Optional[str] = typer.Option(
+        None, "--text", "-t", help="Text to transform into a TTS-friendly form"
+    ),
+    input_file: Optional[Path] = typer.Option(
+        None, "--input-file", "-f", help="Path to text file to transform"
+    ),
+) -> None:
+    """Transform text into a more readable spoken form."""
+    source_text = _load_text_input(text, input_file)
+    print(transform_text_for_reading(source_text))
 
 
 @app.command("self-test")

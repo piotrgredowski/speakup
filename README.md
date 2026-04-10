@@ -49,6 +49,12 @@ You can also force fail-fast provider behavior from CLI:
 speakup --fail-fast --message "Done implementing the feature." --event final
 ```
 
+You can also transform text into a more TTS-friendly spoken form:
+
+```bash
+speakup verbalize --text "Room 402 opens at 3:30 in 1980."
+```
+
 
 Pi payload through dedicated wrapper command:
 
