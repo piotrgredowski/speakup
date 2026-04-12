@@ -16,7 +16,58 @@ class ConfigValidationError(ValueError):
 
 
 def default_config_path() -> Path:
-    return Path.home() / ".config" / "speakup" / "config.json"
+    return Path.home() / ".config" / "speakup" / "config.jsonc"
+
+
+def _strip_json_comments(text: str) -> str:
+    result: list[str] = []
+    i = 0
+    in_string = False
+    escape = False
+    length = len(text)
+
+    while i < length:
+        char = text[i]
+        next_char = text[i + 1] if i + 1 < length else ""
+
+        if in_string:
+            result.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            result.append(char)
+            i += 1
+            continue
+
+        if char == "/" and next_char == "/":
+            i += 2
+            while i < length and text[i] not in "\r\n":
+                i += 1
+            continue
+
+        if char == "/" and next_char == "*":
+            i += 2
+            while i + 1 < length and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+
+        result.append(char)
+        i += 1
+
+    return "".join(result)
+
+
+def _load_jsonc(path: Path) -> dict[str, Any]:
+    return json.loads(_strip_json_comments(path.read_text()))
 
 
 def runtime_temp_dir() -> Path:
@@ -257,7 +308,7 @@ class Config:
         if path is None:
             default_path = default_config_path()
             if default_path.exists():
-                base = json.loads(default_path.read_text())
+                base = _load_jsonc(default_path)
                 validate_config(base)
                 logger.info("config_loaded", extra={"source": "default_path", "path": str(default_path)})
                 return cls(base)
@@ -266,10 +317,10 @@ class Config:
             logger.info("config_loaded", extra={"source": "embedded_defaults"})
             return cls(raw)
 
-        base = json.loads(Path(path).read_text())
-        local_path = Path(path).with_name("config.local.json")
+        base = _load_jsonc(Path(path))
+        local_path = Path(path).with_name("config.local.jsonc")
         if local_path.exists():
-            local = json.loads(local_path.read_text())
+            local = _load_jsonc(local_path)
             base = deep_merge(base, local)
             logger.info("config_local_merged", extra={"path": str(local_path)})
 

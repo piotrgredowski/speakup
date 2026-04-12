@@ -24,7 +24,7 @@ def test_show_config_given_existing_file_then_uses_default_opener_on_macos(tmp_p
     _make_fake_command(bin_dir, "open", log_path)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
 
-    cfg_path = tmp_path / ".config" / "speakup" / "config.json"
+    cfg_path = tmp_path / ".config" / "speakup" / "config.jsonc"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps({"config_viewer": {"command": None}}))
 
@@ -43,7 +43,7 @@ def test_show_config_given_override_then_uses_configured_command(tmp_path: Path,
     _make_fake_command(bin_dir, "fake-editor", log_path)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
 
-    cfg_path = tmp_path / ".config" / "speakup" / "config.json"
+    cfg_path = tmp_path / ".config" / "speakup" / "config.jsonc"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps({"config_viewer": {"command": "fake-editor --wait"}}))
 
@@ -67,7 +67,7 @@ def test_show_config_given_missing_file_and_accept_then_creates_and_opens(tmp_pa
     result = run_cli(["show-config"], env=env, stdin="y\n")
     assert result.returncode == 0, result.stderr
 
-    cfg_path = tmp_path / ".config" / "speakup" / "config.json"
+    cfg_path = tmp_path / ".config" / "speakup" / "config.jsonc"
     assert cfg_path.exists()
     assert str(cfg_path) in log_path.read_text()
 
@@ -85,7 +85,7 @@ def test_show_config_given_missing_viewer_binary_then_exits_127(tmp_path: Path, 
     env = dict(env_with_fake_audio)
     env["HOME"] = str(tmp_path)
 
-    cfg_path = tmp_path / ".config" / "speakup" / "config.json"
+    cfg_path = tmp_path / ".config" / "speakup" / "config.jsonc"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps({"config_viewer": {"command": "missing-editor"}}))
 

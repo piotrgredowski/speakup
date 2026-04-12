@@ -59,3 +59,25 @@ def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path
         Config.load(config_path)
 
     assert expected in str(exc.value)
+
+
+def test_config_load_given_jsonc_comments_then_parses_successfully(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text(
+        """{
+  // comment
+  "privacy": {"mode": "local_only", "allow_remote_fallback": false},
+  /* block comment */
+  "events": {"speak_on_final": true, "speak_on_error": true, "speak_on_needs_input": true, "speak_on_progress": true},
+  "summarization": {"max_chars": 123, "provider_order": ["rule_based"]},
+  "event_sounds": {"enabled": true, "files": {}},
+  "tts": {"provider_order": ["macos"], "voice": "default", "speed": 1.0, "audio_format": "mp3", "save_audio_dir": ".cache/audio"},
+  "dedup": {"enabled": true, "window_seconds": 30, "cache_file": ".cache/last_progress.json"},
+  "providers": {"lmstudio": {}, "elevenlabs": {}, "openai": {}}
+}
+"""
+    )
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("privacy", "mode") == "local_only"

@@ -140,7 +140,7 @@ def _apply_cli_overrides(
 def main_callback(
     ctx: typer.Context,
     config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config.json"
+        None, "--config", "-c", help="Path to config.jsonc"
     ),
     message: Optional[str] = typer.Option(
         None, "--message", "-m", help="Raw message text"
@@ -209,7 +209,7 @@ def main_callback(
     legacy_init_config: bool = typer.Option(
         False,
         "--init-config",
-        help="[legacy] Write default config to ~/.config/speakup/config.json",
+        help="[legacy] Write default config to ~/.config/speakup/config.jsonc",
         hidden=True,
     ),
     legacy_self_test: bool = typer.Option(
@@ -536,7 +536,7 @@ def _load_text_input(
 @app.command()
 def notify(
     config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config.json"
+        None, "--config", "-c", help="Path to config.jsonc"
     ),
     message: Optional[str] = typer.Option(
         None, "--message", "-m", help="Raw message text"
@@ -670,7 +670,7 @@ def init_config(
         False, "--force", "-f", help="Overwrite config file if it exists"
     ),
 ) -> None:
-    """Write default config to ~/.config/speakup/config.json."""
+    """Write default config to ~/.config/speakup/config.jsonc."""
     try:
         path = write_default_config(force=force)
     except FileExistsError as exc:
@@ -698,7 +698,7 @@ def verbalize(
 @app.command("self-test")
 def self_test(
     config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config.json"
+        None, "--config", "-c", help="Path to config.jsonc"
     ),
     log_level: Optional[str] = typer.Option(
         None, "--log-level", "-l", help="Override logging level"
@@ -727,7 +727,7 @@ def self_test(
 @app.command()
 def doctor(
     config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config.json"
+        None, "--config", "-c", help="Path to config.jsonc"
     ),
     log_level: Optional[str] = typer.Option(
         None, "--log-level", "-l", help="Override logging level"
@@ -860,6 +860,40 @@ def show_logs(
         raise typer.Exit(1)
 
 
+def _get_config_path(config: Optional[Path]) -> Path:
+    return config or Path.home() / ".config" / "speakup" / "config.jsonc"
+
+
+@app.command("show-config-path")
+def show_config_path(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Print the config file path."""
+    print(_get_config_path(config))
+
+
+@app.command("show-logs-path")
+def show_logs_path(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Print the configured log file path."""
+    cfg = Config.load(config)
+    log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
+    color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
+
+    color_log_path = Path(color_log_file)
+    log_path = Path(log_file)
+
+    if color_log_path.exists():
+        print(color_log_path)
+        return
+    print(log_path)
+
+
 @app.command("show-config")
 def show_config(
     config: Optional[Path] = typer.Option(
@@ -867,7 +901,7 @@ def show_config(
     ),
 ) -> None:
     """Open the config file in the default app or configured viewer."""
-    target_path = config or Path.home() / ".config" / "speakup" / "config.json"
+    target_path = _get_config_path(config)
     viewer_command: str | None = None
 
     if target_path.exists():

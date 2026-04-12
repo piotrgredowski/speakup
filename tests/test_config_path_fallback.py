@@ -10,7 +10,7 @@ def test_config_load_given_no_path_and_home_config_exists_then_uses_home_file(mo
     fake_home = tmp_path / "home"
     config_dir = fake_home / ".config" / "speakup"
     config_dir.mkdir(parents=True)
-    config_path = config_dir / "config.json"
+    config_path = config_dir / "config.jsonc"
 
     config_data = {
         "privacy": {"mode": "local_only", "allow_remote_fallback": False},
