@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -20,6 +21,19 @@ def default_config_path() -> Path:
 
 def runtime_temp_dir() -> Path:
     return Path(tempfile.gettempdir()) / "speakup"
+
+
+def get_default_log_dir() -> Path:
+    if os.name == "posix" and "darwin" in os.sys.platform:
+        return Path.home() / "Library" / "Logs" / "speakup"
+    xdg_state_home = os.environ.get("XDG_STATE_HOME")
+    if xdg_state_home:
+        return Path(xdg_state_home) / "speakup"
+    return Path.home() / ".local" / "state" / "speakup"
+
+
+def get_default_log_file_path() -> Path:
+    return get_default_log_dir() / "speakup.log"
 
 
 # -----------------------------------------------------------------------------
@@ -89,7 +103,7 @@ class LoggingConfig:
     level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
     format: Literal["text", "json"] = "json"
     destination: Literal["stderr", "stdout", "file", "both"] = "stderr"
-    file_path: str = field(default_factory=lambda: str(runtime_temp_dir() / "speakup.log"))
+    file_path: str = field(default_factory=lambda: str(get_default_log_file_path()))
     file_path_color: Union[str, None] = None
     rotate_max_bytes: Annotated[int, Gt(0)] = 1_048_576
     rotate_backup_count: Annotated[int, Gt(0)] = 3

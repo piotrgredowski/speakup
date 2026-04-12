@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from .app_logging import setup_logging
-from .config import Config, write_default_config
+from .config import Config, get_default_log_file_path, write_default_config
 from .errors import AdapterError
 from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
@@ -786,7 +786,7 @@ def show_logs(
     import subprocess
 
     cfg = Config.load(config)
-    log_file = cfg.get("logging", "file_path", default="/tmp/speakup/speakup.log")
+    log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
     color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
     viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
 

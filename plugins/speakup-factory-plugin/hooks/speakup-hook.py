@@ -1,12 +1,22 @@
 import json
 import logging
 import os
+import platform
 import subprocess
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 logger = logging.getLogger("speakup-droid")
+
+
+def get_default_log_file_path() -> Path:
+    if platform.system() == "Darwin":
+        return Path.home() / "Library" / "Logs" / "speakup" / "speakup.log"
+    xdg_state_home = os.environ.get("XDG_STATE_HOME")
+    if xdg_state_home:
+        return Path(xdg_state_home) / "speakup" / "speakup.log"
+    return Path.home() / ".local" / "state" / "speakup" / "speakup.log"
 
 
 def setup_logging(config: dict) -> None:
@@ -19,9 +29,9 @@ def setup_logging(config: dict) -> None:
     level = getattr(logging, level_name, logging.INFO)
 
     # Use separate log file for droid hook
-    main_file_path = log_cfg.get("file_path", "/tmp/speakup/speakup.log")
+    main_file_path = log_cfg.get("file_path", str(get_default_log_file_path()))
     log_dir = os.path.dirname(main_file_path)
-    file_path = os.path.join(log_dir, "droid-hook.log") if log_dir else "/tmp/speakup/droid-hook.log"
+    file_path = os.path.join(log_dir, "droid-hook.log") if log_dir else str(get_default_log_file_path().with_name("droid-hook.log"))
 
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)

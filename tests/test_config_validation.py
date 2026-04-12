@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+from pathlib import Path
 
 import pytest
 
-from speakup.config import Config, ConfigValidationError, default_config
+from speakup.config import Config, ConfigValidationError, default_config, get_default_log_file_path
 
 
 def test_config_load_given_valid_default_then_succeeds() -> None:
@@ -18,6 +19,7 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     temp_root = tempfile.gettempdir()
     assert cfg["tts"]["save_audio_dir"].startswith(temp_root)
     assert cfg["dedup"]["cache_file"].startswith(temp_root)
+    assert Path(cfg["logging"]["file_path"]) == get_default_log_file_path()
 
 
 def test_default_config_prefers_kokoro_cli_before_macos() -> None:

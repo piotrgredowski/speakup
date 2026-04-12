@@ -9,6 +9,8 @@ from typing import Any
 
 import structlog
 
+from .config import get_default_log_file_path
+
 
 _RESERVED_RECORD_KEYS = {
     "name",
@@ -119,7 +121,7 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
     if destination in {"file", "both"} or file_override:
         file_path = file_override or cfg.get("file_path")
         if not file_path:
-            file_path = "/tmp/speakup.log"
+            file_path = str(get_default_log_file_path())
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         file_handler = RotatingFileHandler(
             file_path,
