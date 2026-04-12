@@ -1,0 +1,12 @@
+{
+  "name": "speakup-plugin-marketplace",
+  "description": "Speakup Droid Plugin",
+  "plugins": [
+    {
+      "name": "speakup",
+      "description": "Spoken notifications for Droid events",
+      "source": ".",
+      "category": "notifications"
+    }
+  ]
+}
