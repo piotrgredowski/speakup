@@ -5,7 +5,7 @@ from pathlib import Path
 
 def test_plugin_structure():
     """Test that all plugin files exist."""
-    plugin_dir = Path(__file__).parent.parent / "droid-plugin"
+    plugin_dir = Path(__file__).parent.parent / "plugins" / "droid"
     
     # Check manifest exists
     manifest_path = plugin_dir / ".factory-plugin" / "plugin.json"
@@ -21,7 +21,7 @@ def test_plugin_structure():
 
 def test_hooks_configuration():
     """Test that hooks configuration exists."""
-    plugin_dir = Path(__file__).parent.parent / "droid-plugin"
+    plugin_dir = Path(__file__).parent.parent / "plugins" / "droid"
     hooks_path = plugin_dir / "hooks" / "hooks.json"
     
     assert hooks_path.exists()
@@ -38,7 +38,7 @@ def test_hooks_configuration():
 
 def test_hook_script_exists():
     """Test that hook script exists and is executable."""
-    plugin_dir = Path(__file__).parent.parent / "droid-plugin"
+    plugin_dir = Path(__file__).parent.parent / "plugins" / "droid"
     hook_script = plugin_dir / "hooks" / "speakup-hook.py"
     
     assert hook_script.exists()
@@ -52,7 +52,7 @@ def test_hook_script_exists():
 
 def test_slash_command_exists():
     """Test that slash command exists."""
-    plugin_dir = Path(__file__).parent.parent / "droid-plugin"
+    plugin_dir = Path(__file__).parent.parent / "plugins" / "droid"
     command_path = plugin_dir / "commands" / "speakup.md"
     
     assert command_path.exists()
@@ -65,7 +65,7 @@ def test_slash_command_exists():
 
 def test_readme_exists():
     """Test that README exists."""
-    plugin_dir = Path(__file__).parent.parent / "droid-plugin"
+    plugin_dir = Path(__file__).parent.parent / "plugins" / "droid"
     readme_path = plugin_dir / "README.md"
     
     assert readme_path.exists()

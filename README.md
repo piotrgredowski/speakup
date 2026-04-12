@@ -198,7 +198,7 @@ Copy and edit the example config:
 
 ```bash
 mkdir -p ~/.config/speakup
-cp pi-extensions/pi-extension.example.json ~/.config/speakup/pi-extension.json
+cp plugins/pi/pi-extension.example.json ~/.config/speakup/pi-extension.json
 ```
 
 ### Runtime control in Pi
