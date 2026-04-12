@@ -20,8 +20,6 @@ from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
 from .text_transform import transform_text_for_reading
-from .tts.kokoro import KokoroTTSAdapter
-from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .version import get_version
 
 app = typer.Typer(
@@ -83,9 +81,7 @@ def _open_config_file(path: Path, viewer_command: str | None) -> None:
 class TTSProvider(str, Enum):
     """Available TTS providers."""
 
-    kokoro_cli = "kokoro_cli"
     macos = "macos"
-    kokoro = "kokoro"
     lmstudio = "lmstudio"
     elevenlabs = "elevenlabs"
     openai = "openai"
@@ -136,474 +132,27 @@ def _apply_cli_overrides(
         )
 
 
-@app.callback(invoke_without_command=True)
-def main_callback(
-    ctx: typer.Context,
-    config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config.jsonc"
-    ),
-    message: Optional[str] = typer.Option(
-        None, "--message", "-m", help="Raw message text"
-    ),
-    event: str = typer.Option(
-        "final", "--event", "-e", help="final|error|needs_input|progress|info"
-    ),
-    session_name: Optional[str] = typer.Option(
-        None, "--session-name", "-s", help="Optional session label spoken at the start"
-    ),
-    input_json: Optional[str] = typer.Option(
-        None,
-        "--input-json",
-        "-j",
-        help="JSON payload string using NotifyRequest schema",
-    ),
-    input_file: Optional[Path] = typer.Option(
-        None,
-        "--input-file",
-        "-f",
-        help="Path to JSON payload using NotifyRequest schema",
-    ),
-    message_file: Optional[Path] = typer.Option(
-        None,
-        "--message-file",
-        help="Path to file containing raw message text to summarize",
-    ),
-    no_play: bool = typer.Option(
-        False, "--no-play", help="Synthesize audio but skip local playback"
-    ),
-    no_summarize: bool = typer.Option(
-        False, "--no-summarize", help="Skip summarization, use raw message for TTS"
-    ),
-    fail_fast: bool = typer.Option(
-        False,
-        "--fail-fast",
-        help="Do not fall back to later providers after a provider error",
-    ),
-    log_level: Optional[str] = typer.Option(
-        None,
-        "--log-level",
-        "-l",
-        help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)",
-    ),
-    log_format: Optional[str] = typer.Option(
-        None, "--log-format", help="Override log format (text|json)"
-    ),
-    log_file: Optional[Path] = typer.Option(
-        None, "--log-file", help="Write logs to file path"
-    ),
-    debug: bool = typer.Option(
-        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
-    ),
-    summary_provider: Optional[SummarizerProvider] = typer.Option(
-        None, "--summary-provider", help="Override summarization provider"
-    ),
-    tts_provider: Optional[TTSProvider] = typer.Option(
-        None, "--tts-provider", "-t", help="Override TTS provider"
-    ),
-    summary_model: Optional[str] = typer.Option(
-        None, "--summary-model", help="Override LM Studio summary model for this run"
-    ),
-    tts_model: Optional[str] = typer.Option(
-        None, "--tts-model", help="Override LM Studio TTS model for this run"
-    ),
-    legacy_init_config: bool = typer.Option(
-        False,
-        "--init-config",
-        help="[legacy] Write default config to ~/.config/speakup/config.jsonc",
-        hidden=True,
-    ),
-    legacy_self_test: bool = typer.Option(
-        False,
-        "--self-test",
-        help="[legacy] Run event sound + Kokoro diagnostics",
-        hidden=True,
-    ),
-    legacy_doctor: bool = typer.Option(
-        False,
-        "--doctor",
-        help="[legacy] Run Kokoro CLI health check",
-        hidden=True,
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="[legacy] Overwrite config file when used with --init-config",
-        hidden=True,
-    ),
-    version: bool = typer.Option(
-        False,
-        "--version",
-        "-V",
-        help="Show version and exit",
-        is_eager=True,
-    ),
-) -> None:
-    """speakup: Speak concise agent status updates."""
-    if version:
-        print(get_version())
-        raise typer.Exit()
-
-    if ctx.invoked_subcommand is None:
-        # Backward-compatibility for legacy argparse-style flags.
-        if legacy_init_config:
-            ctx.invoke(init_config, force=force)
-            raise typer.Exit()
-        if legacy_self_test:
-            ctx.invoke(
-                self_test,
-                config=config,
-                log_level=log_level,
-                log_format=log_format,
-                log_file=log_file,
-                debug=debug,
-            )
-            raise typer.Exit()
-        if legacy_doctor:
-            ctx.invoke(
-                doctor,
-                config=config,
-                log_level=log_level,
-                log_format=log_format,
-                log_file=log_file,
-                debug=debug,
-            )
-            raise typer.Exit()
-
-        # Default behavior: run notify with the provided options
-        _setup_logging_from_options(
-            None, debug, log_level, log_format, str(log_file) if log_file else None
-        )
-        logger = logging.getLogger(__name__)
-        logger.info(
-            "cli_start",
-            extra={
-                "has_message": bool(message),
-                "has_input_json": bool(input_json),
-                "has_input_file": bool(input_file),
-            },
-        )
-
-        cfg = Config.load(config)
-        _setup_logging_from_options(
-            cfg, debug, log_level, log_format, str(log_file) if log_file else None
-        )
-        logger.info("config_loaded", extra={"config_path": config or "default"})
-
-        _apply_cli_overrides(
-            cfg,
-            no_play=no_play,
-            fail_fast=fail_fast,
-            summary_provider=summary_provider.value if summary_provider else None,
-            tts_provider=tts_provider.value if tts_provider else None,
-            summary_model=summary_model,
-            tts_model=tts_model,
-        )
-
-        request = _load_payload(
-            message,
-            event,
-            session_name,
-            input_json,
-            str(input_file) if input_file else None,
-            str(message_file) if message_file else None,
-        )
-        request.skip_summarization = no_summarize
-        logger.info(
-            "request_loaded",
-            extra={
-                "event": request.event.value,
-                "message_length": len(request.message),
-                "skip_summarization": request.skip_summarization,
-            },
-        )
-
-        result = NotifyService(cfg).notify(request)
-        logger.info(
-            "notify_completed",
-            extra={
-                "status": result.status,
-                "backend": result.backend,
-                "played": result.played,
-            },
-        )
-        json.dump(result.to_dict(), sys.stdout)
-        sys.stdout.write("\n")
-        raise typer.Exit()
-
-
-def _setup_logging_from_options(
-    config: Optional[Config],
-    debug: bool,
-    log_level: Optional[str],
-    log_format: Optional[str],
-    log_file: Optional[str],
-) -> None:
-    if config:
-        setup_logging(
-            config.get("logging", default={}),
-            level_override="DEBUG" if debug else log_level,
-            format_override=log_format,
-            file_override=log_file,
-        )
-    else:
-        setup_logging(
-            {},
-            level_override="DEBUG" if debug else log_level,
-            format_override=log_format,
-            file_override=log_file,
-        )
-
-
-def _self_test_audio(config: Config) -> dict:
-    logger = logging.getLogger(__name__)
-    playback = MacOSPlaybackAdapter()
-    checks: dict[str, dict[str, str | bool | None]] = {
-        "event_sound": {
-            "ok": False,
-            "error": None,
-            "path": "/System/Library/Sounds/Ping.aiff",
-        },
-        "kokoro_tts": {"ok": False, "error": None, "audio_path": None},
-    }
-
-    try:
-        event_sound_path = Path("/System/Library/Sounds/Ping.aiff")
-        playback.play_file(event_sound_path)
-        checks["event_sound"]["ok"] = True
-    except AdapterError as exc:
-        checks["event_sound"]["error"] = str(exc)
-        logger.warning("self_test_event_sound_failed", extra={"error": str(exc)})
-
-    kk = config.get("providers", "kokoro", default={})
-    tts = config.get("tts", default={})
-    output_dir = Path(tts.get("save_audio_dir", "/tmp/speakup/audio"))
-    audio_format = tts.get("audio_format", "mp3")
-    speed = float(tts.get("speed", 1.0))
-    voice = tts.get("voice", "default")
-
-    def _run_kokoro_self_test(offline: bool) -> Path:
-        adapter = KokoroTTSAdapter(
-            lang_code=kk.get("lang_code", "a"),
-            default_voice=kk.get("voice", "af_heart"),
-            repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
-            offline=offline,
-        )
-        audio = adapter.synthesize(
-            "Self test. If you hear this, Kokoro text to speech is working.",
-            output_dir,
-            voice=voice,
-            speed=speed,
-            audio_format=audio_format,
-        )
-        return Path(str(audio.value))
-
-    try:
-        audio_path = _run_kokoro_self_test(offline=bool(kk.get("offline", True)))
-    except AdapterError as exc:
-        # First-run bootstrap: if offline mode is enabled and local artifacts are
-        # missing, retry once in online mode so dependencies/models can be cached.
-        if bool(kk.get("offline", True)) and "offline mode" in str(exc):
-            logger.info("self_test_kokoro_retry_online")
-            prev_hf_offline = os.environ.pop("HF_HUB_OFFLINE", None)
-            prev_transformers_offline = os.environ.pop("TRANSFORMERS_OFFLINE", None)
-            try:
-                audio_path = _run_kokoro_self_test(offline=False)
-            except AdapterError as retry_exc:
-                checks["kokoro_tts"]["error"] = str(retry_exc)
-                logger.warning(
-                    "self_test_kokoro_failed", extra={"error": str(retry_exc)}
-                )
-                audio_path = None
-            finally:
-                if prev_hf_offline is not None:
-                    os.environ["HF_HUB_OFFLINE"] = prev_hf_offline
-                if prev_transformers_offline is not None:
-                    os.environ["TRANSFORMERS_OFFLINE"] = prev_transformers_offline
-        else:
-            checks["kokoro_tts"]["error"] = str(exc)
-            logger.warning("self_test_kokoro_failed", extra={"error": str(exc)})
-            audio_path = None
-
-    if audio_path is not None:
-        playback.play_file(audio_path)
-        checks["kokoro_tts"]["ok"] = True
-        checks["kokoro_tts"]["audio_path"] = str(audio_path)
-
-    overall_ok = bool(checks["event_sound"]["ok"] and checks["kokoro_tts"]["ok"])
-    return {"status": "ok" if overall_ok else "error", "checks": checks}
-
-
-def _doctor(config: Config) -> dict:
-    kk_cli = config.get("providers", "kokoro_cli", default={})
-    tts = config.get("tts", default={})
-
-    command = kk_cli.get("command", "kokoro")
-    args = kk_cli.get(
-        "args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]
-    )
-    timeout_seconds = int(kk_cli.get("timeout_seconds", 60))
-    output_dir = Path(tts.get("save_audio_dir", "/tmp/speakup/audio"))
-    voice = tts.get("voice", "default")
-    speed = float(tts.get("speed", 1.0))
-    audio_format = tts.get("audio_format", "mp3")
-    if audio_format not in {"mp3", "wav"}:
-        audio_format = "mp3"
-
-    checks: dict[str, dict[str, str | bool | None]] = {
-        "kokoro_cli": {
-            "ok": False,
-            "command": command,
-            "audio_path": None,
-            "error": None,
-        }
-    }
-
-    try:
-        adapter = KokoroCliTTSAdapter(
-            command=command,
-            args=args,
-            timeout_seconds=timeout_seconds,
-            default_voice=kk_cli.get(
-                "voice", config.get("providers", "kokoro", "voice", default="af_heart")
-            ),
-        )
-        audio = adapter.synthesize(
-            "Doctor test. If you hear this, Kokoro CLI is working.",
-            output_dir,
-            voice=voice,
-            speed=speed,
-            audio_format=audio_format,
-        )
-        checks["kokoro_cli"]["ok"] = True
-        checks["kokoro_cli"]["audio_path"] = str(audio.value)
-    except AdapterError as exc:
-        checks["kokoro_cli"]["error"] = str(exc)
-
-    overall_ok = bool(checks["kokoro_cli"]["ok"])
-    return {"status": "ok" if overall_ok else "error", "checks": checks}
-
-
-def _load_payload(
+def _run_notify(
+    *,
+    config: Optional[Path],
     message: Optional[str],
     event: str,
     session_name: Optional[str],
     input_json: Optional[str],
-    input_file: Optional[str],
-    message_file: Optional[str] = None,
-) -> NotifyRequest:
-    if input_json:
-        payload = json.loads(input_json)
-        return NotifyRequest(**payload)
-
-    if input_file:
-        payload = json.loads(open(input_file).read())
-        return NotifyRequest(**payload)
-
-    if message_file:
-        message = Path(message_file).read_text().strip()
-        if not message:
-            raise typer.BadParameter(f"Message file is empty: {message_file}")
-
-    if not message:
-        raise typer.BadParameter(
-            "Provide --message, --message-file, or --input-json/--input-file"
-        )
-
-    try:
-        msg_event = MessageEvent(event)
-    except Exception:
-        msg_event = MessageEvent.FINAL
-    return NotifyRequest(message=message, event=msg_event, session_name=session_name)
-
-
-def _load_text_input(
-    text: Optional[str],
     input_file: Optional[Path],
-) -> str:
-    if text is not None:
-        return text
-
-    if input_file is not None:
-        return input_file.read_text().rstrip("\n")
-
-    stdin_text = sys.stdin.read().rstrip("\n")
-    if stdin_text:
-        return stdin_text
-
-    raise typer.BadParameter("Provide --text, --input-file, or stdin")
-
-
-@app.command()
-def notify(
-    config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config.jsonc"
-    ),
-    message: Optional[str] = typer.Option(
-        None, "--message", "-m", help="Raw message text"
-    ),
-    event: str = typer.Option(
-        "final", "--event", "-e", help="final|error|needs_input|progress|info"
-    ),
-    session_name: Optional[str] = typer.Option(
-        None, "--session-name", "-s", help="Optional session label spoken at the start"
-    ),
-    input_json: Optional[str] = typer.Option(
-        None,
-        "--input-json",
-        "-j",
-        help="JSON payload string using NotifyRequest schema",
-    ),
-    input_file: Optional[Path] = typer.Option(
-        None,
-        "--input-file",
-        "-f",
-        help="Path to JSON payload using NotifyRequest schema",
-    ),
-    message_file: Optional[Path] = typer.Option(
-        None,
-        "--message-file",
-        help="Path to file containing raw message text to summarize",
-    ),
-    no_play: bool = typer.Option(
-        False, "--no-play", help="Synthesize audio but skip local playback"
-    ),
-    no_summarize: bool = typer.Option(
-        False, "--no-summarize", help="Skip summarization, use raw message for TTS"
-    ),
-    fail_fast: bool = typer.Option(
-        False,
-        "--fail-fast",
-        help="Do not fall back to later providers after a provider error",
-    ),
-    log_level: Optional[str] = typer.Option(
-        None,
-        "--log-level",
-        "-l",
-        help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)",
-    ),
-    log_format: Optional[str] = typer.Option(
-        None, "--log-format", help="Override log format (text|json)"
-    ),
-    log_file: Optional[Path] = typer.Option(
-        None, "--log-file", help="Write logs to file path"
-    ),
-    debug: bool = typer.Option(
-        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
-    ),
-    summary_provider: Optional[SummarizerProvider] = typer.Option(
-        None, "--summary-provider", help="Override summarization provider"
-    ),
-    tts_provider: Optional[TTSProvider] = typer.Option(
-        None, "--tts-provider", "-t", help="Override TTS provider"
-    ),
-    summary_model: Optional[str] = typer.Option(
-        None, "--summary-model", help="Override LM Studio summary model for this run"
-    ),
-    tts_model: Optional[str] = typer.Option(
-        None, "--tts-model", help="Override LM Studio TTS model for this run"
-    ),
+    message_file: Optional[Path],
+    no_play: bool,
+    no_summarize: bool,
+    fail_fast: bool,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file: Optional[Path],
+    debug: bool,
+    summary_provider: Optional[SummarizerProvider],
+    tts_provider: Optional[TTSProvider],
+    summary_model: Optional[str],
+    tts_model: Optional[str],
 ) -> None:
-    """Send a notification (default command)."""
     _setup_logging_from_options(
         None, debug, log_level, log_format, str(log_file) if log_file else None
     )
@@ -681,6 +230,209 @@ def init_config(
     sys.stdout.write("\n")
 
 
+@app.callback(invoke_without_command=True)
+def main_callback(
+    ctx: typer.Context,
+    message: Optional[str] = typer.Option(
+        None, "--message", "-m", help="Raw message text"
+    ),
+    message_file: Optional[Path] = typer.Option(
+        None,
+        "--message-file",
+        help="Path to file containing raw message text to summarize",
+    ),
+    input_json: Optional[str] = typer.Option(
+        None,
+        "--input-json",
+        "-j",
+        help="JSON payload string using NotifyRequest schema",
+    ),
+    input_file: Optional[Path] = typer.Option(
+        None,
+        "--input-file",
+        "-f",
+        help="Path to JSON payload using NotifyRequest schema",
+    ),
+    event: str = typer.Option(
+        "final", "--event", "-e", help="final|error|needs_input|progress|info"
+    ),
+    session_name: Optional[str] = typer.Option(
+        None, "--session-name", "-s", help="Optional session label spoken at the start"
+    ),
+    no_summarize: bool = typer.Option(
+        False, "--no-summarize", help="Skip summarization, use raw message for TTS"
+    ),
+    summary_provider: Optional[SummarizerProvider] = typer.Option(
+        None, "--summary-provider", help="Override summarization provider"
+    ),
+    summary_model: Optional[str] = typer.Option(
+        None, "--summary-model", help="Override LM Studio summary model for this run"
+    ),
+    tts_provider: Optional[TTSProvider] = typer.Option(
+        None, "--tts-provider", "-t", help="Override TTS provider"
+    ),
+    tts_model: Optional[str] = typer.Option(
+        None, "--tts-model", help="Override LM Studio TTS model for this run"
+    ),
+    fail_fast: bool = typer.Option(
+        False,
+        "--fail-fast",
+        help="Do not fall back to later providers after a provider error",
+    ),
+    no_play: bool = typer.Option(
+        False, "--no-play", help="Synthesize audio but skip local playback"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        "-l",
+        help="Override logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL)",
+    ),
+    log_format: Optional[str] = typer.Option(
+        None, "--log-format", help="Override log format (text|json)"
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Write logs to file path"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
+    ),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config.jsonc"
+    ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show version and exit",
+        is_eager=True,
+    ),
+) -> None:
+    """speakup: Speak concise agent status updates."""
+    if version:
+        print(get_version())
+        raise typer.Exit()
+
+    if ctx.invoked_subcommand is None:
+        _run_notify(
+            config=config,
+            message=message,
+            event=event,
+            session_name=session_name,
+            input_json=input_json,
+            input_file=input_file,
+            message_file=message_file,
+            no_play=no_play,
+            no_summarize=no_summarize,
+            fail_fast=fail_fast,
+            log_level=log_level,
+            log_format=log_format,
+            log_file=log_file,
+            debug=debug,
+            summary_provider=summary_provider,
+            tts_provider=tts_provider,
+            summary_model=summary_model,
+            tts_model=tts_model,
+        )
+        raise typer.Exit()
+
+def _setup_logging_from_options(
+    config: Optional[Config],
+    debug: bool,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file: Optional[str],
+) -> None:
+    if config:
+        setup_logging(
+            config.get("logging", default={}),
+            level_override="DEBUG" if debug else log_level,
+            format_override=log_format,
+            file_override=log_file,
+        )
+    else:
+        setup_logging(
+            {},
+            level_override="DEBUG" if debug else log_level,
+            format_override=log_format,
+            file_override=log_file,
+        )
+
+
+def _self_test_audio(config: Config) -> dict:
+    logger = logging.getLogger(__name__)
+    playback = MacOSPlaybackAdapter()
+    checks: dict[str, dict[str, str | bool | None]] = {
+        "event_sound": {
+            "ok": False,
+            "error": None,
+            "path": "/System/Library/Sounds/Ping.aiff",
+        },
+    }
+
+    try:
+        event_sound_path = Path("/System/Library/Sounds/Ping.aiff")
+        playback.play_file(event_sound_path)
+        checks["event_sound"]["ok"] = True
+    except AdapterError as exc:
+        checks["event_sound"]["error"] = str(exc)
+        logger.warning("self_test_event_sound_failed", extra={"error": str(exc)})
+
+    overall_ok = bool(checks["event_sound"]["ok"])
+    return {"status": "ok" if overall_ok else "error", "checks": checks}
+
+
+
+def _load_payload(
+    message: Optional[str],
+    event: str,
+    session_name: Optional[str],
+    input_json: Optional[str],
+    input_file: Optional[str],
+    message_file: Optional[str] = None,
+) -> NotifyRequest:
+    if input_json:
+        payload = json.loads(input_json)
+        return NotifyRequest(**payload)
+
+    if input_file:
+        payload = json.loads(open(input_file).read())
+        return NotifyRequest(**payload)
+
+    if message_file:
+        message = Path(message_file).read_text().strip()
+        if not message:
+            raise typer.BadParameter(f"Message file is empty: {message_file}")
+
+    if not message:
+        raise typer.BadParameter(
+            "Provide --message, --message-file, or --input-json/--input-file"
+        )
+
+    try:
+        msg_event = MessageEvent(event)
+    except Exception:
+        msg_event = MessageEvent.FINAL
+    return NotifyRequest(message=message, event=msg_event, session_name=session_name)
+
+
+def _load_text_input(
+    text: Optional[str],
+    input_file: Optional[Path],
+) -> str:
+    if text is not None:
+        return text
+
+    if input_file is not None:
+        return input_file.read_text().rstrip("\n")
+
+    stdin_text = sys.stdin.read().rstrip("\n")
+    if stdin_text:
+        return stdin_text
+
+    raise typer.BadParameter("Provide --text, --input-file, or stdin")
+
+
 @app.command()
 def verbalize(
     text: Optional[str] = typer.Option(
@@ -713,7 +465,7 @@ def self_test(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
 ) -> None:
-    """Run event sound + Kokoro synth/playback diagnostics."""
+    """Run event sound playback diagnostics."""
     cfg = Config.load(config)
     _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
 
@@ -742,13 +494,13 @@ def doctor(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
 ) -> None:
-    """Run Kokoro CLI health check."""
+    """Run configured health checks."""
     cfg = Config.load(config)
     _setup_logging_from_options(
         cfg, debug, log_level, log_format, str(log_file) if log_file else None
     )
 
-    result = _doctor(cfg)
+    result = _self_test_audio(cfg)
     json.dump(result, sys.stdout)
     sys.stdout.write("\n")
     if result["status"] != "ok":
@@ -817,81 +569,8 @@ def pi(
     sys.stdout.write("\n")
 
 
-@app.command("show-logs")
-def show_logs(
-    config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config JSON"
-    ),
-) -> None:
-    """Show and follow log file using configured command."""
-    import shlex
-    import subprocess
-
-    cfg = Config.load(config)
-    log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
-    color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
-    viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
-
-    color_log_path = Path(color_log_file)
-    log_path = Path(log_file)
-    
-    # Prefer color log file, fall back to regular log file
-    if color_log_path.exists():
-        target_path = color_log_path
-    elif log_path.exists():
-        target_path = log_path
-    else:
-        print(f"Log file not found: {log_file}", file=sys.stderr)
-        raise typer.Exit(1)
-
-    print(f"Log file: {target_path}")
-    print()
-
-    cmd_parts = shlex.split(viewer_command) + [str(target_path)]
-    try:
-        subprocess.run(cmd_parts)
-    except KeyboardInterrupt:
-        pass
-    except FileNotFoundError:
-        print(f"Log viewer command not found: {cmd_parts[0]}", file=sys.stderr)
-        raise typer.Exit(127)
-    except Exception as exc:
-        print(f"Log viewer failed: {exc}", file=sys.stderr)
-        raise typer.Exit(1)
-
-
 def _get_config_path(config: Optional[Path]) -> Path:
     return config or Path.home() / ".config" / "speakup" / "config.jsonc"
-
-
-@app.command("show-config-path")
-def show_config_path(
-    config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config JSON"
-    ),
-) -> None:
-    """Print the config file path."""
-    print(_get_config_path(config))
-
-
-@app.command("show-logs-path")
-def show_logs_path(
-    config: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config JSON"
-    ),
-) -> None:
-    """Print the configured log file path."""
-    cfg = Config.load(config)
-    log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
-    color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
-
-    color_log_path = Path(color_log_file)
-    log_path = Path(log_file)
-
-    if color_log_path.exists():
-        print(color_log_path)
-        return
-    print(log_path)
 
 
 @app.command("show-config")
@@ -917,6 +596,78 @@ def show_config(
 
     print(f"Config file: {target_path}")
     _open_config_file(target_path, viewer_command)
+
+
+@app.command("show-config-path")
+def show_config_path(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Print the config file path."""
+    print(_get_config_path(config))
+
+
+@app.command("show-logs")
+def show_logs(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Show and follow log file using configured command."""
+    import shlex
+    import subprocess
+
+    cfg = Config.load(config)
+    log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
+    color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
+    viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
+
+    color_log_path = Path(color_log_file)
+    log_path = Path(log_file)
+
+    if color_log_path.exists():
+        target_path = color_log_path
+    elif log_path.exists():
+        target_path = log_path
+    else:
+        print(f"Log file not found: {log_file}", file=sys.stderr)
+        raise typer.Exit(1)
+
+    print(f"Log file: {target_path}")
+    print()
+
+    cmd_parts = shlex.split(viewer_command) + [str(target_path)]
+    try:
+        subprocess.run(cmd_parts)
+    except KeyboardInterrupt:
+        pass
+    except FileNotFoundError:
+        print(f"Log viewer command not found: {cmd_parts[0]}", file=sys.stderr)
+        raise typer.Exit(127)
+    except Exception as exc:
+        print(f"Log viewer failed: {exc}", file=sys.stderr)
+        raise typer.Exit(1)
+
+
+@app.command("show-logs-path")
+def show_logs_path(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Print the configured log file path."""
+    cfg = Config.load(config)
+    log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
+    color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
+
+    color_log_path = Path(color_log_file)
+    log_path = Path(log_file)
+
+    if color_log_path.exists():
+        print(color_log_path)
+        return
+    print(log_path)
 
 
 @app.command()

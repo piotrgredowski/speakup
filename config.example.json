@@ -51,7 +51,7 @@
   "logging": {
     "enabled": true,
     "level": "INFO",
-    "format": "json",
+    "format": "text",
     "destination": "stderr",
     "file_path": "~/Library/Logs/speakup/speakup.log",
     "file_path_color": "~/Library/Logs/speakup/speakup.color.log",

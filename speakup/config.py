@@ -87,18 +87,16 @@ def get_default_log_file_path() -> Path:
     return get_default_log_dir() / "speakup.log"
 
 
-# -----------------------------------------------------------------------------
-# Configuration Schema
-# -----------------------------------------------------------------------------
-
 @dataclass
 class PlaybackConfig:
     queue_enabled: bool = True
+
 
 @dataclass
 class PrivacyConfig:
     mode: Literal["prefer_local", "local_only"] = "prefer_local"
     allow_remote_fallback: bool = True
+
 
 @dataclass
 class EventsConfig:
@@ -107,16 +105,19 @@ class EventsConfig:
     speak_on_needs_input: bool = True
     speak_on_progress: bool = True
 
+
 @dataclass
 class SummarizationConfig:
     max_chars: Annotated[int, Gt(0)] = 220
-    provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras"]] = field(
-        default_factory=lambda: ["command", "rule_based", "lmstudio", "openai"]
+    provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras", "omlx"]] = field(
+        default_factory=lambda: ["cerebras", "omlx", "openai", "command", "rule_based", "lmstudio"]
     )
+
 
 @dataclass
 class FallbackConfig:
     fail_fast: bool = False
+
 
 @dataclass
 class EventSoundsConfig:
@@ -131,10 +132,11 @@ class EventSoundsConfig:
         }
     )
 
+
 @dataclass
 class TTSConfig:
-    provider_order: list[Literal["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"]
+    provider_order: list[Literal["macos", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"]] = field(
+        default_factory=lambda: ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
     )
     voice: str = "default"
     speed: float = 1.0
@@ -142,17 +144,19 @@ class TTSConfig:
     audio_format: Literal["mp3", "wav", "aiff"] = "wav"
     save_audio_dir: str = field(default_factory=lambda: str(runtime_temp_dir() / "audio"))
 
+
 @dataclass
 class DedupConfig:
     enabled: bool = True
     window_seconds: Annotated[int, Gt(0)] = 30
     cache_file: str = field(default_factory=lambda: str(runtime_temp_dir() / "last_progress.json"))
 
+
 @dataclass
 class LoggingConfig:
     enabled: bool = True
     level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
-    format: Literal["text", "json"] = "json"
+    format: Literal["text", "json"] = "text"
     destination: Literal["stderr", "stdout", "file", "both"] = "stderr"
     file_path: str = field(default_factory=lambda: str(get_default_log_file_path()))
     file_path_color: Union[str, None] = None
@@ -165,13 +169,16 @@ class LoggingConfig:
     log_provider_payloads: bool = False
     redact_sensitive: bool = True
 
+
 @dataclass
 class LogViewerConfig:
     command: str = "tail -n 25 -f"
 
+
 @dataclass
 class ConfigViewerConfig:
     command: str | None = None
+
 
 @dataclass
 class LMStudioConfig:
@@ -181,10 +188,12 @@ class LMStudioConfig:
     tts_mode: Literal["orpheus_completions"] = "orpheus_completions"
     orpheus_voice: str = "tara"
 
+
 @dataclass
 class ElevenLabsConfig:
     api_key_env: str = "ELEVENLABS_API_KEY"
     voice_id: str = ""
+
 
 @dataclass
 class OpenAIConfig:
@@ -193,18 +202,13 @@ class OpenAIConfig:
     summary_model: str = "gpt-4o-mini"
     voice: str = "alloy"
 
+
 @dataclass
 class CerebrasConfig:
     api_key_env: str = "CEREBRAS_API_KEY"
     model: str = "llama3.1-8b"
     base_url: str = "https://api.cerebras.ai/v1"
 
-@dataclass
-class KokoroConfig:
-    lang_code: str = "a"
-    voice: str = "af_heart"
-    repo_id: str = "hexgrad/Kokoro-82M"
-    offline: bool = True
 
 @dataclass
 class GeminiConfig:
@@ -212,12 +216,6 @@ class GeminiConfig:
     model: str = "gemini-2.5-flash-preview-tts"
     voice: str = "Kore"
 
-@dataclass
-class KokoroCliConfig:
-    command: str = "kokoro"
-    args: list[str] = field(default_factory=lambda: ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"])
-    voice: str = "af_heart"
-    timeout_seconds: Annotated[int, Gt(0)] = 60
 
 @dataclass
 class OMLXConfig:
@@ -227,6 +225,7 @@ class OMLXConfig:
     voice: str = "af_heart"
     timeout: float = 60.0
 
+
 @dataclass
 class CommandSummaryConfig:
     command: str = "pi"
@@ -234,17 +233,17 @@ class CommandSummaryConfig:
     timeout_seconds: Annotated[int, Gt(0)] = 30
     trim_output: bool = True
 
+
 @dataclass
 class ProvidersConfig:
     lmstudio: LMStudioConfig = field(default_factory=LMStudioConfig)
     elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     cerebras: CerebrasConfig = field(default_factory=CerebrasConfig)
-    kokoro: KokoroConfig = field(default_factory=KokoroConfig)
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
-    kokoro_cli: KokoroCliConfig = field(default_factory=KokoroCliConfig)
     omlx: OMLXConfig = field(default_factory=OMLXConfig)
     command_summary: CommandSummaryConfig = field(default_factory=CommandSummaryConfig)
+
 
 @dataclass
 class DroidEvents:
@@ -253,10 +252,12 @@ class DroidEvents:
     subagent_stop: bool = True
     session_start: bool = True
 
+
 @dataclass
 class DroidConfig:
     enabled: bool = True
     events: DroidEvents = field(default_factory=DroidEvents)
+
 
 @dataclass
 class AppConfig:
@@ -339,25 +340,20 @@ class Config:
         return current
 
     def set_tts_play_audio(self, enabled: bool) -> None:
-        """Set whether audio playback is enabled."""
         self.raw.setdefault("tts", {})["play_audio"] = enabled
 
     def set_tts_provider_order(self, providers: list[str]) -> None:
-        """Set TTS provider order with validation."""
         self.raw.setdefault("tts", {})["provider_order"] = providers
         validate_config(self.raw)
 
     def set_summarizer_provider_order(self, providers: list[str]) -> None:
-        """Set summarizer provider order with validation."""
         self.raw.setdefault("summarization", {})["provider_order"] = providers
         validate_config(self.raw)
 
     def set_fail_fast(self, enabled: bool) -> None:
-        """Set fail_fast mode for provider fallbacks."""
         self.raw.setdefault("fallback", {})["fail_fast"] = enabled
 
     def set_provider_config(self, provider: str, key: str, value: Any) -> None:
-        """Set a provider-specific configuration value."""
         self.raw.setdefault("providers", {}).setdefault(provider, {})[key] = value
         validate_config(self.raw)
 

@@ -9,7 +9,8 @@ import pytest
 from speakup.config import Config, ConfigValidationError, default_config, get_default_log_file_path
 
 
-def test_config_load_given_valid_default_then_succeeds() -> None:
+def test_config_load_given_valid_default_then_succeeds(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
     cfg = Config.load(None)
     assert cfg.get("privacy", "mode") == "prefer_local"
 
@@ -22,14 +23,14 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     assert Path(cfg["logging"]["file_path"]) == get_default_log_file_path()
 
 
-def test_default_config_prefers_kokoro_cli_before_macos() -> None:
+def test_default_config_prefers_omlx_then_elevenlabs_then_openai_for_tts() -> None:
     cfg = default_config()
-    assert cfg["tts"]["provider_order"][:2] == ["kokoro_cli", "macos"]
+    assert cfg["tts"]["provider_order"] == ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
 
 
-def test_default_config_prefers_command_summarizer_first() -> None:
+def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization() -> None:
     cfg = default_config()
-    assert cfg["summarization"]["provider_order"][0] == "command"
+    assert cfg["summarization"]["provider_order"][:3] == ["cerebras", "omlx", "openai"]
 
 
 @pytest.mark.parametrize(

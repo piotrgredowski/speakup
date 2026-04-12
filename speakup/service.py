@@ -22,9 +22,7 @@ from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .tts.elevenlabs import ElevenLabsTTSAdapter
 from .tts.gemini import GeminiTTSAdapter
-from .tts.kokoro import KokoroTTSAdapter
 from .tts.omlx import OmlxTTSAdapter
-from .tts.kokoro_cli import KokoroCliTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
 from .tts.openai import OpenAITTSAdapter
@@ -45,26 +43,8 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
     registry.set_playback(playback)
 
     # TTS adapters (factories for lazy instantiation)
-    def make_kokoro_cli() -> KokoroCliTTSAdapter:
-        kk_cli = config.get("providers", "kokoro_cli", default={})
-        return KokoroCliTTSAdapter(
-            command=kk_cli.get("command", "kokoro"),
-            args=kk_cli.get("args", ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"]),
-            timeout_seconds=int(kk_cli.get("timeout_seconds", 60)),
-            default_voice=kk_cli.get("voice", config.get("providers", "kokoro", "voice", default="af_heart")),
-        )
-
     def make_macos() -> MacOSTTSAdapter:
         return MacOSTTSAdapter()
-
-    def make_kokoro() -> KokoroTTSAdapter:
-        kk = config.get("providers", "kokoro", default={})
-        return KokoroTTSAdapter(
-            lang_code=kk.get("lang_code", "a"),
-            default_voice=kk.get("voice", "af_heart"),
-            repo_id=kk.get("repo_id", "hexgrad/Kokoro-82M"),
-            offline=bool(kk.get("offline", True)),
-        )
 
     def make_lmstudio_tts() -> LMStudioTTSAdapter:
         lm = config.get("providers", "lmstudio", default={})
@@ -109,9 +89,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             timeout=float(ok.get("timeout", 60.0)),
         )
 
-    registry.register_tts("kokoro_cli", make_kokoro_cli)
     registry.register_tts("macos", make_macos)
-    registry.register_tts("kokoro", make_kokoro)
     registry.register_tts("lmstudio", make_lmstudio_tts)
     registry.register_tts("elevenlabs", make_elevenlabs)
     registry.register_tts("openai", make_openai_tts)
@@ -388,7 +366,7 @@ class NotifyService:
         return self.registry.get_summarizer("rule_based").summarize(message, event, max_chars)
 
     def _synthesize(self, text: str, *, request_id: str):
-        provider_order = self.config.get("tts", "provider_order", default=["kokoro_cli", "macos"])
+        provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         voice = self.config.get("tts", "voice", default="default")
         speed = float(self.config.get("tts", "speed", default=1.0))

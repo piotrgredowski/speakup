@@ -10,7 +10,7 @@ def test_cli_init_config_writes_default_path(tmp_path: Path, env_with_fake_audio
     env = dict(env_with_fake_audio)
     env["HOME"] = str(tmp_path)
 
-    result = run_cli(["--init-config"], env=env)
+    result = run_cli(["init-config"], env=env)
     assert result.returncode == 0, result.stderr
 
     payload = json.loads(result.stdout)
@@ -24,8 +24,8 @@ def test_cli_init_config_without_force_fails_if_exists(tmp_path: Path, env_with_
     env = dict(env_with_fake_audio)
     env["HOME"] = str(tmp_path)
 
-    first = run_cli(["--init-config"], env=env)
-    second = run_cli(["--init-config"], env=env)
+    first = run_cli(["init-config"], env=env)
+    second = run_cli(["init-config"], env=env)
 
     assert first.returncode == 0
     assert second.returncode == 2
@@ -38,12 +38,12 @@ def test_cli_init_config_with_force_overwrites(tmp_path: Path, env_with_fake_aud
     env = dict(env_with_fake_audio)
     env["HOME"] = str(tmp_path)
 
-    run_cli(["--init-config"], env=env)
+    run_cli(["init-config"], env=env)
 
     cfg_path = tmp_path / ".config" / "speakup" / "config.jsonc"
     cfg_path.write_text("{}")
 
-    forced = run_cli(["--init-config", "--force"], env=env)
+    forced = run_cli(["init-config", "--force"], env=env)
     assert forced.returncode == 0
 
     payload = json.loads(forced.stdout)

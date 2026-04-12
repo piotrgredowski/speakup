@@ -450,7 +450,7 @@ class TestAppConfigIntegration:
         result = from_dict(AppConfig, {})
         assert result.playback.queue_enabled is True
         assert result.tts.speed == 1.0
-        assert len(result.providers.kokoro_cli.args) > 0
+        assert result.providers.omlx.model == "Kokoro-82M-bf16"
 
     def test_valid_overrides(self):
         from speakup.config import AppConfig

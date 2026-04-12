@@ -76,3 +76,20 @@ def test_show_logs_path_given_existing_color_log_then_prefers_color_path(
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == str(color_log_path)
+
+
+def test_help_given_cli_then_lists_config_and_log_commands_in_expected_order(
+    env_with_fake_audio: dict[str, str]
+) -> None:
+    result = run_cli(["--help"], env=env_with_fake_audio)
+
+    assert result.returncode == 0, result.stderr
+    commands = [
+        "init-config",
+        "show-config",
+        "show-config-path",
+        "show-logs",
+        "show-logs-path",
+    ]
+    positions = [result.stdout.index(command) for command in commands]
+    assert positions == sorted(positions)
