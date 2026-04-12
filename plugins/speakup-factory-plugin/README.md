@@ -29,8 +29,8 @@ Spoken notifications for Droid events using the [speakup](https://github.com/pio
 
 From local directory:
 ```bash
-droid plugin marketplace add ./plugins/droid
-droid plugin install speakup@droid
+droid plugin marketplace add ./plugins/speakup-factory-plugin
+droid plugin install speakup@speakup-factory-plugin
 ```
 
 From Git repository:
@@ -146,7 +146,7 @@ Add droid-specific settings to your speakup config at `~/.config/speakup/config.
 ### Project Structure
 
 ```
-plugins/droid/
+plugins/speakup-factory-plugin/
 ├── .factory-plugin/
 │   └── plugin.json          # Plugin manifest
 ├── hooks/
@@ -161,8 +161,8 @@ plugins/droid/
 
 1. Install from local directory:
    ```bash
-   droid plugin marketplace add ./plugins/droid
-   droid plugin install speakup@droid
+   droid plugin marketplace add ./plugins/speakup-factory-plugin
+   droid plugin install speakup@speakup-factory-plugin
    ```
 
 2. Test hooks by using Droid normally

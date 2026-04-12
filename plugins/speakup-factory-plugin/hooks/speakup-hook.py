@@ -6,7 +6,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-logger = logging.getLogger("speakup-hook")
+logger = logging.getLogger("speakup-droid")
 
 
 def setup_logging(config: dict) -> None:
@@ -22,7 +22,7 @@ def setup_logging(config: dict) -> None:
     main_file_path = log_cfg.get("file_path", "/tmp/speakup/speakup.log")
     log_dir = os.path.dirname(main_file_path)
     file_path = os.path.join(log_dir, "droid-hook.log") if log_dir else "/tmp/speakup/droid-hook.log"
-    
+
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
 
@@ -42,7 +42,7 @@ def setup_logging(config: dict) -> None:
 
     handler.setFormatter(formatter)
 
-    hook_logger = logging.getLogger("speakup-hook")
+    hook_logger = logging.getLogger("speakup-droid")
     hook_logger.setLevel(level)
     hook_logger.handlers.clear()
     hook_logger.addHandler(handler)
