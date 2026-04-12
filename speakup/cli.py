@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
+import shlex
+import subprocess
 import sys
 from enum import Enum
 from pathlib import Path
@@ -36,6 +39,45 @@ class SummarizerProvider(str, Enum):
     openai = "openai"
     command = "command"
     cerebras = "cerebras"
+
+
+def _open_with_default_app(path: Path) -> None:
+    system = platform.system()
+    if system == "Darwin":
+        command = ["open", str(path)]
+    elif system == "Linux":
+        command = ["xdg-open", str(path)]
+    else:
+        print(f"Unsupported platform for default config opener: {system}", file=sys.stderr)
+        raise typer.Exit(1)
+
+    try:
+        subprocess.Popen(command)
+    except FileNotFoundError:
+        print(f"Default opener command not found: {command[0]}", file=sys.stderr)
+        raise typer.Exit(127)
+    except Exception as exc:
+        print(f"Failed to open config: {exc}", file=sys.stderr)
+        raise typer.Exit(1)
+
+
+def _open_with_command(command: str, path: Path) -> None:
+    parts = shlex.split(command) + [str(path)]
+    try:
+        subprocess.Popen(parts)
+    except FileNotFoundError:
+        print(f"Config viewer command not found: {parts[0]}", file=sys.stderr)
+        raise typer.Exit(127)
+    except Exception as exc:
+        print(f"Failed to open config: {exc}", file=sys.stderr)
+        raise typer.Exit(1)
+
+
+def _open_config_file(path: Path, viewer_command: str | None) -> None:
+    if viewer_command:
+        _open_with_command(viewer_command, path)
+        return
+    _open_with_default_app(path)
 
 
 class TTSProvider(str, Enum):
@@ -816,6 +858,31 @@ def show_logs(
     except Exception as exc:
         print(f"Log viewer failed: {exc}", file=sys.stderr)
         raise typer.Exit(1)
+
+
+@app.command("show-config")
+def show_config(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+) -> None:
+    """Open the config file in the default app or configured viewer."""
+    target_path = config or Path.home() / ".config" / "speakup" / "config.json"
+    viewer_command: str | None = None
+
+    if target_path.exists():
+        cfg = Config.load(target_path)
+        viewer_command = cfg.get("config_viewer", "command")
+    else:
+        if not typer.confirm(f"Config file does not exist: {target_path}\nCreate default config?"):
+            print(f"Config file not found: {target_path}", file=sys.stderr)
+            raise typer.Exit(1)
+        target_path = write_default_config(target_path)
+        cfg = Config.load(target_path)
+        viewer_command = cfg.get("config_viewer", "command")
+
+    print(f"Config file: {target_path}")
+    _open_config_file(target_path, viewer_command)
 
 
 @app.command()

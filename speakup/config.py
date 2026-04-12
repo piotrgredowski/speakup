@@ -119,6 +119,10 @@ class LogViewerConfig:
     command: str = "tail -n 25 -f"
 
 @dataclass
+class ConfigViewerConfig:
+    command: str | None = None
+
+@dataclass
 class LMStudioConfig:
     base_url: str = "http://localhost:1234/v1"
     model: str = "local-model"
@@ -215,6 +219,7 @@ class AppConfig:
     dedup: DedupConfig = field(default_factory=DedupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)
+    config_viewer: ConfigViewerConfig = field(default_factory=ConfigViewerConfig)
     providers: ProvidersConfig = field(default_factory=ProvidersConfig)
     droid: DroidConfig = field(default_factory=DroidConfig)
 

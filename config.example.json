@@ -67,6 +67,9 @@
   "log_viewer": {
     "command": "tail -n 25 -f"
   },
+  "config_viewer": {
+    "command": null
+  },
   "providers": {
     "kokoro_cli": {
       "command": "kokoro",
