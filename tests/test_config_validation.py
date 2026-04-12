@@ -38,7 +38,7 @@ def test_default_config_prefers_command_summarizer_first() -> None:
         (lambda c: c["tts"].update({"audio_format": "flac"}), "tts.audio_format"),
         (lambda c: c["tts"].update({"play_audio": "yes"}), "tts.play_audio"),
         (lambda c: c["summarization"].update({"provider_order": ["rule_based", "x"]}), "summarization.provider_order"),
-        (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files has unknown event key"),
+        (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files key 'unknown' must be one of"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
         (lambda c: c.setdefault("logging", {}).update({"destination": "console"}), "logging.destination"),

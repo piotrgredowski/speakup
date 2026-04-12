@@ -3,26 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal, Union
+
+from .lib.schema import Gt, from_dict, SchemaValidationError
 
 
 class ConfigValidationError(ValueError):
     """Raised when config JSON is invalid."""
-
-
-ALLOWED_SUMMARIZERS = {"rule_based", "lmstudio", "openai", "command", "cerebras"}
-ALLOWED_TTS = {"kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"}
-
-_ALLOWED_PRIVACY_MODES = {"prefer_local", "local_only"}
-_ALLOWED_SUMMARIZERS = ALLOWED_SUMMARIZERS
-_ALLOWED_TTS = ALLOWED_TTS
-_ALLOWED_AUDIO_FORMATS = {"mp3", "wav", "aiff"}
-_ALLOWED_EVENT_KEYS = {"final", "error", "needs_input", "progress", "info"}
-_ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
-_ALLOWED_LOG_FORMATS = {"text", "json"}
-_ALLOWED_LOG_DESTINATIONS = {"stderr", "stdout", "file", "both"}
 
 
 def default_config_path() -> Path:
@@ -33,7 +22,211 @@ def runtime_temp_dir() -> Path:
     return Path(tempfile.gettempdir()) / "speakup"
 
 
-@dataclass(slots=True)
+# -----------------------------------------------------------------------------
+# Configuration Schema
+# -----------------------------------------------------------------------------
+
+@dataclass
+class PlaybackConfig:
+    queue_enabled: bool = True
+
+@dataclass
+class PrivacyConfig:
+    mode: Literal["prefer_local", "local_only"] = "prefer_local"
+    allow_remote_fallback: bool = True
+
+@dataclass
+class EventsConfig:
+    speak_on_final: bool = True
+    speak_on_error: bool = True
+    speak_on_needs_input: bool = True
+    speak_on_progress: bool = True
+
+@dataclass
+class SummarizationConfig:
+    max_chars: Annotated[int, Gt(0)] = 220
+    provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras"]] = field(
+        default_factory=lambda: ["command", "rule_based", "lmstudio", "openai"]
+    )
+
+@dataclass
+class FallbackConfig:
+    fail_fast: bool = False
+
+@dataclass
+class EventSoundsConfig:
+    enabled: bool = True
+    files: dict[Literal["final", "error", "needs_input", "progress", "info"], str] = field(
+        default_factory=lambda: {
+            "final": "/System/Library/Sounds/Glass.aiff",
+            "error": "/System/Library/Sounds/Basso.aiff",
+            "needs_input": "/System/Library/Sounds/Funk.aiff",
+            "progress": "/System/Library/Sounds/Pop.aiff",
+            "info": "/System/Library/Sounds/Ping.aiff",
+        }
+    )
+
+@dataclass
+class TTSConfig:
+    provider_order: list[Literal["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"]] = field(
+        default_factory=lambda: ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"]
+    )
+    voice: str = "default"
+    speed: float = 1.0
+    play_audio: bool = True
+    audio_format: Literal["mp3", "wav", "aiff"] = "wav"
+    save_audio_dir: str = field(default_factory=lambda: str(runtime_temp_dir() / "audio"))
+
+@dataclass
+class DedupConfig:
+    enabled: bool = True
+    window_seconds: Annotated[int, Gt(0)] = 30
+    cache_file: str = field(default_factory=lambda: str(runtime_temp_dir() / "last_progress.json"))
+
+@dataclass
+class LoggingConfig:
+    enabled: bool = True
+    level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
+    format: Literal["text", "json"] = "json"
+    destination: Literal["stderr", "stdout", "file", "both"] = "stderr"
+    file_path: str = field(default_factory=lambda: str(runtime_temp_dir() / "speakup.log"))
+    file_path_color: Union[str, None] = None
+    rotate_max_bytes: Annotated[int, Gt(0)] = 1_048_576
+    rotate_backup_count: Annotated[int, Gt(0)] = 3
+    include_timestamps: bool = True
+    include_module: bool = True
+    include_pid: bool = False
+    log_message_text: bool = False
+    log_provider_payloads: bool = False
+    redact_sensitive: bool = True
+
+@dataclass
+class LogViewerConfig:
+    command: str = "tail -n 25 -f"
+
+@dataclass
+class LMStudioConfig:
+    base_url: str = "http://localhost:1234/v1"
+    model: str = "local-model"
+    tts_model: str = "local-tts-model"
+    tts_mode: Literal["orpheus_completions"] = "orpheus_completions"
+    orpheus_voice: str = "tara"
+
+@dataclass
+class ElevenLabsConfig:
+    api_key_env: str = "ELEVENLABS_API_KEY"
+    voice_id: str = ""
+
+@dataclass
+class OpenAIConfig:
+    api_key_env: str = "OPENAI_API_KEY"
+    model: str = "gpt-4o-mini-tts"
+    summary_model: str = "gpt-4o-mini"
+    voice: str = "alloy"
+
+@dataclass
+class CerebrasConfig:
+    api_key_env: str = "CEREBRAS_API_KEY"
+    model: str = "llama3.1-8b"
+    base_url: str = "https://api.cerebras.ai/v1"
+
+@dataclass
+class KokoroConfig:
+    lang_code: str = "a"
+    voice: str = "af_heart"
+    repo_id: str = "hexgrad/Kokoro-82M"
+    offline: bool = True
+
+@dataclass
+class GeminiConfig:
+    api_key_env: str = "GOOGLE_API_KEY"
+    model: str = "gemini-2.5-flash-preview-tts"
+    voice: str = "Kore"
+
+@dataclass
+class KokoroCliConfig:
+    command: str = "kokoro"
+    args: list[str] = field(default_factory=lambda: ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"])
+    voice: str = "af_heart"
+    timeout_seconds: Annotated[int, Gt(0)] = 60
+
+@dataclass
+class OMLXConfig:
+    base_url: str = "http://127.0.0.1:8000/v1"
+    api_key_env: str = "OMLX_API_KEY"
+    model: str = "Kokoro-82M-bf16"
+    voice: str = "af_heart"
+    timeout: float = 60.0
+
+@dataclass
+class CommandSummaryConfig:
+    command: str = "pi"
+    args: list[str] = field(default_factory=lambda: ["-p", "{message}"])
+    timeout_seconds: Annotated[int, Gt(0)] = 30
+    trim_output: bool = True
+
+@dataclass
+class ProvidersConfig:
+    lmstudio: LMStudioConfig = field(default_factory=LMStudioConfig)
+    elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
+    openai: OpenAIConfig = field(default_factory=OpenAIConfig)
+    cerebras: CerebrasConfig = field(default_factory=CerebrasConfig)
+    kokoro: KokoroConfig = field(default_factory=KokoroConfig)
+    gemini: GeminiConfig = field(default_factory=GeminiConfig)
+    kokoro_cli: KokoroCliConfig = field(default_factory=KokoroCliConfig)
+    omlx: OMLXConfig = field(default_factory=OMLXConfig)
+    command_summary: CommandSummaryConfig = field(default_factory=CommandSummaryConfig)
+
+@dataclass
+class DroidEvents:
+    notification: bool = True
+    stop: bool = True
+    subagent_stop: bool = True
+    session_start: bool = True
+
+@dataclass
+class DroidConfig:
+    enabled: bool = True
+    events: DroidEvents = field(default_factory=DroidEvents)
+
+@dataclass
+class AppConfig:
+    playback: PlaybackConfig = field(default_factory=PlaybackConfig)
+    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
+    events: EventsConfig = field(default_factory=EventsConfig)
+    summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
+    fallback: FallbackConfig = field(default_factory=FallbackConfig)
+    event_sounds: EventSoundsConfig = field(default_factory=EventSoundsConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
+    dedup: DedupConfig = field(default_factory=DedupConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)
+    providers: ProvidersConfig = field(default_factory=ProvidersConfig)
+    droid: DroidConfig = field(default_factory=DroidConfig)
+
+
+def default_config() -> dict[str, Any]:
+    return asdict(AppConfig())
+
+
+def validate_config(raw: dict[str, Any]) -> None:
+    try:
+        from_dict(AppConfig, raw)
+    except SchemaValidationError as e:
+        raise ConfigValidationError(str(e))
+
+
+def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    result = dict(a)
+    for key, value in b.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+@dataclass
 class Config:
     """Configuration wrapper with validation and typed accessor methods."""
 
@@ -51,7 +244,6 @@ class Config:
                 return cls(base)
 
             raw = default_config()
-            validate_config(raw)
             logger.info("config_loaded", extra={"source": "embedded_defaults"})
             return cls(raw)
 
@@ -82,13 +274,13 @@ class Config:
 
     def set_tts_provider_order(self, providers: list[str]) -> None:
         """Set TTS provider order with validation."""
-        _require_list_of_known(providers, _ALLOWED_TTS, "tts.provider_order")
         self.raw.setdefault("tts", {})["provider_order"] = providers
+        validate_config(self.raw)
 
     def set_summarizer_provider_order(self, providers: list[str]) -> None:
         """Set summarizer provider order with validation."""
-        _require_list_of_known(providers, _ALLOWED_SUMMARIZERS, "summarization.provider_order")
         self.raw.setdefault("summarization", {})["provider_order"] = providers
+        validate_config(self.raw)
 
     def set_fail_fast(self, enabled: bool) -> None:
         """Set fail_fast mode for provider fallbacks."""
@@ -96,294 +288,8 @@ class Config:
 
     def set_provider_config(self, provider: str, key: str, value: Any) -> None:
         """Set a provider-specific configuration value."""
-        if provider not in _ALLOWED_SUMMARIZERS and provider not in _ALLOWED_TTS:
-            raise ConfigValidationError(f"Unknown provider: {provider}")
         self.raw.setdefault("providers", {}).setdefault(provider, {})[key] = value
-
-
-def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-    result = dict(a)
-    for key, value in b.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def _require_dict(value: Any, path: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ConfigValidationError(f"{path} must be an object")
-    return value
-
-
-def _require_bool(value: Any, path: str) -> None:
-    if not isinstance(value, bool):
-        raise ConfigValidationError(f"{path} must be a boolean")
-
-
-def _require_str(value: Any, path: str) -> None:
-    if not isinstance(value, str):
-        raise ConfigValidationError(f"{path} must be a string")
-
-
-def _require_positive_int(value: Any, path: str) -> None:
-    if not isinstance(value, int) or value <= 0:
-        raise ConfigValidationError(f"{path} must be a positive integer")
-
-
-def _require_number(value: Any, path: str) -> None:
-    if not isinstance(value, (int, float)):
-        raise ConfigValidationError(f"{path} must be a number")
-
-
-def _require_list_of_known(values: Any, allowed: set[str], path: str) -> None:
-    if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
-        raise ConfigValidationError(f"{path} must be an array of strings")
-    unknown = [v for v in values if v not in allowed]
-    if unknown:
-        raise ConfigValidationError(f"{path} contains unknown values: {unknown}")
-
-
-def validate_config(raw: dict[str, Any]) -> None:
-    if not isinstance(raw, dict):
-        raise ConfigValidationError("Config root must be an object")
-
-    playback = _require_dict(raw.get("playback", {}), "playback")
-    _require_bool(playback.get("queue_enabled", True), "playback.queue_enabled")
-
-    privacy = _require_dict(raw.get("privacy", {}), "privacy")
-    mode = privacy.get("mode", "prefer_local")
-    if mode not in _ALLOWED_PRIVACY_MODES:
-        raise ConfigValidationError(f"privacy.mode must be one of {_ALLOWED_PRIVACY_MODES}")
-    _require_bool(privacy.get("allow_remote_fallback", True), "privacy.allow_remote_fallback")
-
-    events = _require_dict(raw.get("events", {}), "events")
-    for key in ("speak_on_final", "speak_on_error", "speak_on_needs_input", "speak_on_progress"):
-        _require_bool(events.get(key, True), f"events.{key}")
-
-    summarization = _require_dict(raw.get("summarization", {}), "summarization")
-    _require_positive_int(summarization.get("max_chars", 220), "summarization.max_chars")
-    _require_list_of_known(summarization.get("provider_order", ["rule_based"]), _ALLOWED_SUMMARIZERS, "summarization.provider_order")
-
-    fallback = _require_dict(raw.get("fallback", {}), "fallback")
-    _require_bool(fallback.get("fail_fast", False), "fallback.fail_fast")
-
-    event_sounds = _require_dict(raw.get("event_sounds", {}), "event_sounds")
-    _require_bool(event_sounds.get("enabled", True), "event_sounds.enabled")
-    files = _require_dict(event_sounds.get("files", {}), "event_sounds.files")
-    for key, value in files.items():
-        if key not in _ALLOWED_EVENT_KEYS:
-            raise ConfigValidationError(f"event_sounds.files has unknown event key: {key}")
-        _require_str(value, f"event_sounds.files.{key}")
-
-    tts = _require_dict(raw.get("tts", {}), "tts")
-    _require_list_of_known(tts.get("provider_order", ["kokoro_cli", "macos"]), _ALLOWED_TTS, "tts.provider_order")
-    _require_str(tts.get("voice", "default"), "tts.voice")
-    _require_number(tts.get("speed", 1.0), "tts.speed")
-    _require_bool(tts.get("play_audio", True), "tts.play_audio")
-    audio_format = tts.get("audio_format", "wav")
-    if audio_format not in _ALLOWED_AUDIO_FORMATS:
-        raise ConfigValidationError(f"tts.audio_format must be one of {_ALLOWED_AUDIO_FORMATS}")
-    _require_str(tts.get("save_audio_dir", ".cache/audio"), "tts.save_audio_dir")
-
-    dedup = _require_dict(raw.get("dedup", {}), "dedup")
-    _require_bool(dedup.get("enabled", True), "dedup.enabled")
-    _require_positive_int(dedup.get("window_seconds", 30), "dedup.window_seconds")
-    _require_str(dedup.get("cache_file", ".cache/last_progress.json"), "dedup.cache_file")
-
-    log_cfg = _require_dict(raw.get("logging", {}), "logging")
-    _require_bool(log_cfg.get("enabled", True), "logging.enabled")
-    level = str(log_cfg.get("level", "INFO")).upper()
-    if level not in _ALLOWED_LOG_LEVELS:
-        raise ConfigValidationError(f"logging.level must be one of {_ALLOWED_LOG_LEVELS}")
-    fmt = log_cfg.get("format", "text")
-    if fmt not in _ALLOWED_LOG_FORMATS:
-        raise ConfigValidationError(f"logging.format must be one of {_ALLOWED_LOG_FORMATS}")
-    destination = log_cfg.get("destination", "stderr")
-    if destination not in _ALLOWED_LOG_DESTINATIONS:
-        raise ConfigValidationError(f"logging.destination must be one of {_ALLOWED_LOG_DESTINATIONS}")
-    _require_str(log_cfg.get("file_path", str(runtime_temp_dir() / "speakup.log")), "logging.file_path")
-    if "file_path_color" in log_cfg:
-        _require_str(log_cfg.get("file_path_color"), "logging.file_path_color")
-    _require_positive_int(log_cfg.get("rotate_max_bytes", 1_048_576), "logging.rotate_max_bytes")
-    _require_positive_int(log_cfg.get("rotate_backup_count", 3), "logging.rotate_backup_count")
-    _require_bool(log_cfg.get("include_timestamps", True), "logging.include_timestamps")
-    _require_bool(log_cfg.get("include_module", True), "logging.include_module")
-    _require_bool(log_cfg.get("include_pid", False), "logging.include_pid")
-    _require_bool(log_cfg.get("log_message_text", False), "logging.log_message_text")
-    _require_bool(log_cfg.get("log_provider_payloads", False), "logging.log_provider_payloads")
-    _require_bool(log_cfg.get("redact_sensitive", True), "logging.redact_sensitive")
-
-    log_viewer = _require_dict(raw.get("log_viewer", {}), "log_viewer")
-    _require_str(log_viewer.get("command", "tail -n 25 -f"), "log_viewer.command")
-
-    providers = _require_dict(raw.get("providers", {}), "providers")
-    command_summary = _require_dict(providers.get("command_summary", {}), "providers.command_summary")
-    for key, value in command_summary.items():
-        if key in {"command"}:
-            _require_str(value, f"providers.command_summary.{key}")
-        elif key == "args":
-            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-                raise ConfigValidationError("providers.command_summary.args must be an array of strings")
-        elif key == "timeout_seconds":
-            _require_positive_int(value, "providers.command_summary.timeout_seconds")
-        elif key == "trim_output":
-            _require_bool(value, "providers.command_summary.trim_output")
-
-    for provider_name in ("lmstudio", "elevenlabs", "openai", "kokoro", "kokoro_cli", "cerebras", "gemini", "omlx"):
-        provider = _require_dict(providers.get(provider_name, {}), f"providers.{provider_name}")
-        for key, value in provider.items():
-            if key.endswith("_env") or key in {"base_url", "model", "voice_id", "summary_model", "voice", "tts_model", "command", "lang_code", "repo_id", "tts_mode", "orpheus_voice"}:
-                _require_str(value, f"providers.{provider_name}.{key}")
-            if provider_name == "kokoro" and key == "offline":
-                _require_bool(value, f"providers.{provider_name}.{key}")
-            if provider_name == "kokoro_cli" and key == "args":
-                if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-                    raise ConfigValidationError("providers.kokoro_cli.args must be an array of strings")
-            if provider_name == "kokoro_cli" and key == "timeout_seconds":
-                _require_positive_int(value, "providers.kokoro_cli.timeout_seconds")
-            if provider_name == "lmstudio" and key == "tts_mode" and value not in {"orpheus_completions"}:
-                raise ConfigValidationError("providers.lmstudio.tts_mode must be 'orpheus_completions'")
-            if provider_name == "omlx" and key == "timeout":
-                _require_number(value, "providers.omlx.timeout")
-
-    # Validate droid configuration
-    droid_cfg = _require_dict(raw.get("droid", {}), "droid")
-    _require_bool(droid_cfg.get("enabled", True), "droid.enabled")
-    droid_events = _require_dict(droid_cfg.get("events", {}), "droid.events")
-    for key in ("notification", "stop", "subagent_stop", "session_start"):
-        _require_bool(droid_events.get(key, True), f"droid.events.{key}")
-
-
-def default_config() -> dict[str, Any]:
-    runtime_dir = runtime_temp_dir()
-    return {
-        "playback": {
-            "queue_enabled": True,
-        },
-        "privacy": {
-            "mode": "prefer_local",
-            "allow_remote_fallback": True,
-        },
-        "events": {
-            "speak_on_final": True,
-            "speak_on_error": True,
-            "speak_on_needs_input": True,
-            "speak_on_progress": True,
-        },
-        "summarization": {
-            "max_chars": 220,
-            "provider_order": ["command", "rule_based", "lmstudio", "openai"],
-        },
-        "fallback": {
-            "fail_fast": False,
-        },
-        "event_sounds": {
-            "enabled": True,
-            "files": {
-                "final": "/System/Library/Sounds/Glass.aiff",
-                "error": "/System/Library/Sounds/Basso.aiff",
-                "needs_input": "/System/Library/Sounds/Funk.aiff",
-                "progress": "/System/Library/Sounds/Pop.aiff",
-                "info": "/System/Library/Sounds/Ping.aiff",
-            },
-        },
-        "tts": {
-            "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai", "gemini"],
-            "voice": "default",
-            "speed": 1.0,
-            "play_audio": True,
-            "audio_format": "wav",
-            "save_audio_dir": str(runtime_dir / "audio"),
-        },
-        "dedup": {
-            "enabled": True,
-            "window_seconds": 30,
-            "cache_file": str(runtime_dir / "last_progress.json"),
-        },
-        "logging": {
-            "enabled": True,
-            "level": "INFO",
-            "format": "json",
-            "destination": "stderr",
-            "file_path": str(runtime_dir / "speakup.log"),
-            "rotate_max_bytes": 1_048_576,
-            "rotate_backup_count": 3,
-            "include_timestamps": True,
-            "include_module": True,
-            "include_pid": False,
-            "log_message_text": False,
-            "log_provider_payloads": False,
-            "redact_sensitive": True,
-        },
-        "log_viewer": {
-            "command": "tail -n 25 -f",
-        },
-        "providers": {
-            "lmstudio": {
-                "base_url": "http://localhost:1234/v1",
-                "model": "local-model",
-                "tts_model": "local-tts-model",
-                "tts_mode": "orpheus_completions",
-                "orpheus_voice": "tara",
-            },
-            "elevenlabs": {
-                "api_key_env": "ELEVENLABS_API_KEY",
-                "voice_id": "",
-            },
-            "openai": {
-                "api_key_env": "OPENAI_API_KEY",
-                "model": "gpt-4o-mini-tts",
-                "summary_model": "gpt-4o-mini",
-                "voice": "alloy",
-            },
-            "cerebras": {
-                "api_key_env": "CEREBRAS_API_KEY",
-                "model": "llama3.1-8b",
-                "base_url": "https://api.cerebras.ai/v1",
-            },
-            "kokoro": {
-                "lang_code": "a",
-                "voice": "af_heart",
-                "repo_id": "hexgrad/Kokoro-82M",
-                "offline": True,
-            },
-            "gemini": {
-                "api_key_env": "GOOGLE_API_KEY",
-                "model": "gemini-2.5-flash-preview-tts",
-                "voice": "Kore",
-            },
-            "kokoro_cli": {
-                "command": "kokoro",
-                "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
-                "voice": "af_heart",
-                "timeout_seconds": 60,
-            },
-            "omlx": {
-                "base_url": "http://127.0.0.1:8000/v1",
-                "api_key_env": "OMLX_API_KEY",
-                "model": "Kokoro-82M-bf16",
-                "voice": "af_heart",
-                "timeout": 60.0,
-            },
-            "command_summary": {
-                "command": "pi",
-                "args": ["-p", "{message}"],
-                "timeout_seconds": 30,
-                "trim_output": True,
-            },
-        },
-        "droid": {
-            "enabled": True,
-            "events": {
-                "notification": True,
-                "stop": True,
-                "subagent_stop": True,
-                "session_start": True,
-            },
-        },
-    }
+        validate_config(self.raw)
 
 
 def write_default_config(path: str | Path | None = None, *, force: bool = False) -> Path:

@@ -45,7 +45,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["speakup", "speakup.summarizers", "speakup.tts", "speakup.playback", "speakup.integrations"]
+packages = ["speakup", "speakup.lib", "speakup.summarizers", "speakup.tts", "speakup.playback", "speakup.integrations"]
 
 [tool.pytest.ini_options]
 markers = [
