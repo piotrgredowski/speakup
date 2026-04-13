@@ -185,8 +185,6 @@ class LMStudioConfig:
     base_url: str = "http://localhost:1234/v1"
     model: str = "local-model"
     tts_model: str = "local-tts-model"
-    tts_mode: Literal["orpheus_completions"] = "orpheus_completions"
-    orpheus_voice: str = "tara"
 
 
 @dataclass

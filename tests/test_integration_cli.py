@@ -405,7 +405,6 @@ def test_cli_given_tts_model_override_then_lmstudio_uses_it(tmp_path: Path, base
             "base_url": f"http://127.0.0.1:{port}",
             "model": "base-summary-model",
             "tts_model": "base-tts-model",
-            "tts_mode": "orpheus_completions",
         }
         cfg_path = tmp_path / "cfg_tts_model.json"
         cfg_path.write_text(json.dumps(config))

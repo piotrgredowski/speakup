@@ -410,13 +410,6 @@ class TestAppConfigIntegration:
         with pytest.raises(SchemaValidationError, match="fallback.fail_fast must be a boolean"):
             from_dict(AppConfig, raw)
 
-    def test_invalid_lmstudio_tts_mode(self):
-        from speakup.config import default_config, AppConfig
-        raw = default_config()
-        raw["providers"]["lmstudio"]["tts_mode"] = "bad"
-        with pytest.raises(SchemaValidationError, match="providers.lmstudio.tts_mode must be one of"):
-            from_dict(AppConfig, raw)
-
     def test_invalid_summarizer_provider_order(self):
         from speakup.config import default_config, AppConfig
         raw = default_config()

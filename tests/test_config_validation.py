@@ -46,7 +46,6 @@ def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
         (lambda c: c.setdefault("logging", {}).update({"destination": "console"}), "logging.destination"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
-        (lambda c: c.setdefault("providers", {}).setdefault("lmstudio", {}).update({"tts_mode": "bad"}), "providers.lmstudio.tts_mode"),
         (lambda c: c.setdefault("providers", {}).setdefault("command_summary", {}).update({"args": "-p {message}"}), "providers.command_summary.args"),
     ],
 )

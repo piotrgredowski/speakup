@@ -36,7 +36,7 @@
     "fail_fast": false
   },
   "tts": {
-    "provider_order": ["macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+    "provider_order": ["omlx", "macos", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
     "speed": 1.0,
     "play_audio": true,
@@ -71,33 +71,10 @@
     "command": null
   },
   "providers": {
-    "kokoro_cli": {
-      "command": "kokoro",
-      "args": [
-        "-o",
-        "{output}",
-        "-m",
-        "{voice}",
-        "-s",
-        "{speed}",
-        "-t",
-        "{text}"
-      ],
-      "voice": "af_heart",
-      "timeout_seconds": 60
-    },
-    "kokoro": {
-      "lang_code": "a",
-      "voice": "af_heart",
-      "repo_id": "hexgrad/Kokoro-82M",
-      "offline": true
-    },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",
-      "tts_model": "orpheus-3b-0.1-ft",
-      "tts_mode": "orpheus_completions",
-      "orpheus_voice": "tara"
+      "tts_model": "local-tts-model"
     },
     "elevenlabs": {
       "api_key_env": "ELEVENLABS_API_KEY",

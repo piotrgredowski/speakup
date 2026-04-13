@@ -51,8 +51,6 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
         return LMStudioTTSAdapter(
             lm.get("base_url", "http://localhost:1234/v1"),
             lm.get("tts_model", lm.get("model", "local-model")),
-            tts_mode=lm.get("tts_mode", "openai_speech"),
-            orpheus_voice=lm.get("orpheus_voice", "tara"),
         )
 
     def make_gemini_tts() -> GeminiTTSAdapter:
