@@ -15,9 +15,9 @@ Spoken notifications for Droid events using the [speakup](https://github.com/pio
 
 1. Install speakup:
    ```bash
-   pip install speakup
+   uv tool install speakup
    # or from source
-   pip install -e .
+   uv tool install --editable .
    ```
 
 2. Initialize speakup config (optional):

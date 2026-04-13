@@ -60,8 +60,60 @@ def setup_logging(config: dict) -> None:
 
 
 def get_config_path():
-    """Get speakup config path."""
-    return Path.home() / ".config" / "speakup" / "config.json"
+    """Get speakup config path, preferring JSONC."""
+    config_dir = Path.home() / ".config" / "speakup"
+    jsonc_path = config_dir / "config.jsonc"
+    if jsonc_path.exists():
+        return jsonc_path
+    return config_dir / "config.json"
+
+
+def strip_json_comments(text: str) -> str:
+    """Remove JSONC comments while preserving string contents."""
+    result: list[str] = []
+    i = 0
+    in_string = False
+    escape = False
+    length = len(text)
+
+    while i < length:
+        char = text[i]
+        next_char = text[i + 1] if i + 1 < length else ""
+
+        if in_string:
+            result.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            result.append(char)
+            i += 1
+            continue
+
+        if char == "/" and next_char == "/":
+            i += 2
+            while i < length and text[i] not in "\r\n":
+                i += 1
+            continue
+
+        if char == "/" and next_char == "*":
+            i += 2
+            while i + 1 < length and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+
+        result.append(char)
+        i += 1
+
+    return "".join(result)
 
 
 def load_full_config() -> dict:
@@ -70,10 +122,9 @@ def load_full_config() -> dict:
     if not config_path.exists():
         return {}
     try:
-        with open(config_path) as f:
-            return json.load(f)
+        return json.loads(strip_json_comments(config_path.read_text()))
     except (json.JSONDecodeError, IOError) as e:
-        logger.warning(f"Failed to load config: {e}")
+        logger.warning(f"Failed to load config from {config_path}: {e}")
         return {}
 
 
@@ -165,7 +216,7 @@ def extract_message_from_transcript(
                     content = msg.get("content", "")
                     logger.debug(f"Found assistant message (alt format, {len(content)} chars)")
                     return content
-                logger.debug(f"Found assistant message (alt format, str)")
+                logger.debug("Found assistant message (alt format, str)")
                 return str(msg)
 
         logger.debug("No assistant message found in transcript")

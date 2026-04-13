@@ -76,7 +76,7 @@ Once a version tag is created:
    - Wait for the workflow to complete
    - Test installation:
      ```bash
-     pip install --index-url https://test.pypi.org/simple/ speakup==1.0.0
+     uv tool install --index https://test.pypi.org/simple/ speakup==1.0.0
      ```
    - Verify functionality
 

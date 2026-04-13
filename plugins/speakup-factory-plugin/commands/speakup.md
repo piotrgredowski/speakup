@@ -22,17 +22,17 @@ $ARGUMENTS
 If the user provides arguments, parse them:
 
 1. If argument is "on":
-   - Update the speakup config file at `~/.config/speakup/config.json`
+   - Update the speakup config file at `~/.config/speakup/config.jsonc` (or legacy `config.json` if present)
    - Set `droid.enabled` to `true`
    - Confirm to user that speakup is enabled
 
 2. If argument is "off":
-   - Update the speakup config file at `~/.config/speakup/config.json`
+   - Update the speakup config file at `~/.config/speakup/config.jsonc` (or legacy `config.json` if present)
    - Set `droid.enabled` to `false`
    - Confirm to user that speakup is disabled
 
 3. If argument is "status" or no argument provided:
-   - Read the speakup config file at `~/.config/speakup/config.json`
+   - Read the speakup config file at `~/.config/speakup/config.jsonc` (or legacy `config.json` if present)
    - Check the value of `droid.enabled`
    - Report current status to user
 

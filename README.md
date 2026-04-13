@@ -6,251 +6,128 @@
 [![GitHub release](https://img.shields.io/github/release/piotrgredowski/speakup.svg)](https://github.com/piotrgredowski/speakup/releases)
 [![CI](https://github.com/piotrgredowski/speakup/workflows/CI/badge.svg)](https://github.com/piotrgredowski/speakup/actions)
 
-Python library + CLI to turn agent responses into short spoken updates.
-
-## Features
-
-- Summarizes agent output into concise spoken text
-- Speaks on: final, error, needs_input, progress
-- Kokoro TTS included as Python dependency (`kokoro`)
-- Per-event sound cues (earcons) before speech
-- Provider fallback chains for summarization and TTS
-- Optional fail-fast mode to stop on first provider error
-- Privacy modes (`local_only`, `prefer_local`)
-- Agent-agnostic core CLI + dedicated Pi wrapper command
+Turn agent responses into short spoken updates.
 
 ## Install
 
 ```bash
-pip install -e .
+uv tool install speakup
 ```
 
-## Quick usage
+For local development, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For one-off runs without installing:
+
+```bash
+uvx --from speakup speakup --message "Done implementing the feature." --event final
+```
+
+## What it does
+
+- Speaks short updates for events like `final`, `error`, `needs_input`, and `progress`
+- Can summarize text before speech
+- Supports local and remote TTS backends with fallback order
+- Adds optional event sounds before playback
+- Works as a standalone CLI and through integrations like Pi and the Droid plugin
+
+## Quick start
 
 ```bash
 speakup --message "Done implementing the feature." --event final
 ```
 
-Or with normalized JSON input:
-
 ```bash
 speakup --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
 ```
-
-You can skip local playback (useful in headless runs):
 
 ```bash
 speakup --no-play --message "Done implementing the feature." --event final
 ```
 
-You can also force fail-fast provider behavior from CLI:
-
-```bash
-speakup --fail-fast --message "Done implementing the feature." --event final
-```
-
-You can also transform text into a more TTS-friendly spoken form:
-
 ```bash
 speakup verbalize --text "Room 402 opens at 3:30 in 1980."
 ```
 
+## Config in 60 seconds
 
-Pi payload through dedicated wrapper command:
+Create a starter config:
 
 ```bash
-echo '{"session-name":"agent-1","message":"Could you confirm deployment region?","event":"needs_input"}' | speakup-pi --config config.json
+speakup init-config
 ```
 
-Returns JSON result:
+Open the config file in your configured viewer:
+
+```bash
+speakup show-config
+```
+
+Show which config path is being used:
+
+```bash
+speakup show-config-path
+```
+
+Main sections:
+
+- `privacy`
+- `events`
+- `event_sounds`
+- `summarization`
+- `fallback`
+- `tts`
+- `dedup`
+- `providers`
+
+Tiny example:
 
 ```json
 {
-  "status": "ok",
-  "summary": "Action needed: Could you confirm deployment region?",
-  "state": "needs_input",
-  "backend": "macos",
-  "played": true,
-  "audio_path": "/tmp/speakup/audio/tts-....aiff",
-  "dedup_skipped": false,
-  "error": null
-}
-```
-
-## Configuration
-
-Initialize a default config file:
-
-```bash
-speakup --init-config
-```
-
-This writes to `~/.config/speakup/config.json`.
-Use `--force` to overwrite an existing file.
-
-You can also pass an explicit config path with `--config config.json`.
-
-If `--config` is omitted, the tool checks:
-1. `~/.config/speakup/config.json`
-2. built-in defaults (if no file is found)
-
-Config is validated on load (types, enums, provider names, event sound keys).
-Set `fallback.fail_fast` to `true` to stop on the first provider failure instead of trying later providers.
-
-```json
-{
-  "privacy": {
-    "mode": "prefer_local",
-    "allow_remote_fallback": true
-  },
-  "events": {
-    "speak_on_final": true,
-    "speak_on_error": true,
-    "speak_on_needs_input": true,
-    "speak_on_progress": true
-  },
-  "event_sounds": {
-    "enabled": true,
-    "files": {
-      "final": "/System/Library/Sounds/Glass.aiff",
-      "error": "/System/Library/Sounds/Basso.aiff",
-      "needs_input": "/System/Library/Sounds/Funk.aiff",
-      "progress": "/System/Library/Sounds/Pop.aiff",
-      "info": "/System/Library/Sounds/Ping.aiff"
-    }
-  },
+  "privacy": { "mode": "prefer_local" },
   "summarization": {
-    "max_chars": 220,
     "provider_order": ["command", "rule_based", "lmstudio", "openai"]
   },
-  "fallback": {
-    "fail_fast": false
-  },
   "tts": {
-    "provider_order": ["kokoro_cli", "macos", "kokoro", "lmstudio", "elevenlabs", "openai"],
+    "provider_order": ["kokoro_cli", "macos", "lmstudio", "openai"],
     "voice": "default",
-    "speed": 1.0,
-    "play_audio": true,
-    "audio_format": "mp3",
-    "save_audio_dir": "/tmp/speakup/audio"
-  },
-  "dedup": {
-    "enabled": true,
-    "window_seconds": 30,
-    "cache_file": "/tmp/speakup/last_progress.json"
-  },
-  "providers": {
-    "kokoro_cli": {
-      "command": "kokoro",
-      "args": ["-o", "{output}", "-m", "{voice}", "-s", "{speed}", "-t", "{text}"],
-      "voice": "af_heart",
-      "timeout_seconds": 60
-    },
-    "lmstudio": {
-      "base_url": "http://localhost:1234/v1",
-      "model": "local-model",
-      "tts_model": "local-tts-model",
-      "tts_mode": "orpheus_completions",
-      "orpheus_voice": "tara"
-    },
-    "elevenlabs": {
-      "api_key_env": "ELEVENLABS_API_KEY",
-      "voice_id": ""
-    },
-    "openai": {
-      "api_key_env": "OPENAI_API_KEY",
-      "model": "gpt-4o-mini-tts",
-      "summary_model": "gpt-4o-mini",
-      "voice": "alloy"
-    },
-    "command_summary": {
-      "command": "pi",
-      "args": ["-p", "{message}"],
-      "timeout_seconds": 30,
-      "trim_output": true
-    }
+    "speed": 1.0
   }
 }
 ```
 
-LM Studio TTS uses Orpheus mode only: `providers.lmstudio.tts_mode = "orpheus_completions"`.
-It uses `/v1/completions` token streaming and decodes audio locally.
-Install Orpheus extras with `uv sync --group orpheus` (installs `snac`, `torch`, `numpy`).
+If you do not pass `--config`, speakup uses the default config path when present and falls back to built-in defaults.
+The default config path is `~/.config/speakup/config.jsonc`.
 
+## Integrations
 
-
-## Pi extension install
-
-The Pi integration uses a simple TypeScript extension that calls `speakup-pi`.
-
-### Install via `pi install` (recommended)
+### Pi
 
 ```bash
 pi install https://github.com/piotrgredowski/speakup
 ```
 
-This works because the repo is a Pi package (`package.json` + `pi.extensions`).
 After install, run `/reload` in Pi.
 
-### Configuration
+For Pi integration details, see `plugins/pi` and the package metadata in `package.json`.
 
-Copy and edit the example config:
+### Droid plugin
 
-```bash
-mkdir -p ~/.config/speakup
-cp plugins/pi/pi-extension.example.json ~/.config/speakup/pi-extension.json
-```
+The Droid plugin adds spoken notifications for Droid lifecycle events.
 
-### Runtime control in Pi
+See [plugins/speakup-factory-plugin/README.md](plugins/speakup-factory-plugin/README.md) for install, config, and usage.
 
-Use command:
-
-```text
-/speakup on
-/speakup off
-/speakup status
-```
-
-## Notes
-
-- Lightweight audio format default is `mp3` for remote providers.
-- macOS `say` currently writes `aiff`.
-- Progress dedup skips repeated progress messages in a time window.
-
-## Releases
-
-### Installation
-
-Install from PyPI:
+## Common commands
 
 ```bash
-pip install speakup
+speakup self-test
+speakup init-config
+speakup show-config
+speakup show-config-path
 ```
 
-Or install a specific version:
+## More docs
 
-```bash
-pip install speakup==1.0.0
-```
-
-### Testing Pre-releases
-
-Test packages from TestPyPI before official releases:
-
-```bash
-pip install --index-url https://test.pypi.org/simple/ speakup
-```
-
-### Release Process
-
-This project uses automated releases with TestPyPI testing:
-
-1. **Create Release**: Run `./scripts/create_release.sh` or use GitHub workflow
-2. **Test**: Package is automatically published to TestPyPI
-3. **Promote**: Manually trigger PyPI publish workflow after testing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed release instructions.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and release process
+- [plugins/speakup-factory-plugin/README.md](plugins/speakup-factory-plugin/README.md) — Droid plugin
+- [docs/speakup-spec.md](docs/speakup-spec.md) — project spec
+- [CHANGELOG.md](CHANGELOG.md) — version history

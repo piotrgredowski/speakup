@@ -111,7 +111,7 @@ if command -v gh &> /dev/null; then
     echo
     print_info "Next steps:"
     echo "  1. Wait for the TestPyPI publish workflow to complete"
-    echo "  2. Test the package: pip install --index-url https://test.pypi.org/simple/ speakup==$NEW_VERSION"
+    echo "  2. Test the package: uv tool install --index https://test.pypi.org/simple/ speakup==$NEW_VERSION"
     echo "  3. If tests pass, trigger the PyPI publish workflow manually"
 else
     print_warning "GitHub CLI not found. Manual steps required:"

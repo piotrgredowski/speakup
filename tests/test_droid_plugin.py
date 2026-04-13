@@ -1,6 +1,17 @@
 """Tests for Droid plugin."""
+import importlib.util
 import json
 from pathlib import Path
+
+
+def load_hook_module():
+    plugin_dir = Path(__file__).parent.parent / "plugins" / "speakup-factory-plugin"
+    hook_path = plugin_dir / "hooks" / "speakup-hook.py"
+    spec = importlib.util.spec_from_file_location("speakup_droid_hook", hook_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_plugin_structure():
@@ -73,3 +84,27 @@ def test_readme_exists():
     with open(readme_path) as f:
         content = f.read()
         assert "Speakup Droid Plugin" in content
+
+
+def test_hook_prefers_jsonc_config(tmp_path, monkeypatch):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+
+    cfg_dir = tmp_path / ".config" / "speakup"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.jsonc").write_text('{\n  // comment\n  "droid": {"enabled": false}\n}\n')
+
+    assert module.get_config_path() == cfg_dir / "config.jsonc"
+    assert module.load_droid_config()["enabled"] is False
+
+
+def test_hook_falls_back_to_legacy_json_config(tmp_path, monkeypatch):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+
+    cfg_dir = tmp_path / ".config" / "speakup"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.json").write_text(json.dumps({"droid": {"enabled": False}}))
+
+    assert module.get_config_path() == cfg_dir / "config.json"
+    assert module.load_droid_config()["enabled"] is False
