@@ -41,9 +41,7 @@ class ElevenLabsTTSAdapter(TTSAdapter):
         api_key = os.environ.get(self.api_key_env)
         if not api_key:
             raise AdapterError(f"Missing ElevenLabs API key in env: {self.api_key_env}")
-        if not self.voice_id:
-            raise AdapterError("ElevenLabs voice_id is not configured")
-
+        voice_id = voice
         payload = {
             "text": text,
             "model_id": self.model,
@@ -54,7 +52,7 @@ class ElevenLabsTTSAdapter(TTSAdapter):
             },
         }
         req = urllib.request.Request(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}",
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "xi-api-key": api_key,

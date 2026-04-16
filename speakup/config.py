@@ -139,8 +139,6 @@ class TTSConfig:
         default_factory=lambda: ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
     )
     voice: str = "default"
-    title_voice: str | None = None
-    message_voice: str | None = None
     speed: float = 1.0
     play_audio: bool = True
     audio_format: Literal["mp3", "wav", "aiff"] = "wav"

@@ -378,7 +378,6 @@ class NotifyService:
         provider_cfg = self.config.get("providers", provider, default={})
         return (
             _clean_voice(provider_cfg.get(f"{role}_voice"))
-            or _clean_voice(self.config.get("tts", f"{role}_voice", default=None))
             or _clean_voice(provider_cfg.get("voice"))
             or _clean_voice(self.config.get("tts", "voice", default="default"))
             or "default"

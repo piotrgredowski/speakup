@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Literal, Union
 
 import pytest
 
@@ -454,6 +453,22 @@ class TestAppConfigIntegration:
         # other sections get defaults
         assert result.privacy.mode == "prefer_local"
 
+    def test_elevenlabs_split_voices_parse(self):
+        from speakup.config import AppConfig
+        raw = {
+            "providers": {
+                "elevenlabs": {
+                    "voice_id": "fallback",
+                    "title_voice": "title-id",
+                    "message_voice": "message-id",
+                }
+            }
+        }
+        result = from_dict(AppConfig, raw)
+        assert result.providers.elevenlabs.voice_id == "fallback"
+        assert result.providers.elevenlabs.title_voice == "title-id"
+        assert result.providers.elevenlabs.message_voice == "message-id"
+
     def test_dedup_window_seconds_rejects_zero(self):
         """window_seconds uses Annotated[int, Gt(0)], so 0 should be rejected."""
         from speakup.config import default_config, AppConfig
@@ -485,8 +500,6 @@ class TestAnnotatedConstraints:
     """Tests for Annotated[type, Gt/Ge] constraint metadata."""
 
     def test_gt_accepts_value_above_bound(self):
-        from typing import Annotated
-
         @dataclass
         class PositiveOnly:
             count: Annotated[int, Gt(0)] = 1
@@ -495,8 +508,6 @@ class TestAnnotatedConstraints:
         assert result.count == 5
 
     def test_gt_rejects_value_at_bound(self):
-        from typing import Annotated
-
         @dataclass
         class PositiveOnly:
             count: Annotated[int, Gt(0)] = 1
@@ -505,8 +516,6 @@ class TestAnnotatedConstraints:
             from_dict(PositiveOnly, {"count": 0})
 
     def test_gt_rejects_value_below_bound(self):
-        from typing import Annotated
-
         @dataclass
         class PositiveOnly:
             count: Annotated[int, Gt(0)] = 1
@@ -515,8 +524,6 @@ class TestAnnotatedConstraints:
             from_dict(PositiveOnly, {"count": -3})
 
     def test_gt_still_validates_base_type(self):
-        from typing import Annotated
-
         @dataclass
         class PositiveOnly:
             count: Annotated[int, Gt(0)] = 1
@@ -525,8 +532,6 @@ class TestAnnotatedConstraints:
             from_dict(PositiveOnly, {"count": "five"})
 
     def test_gt_uses_default_when_missing(self):
-        from typing import Annotated
-
         @dataclass
         class PositiveOnly:
             count: Annotated[int, Gt(0)] = 10
@@ -535,8 +540,6 @@ class TestAnnotatedConstraints:
         assert result.count == 10
 
     def test_gt_works_with_float(self):
-        from typing import Annotated
-
         @dataclass
         class Threshold:
             value: Annotated[float, Gt(0.0)] = 1.0

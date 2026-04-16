@@ -222,8 +222,6 @@ def test_notify_service_given_session_name_then_plays_title_and_message_with_spl
 
     config_data = default_config()
     config_data["tts"]["provider_order"] = ["fake"]
-    config_data["tts"]["title_voice"] = "global-title"
-    config_data["tts"]["message_voice"] = "global-message"
     config_data["event_sounds"]["enabled"] = False
     config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
     config = Config(config_data)
@@ -257,9 +255,8 @@ def test_notify_service_given_missing_message_voice_then_falls_back_to_default_v
     config_data = default_config()
     config_data["tts"]["provider_order"] = ["fake"]
     config_data["tts"]["voice"] = "default-voice"
-    config_data["tts"]["title_voice"] = "title-voice"
     config_data["event_sounds"]["enabled"] = False
-    config_data["providers"]["fake"] = {}
+    config_data["providers"]["fake"] = {"title_voice": "title-voice"}
     config = Config(config_data)
 
     registry = AdapterRegistry()
@@ -289,8 +286,6 @@ def test_notify_service_given_first_provider_failure_then_uses_next_provider_spe
     config_data = default_config()
     config_data["tts"]["provider_order"] = ["broken", "fake"]
     config_data["tts"]["voice"] = "global-default"
-    config_data["tts"]["title_voice"] = "global-title"
-    config_data["tts"]["message_voice"] = "global-message"
     config_data["event_sounds"]["enabled"] = False
     config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
     config = Config(config_data)
@@ -315,6 +310,40 @@ def test_notify_service_given_first_provider_failure_then_uses_next_provider_spe
     assert result.status == "ok"
     assert result.backend == "fake"
     assert fake_tts.calls == [("Nightly Run", "provider-title"), ("Build failed", "provider-message")]
+
+
+def test_notify_service_given_elevenlabs_split_voices_then_uses_role_specific_voices(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["elevenlabs"]
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["elevenlabs"] = {
+        "voice_id": "fallback-voice",
+        "title_voice": "title-voice-id",
+        "message_voice": "message-voice-id",
+    }
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("elevenlabs", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="Nightly Run",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert fake_tts.calls == [("Nightly Run", "title-voice-id"), ("Build failed", "message-voice-id")]
 
 
 def test_notify_service_given_message_synthesis_failure_then_preserves_title_audio(tmp_path: Path) -> None:

@@ -36,10 +36,14 @@
     "fail_fast": false
   },
   "tts": {
-    "provider_order": ["omlx", "macos", "lmstudio", "elevenlabs", "openai"],
+    "provider_order": [
+      "omlx",
+      "macos",
+      "lmstudio",
+      "elevenlabs",
+      "openai"
+    ],
     "voice": "default",
-    "title_voice": null,
-    "message_voice": null,
     "speed": 1.0,
     "play_audio": true,
     "audio_format": "wav",
@@ -54,7 +58,9 @@
     "enabled": true,
     "level": "INFO",
     "format": "text",
-    "destination": ["stderr"],
+    "destination": [
+      "stderr"
+    ],
     "file_path": "~/Library/Logs/speakup/speakup.log",
     "file_path_color": "~/Library/Logs/speakup/speakup.color.log",
     "rotate_max_bytes": 1048576,
@@ -117,7 +123,10 @@
     },
     "command_summary": {
       "command": "pi",
-      "args": ["-p", "{message}"],
+      "args": [
+        "-p",
+        "{message}"
+      ],
       "timeout_seconds": 30,
       "trim_output": true
     }
