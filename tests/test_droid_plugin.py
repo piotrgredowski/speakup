@@ -168,3 +168,56 @@ def test_extract_message_from_transcript_supports_message_envelope(tmp_path):
     result = module.extract_message_from_transcript(str(transcript))
 
     assert result == "# Hi\n\nDoing well."
+
+
+def test_extract_session_name_prefers_session_title_over_title():
+    module = load_hook_module()
+
+    payload = {
+        "title": "New Session",
+        "sessionTitle": "Code Changes Review Findings",
+        "session": {"name": "Fallback Name"},
+        "metadata": {"sessionTitle": "Metadata Title"},
+        "session_id": "abc12345",
+    }
+
+    assert module.extract_session_name(payload) == "Code Changes Review Findings"
+
+
+def test_extract_session_name_reads_nested_session_title():
+    module = load_hook_module()
+
+    payload = {
+        "session": {
+            "title": "New Session",
+            "sessionTitle": "Investigate Droid Speakup Plugin Failure",
+        },
+        "session_id": "abc12345",
+    }
+
+    assert module.extract_session_name(payload) == "Investigate Droid Speakup Plugin Failure"
+
+
+def test_extract_session_name_reads_transcript_session_title(tmp_path):
+    module = load_hook_module()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        '{"type":"session_start","title":"New Session","sessionTitle":"Investigate Droid Speakup Plugin Failure"}' + "\n"
+    )
+
+    payload = {
+        "transcript_path": str(transcript),
+        "session_id": "6b598d4b-8103-41b5-befb-2caad634760b",
+    }
+
+    assert module.extract_session_name(payload) == "Investigate Droid Speakup Plugin Failure"
+
+
+def test_extract_session_name_humanizes_session_id_fallback():
+    module = load_hook_module()
+
+    payload = {
+        "session_id": "6b598d4b-8103-41b5-befb-2caad634760b",
+    }
+
+    assert module.extract_session_name(payload) == "session 6b598d4b"

@@ -72,6 +72,52 @@ def test_pi_wrapper_given_no_session_name_then_falls_back_to_conversation_id(bas
     assert output["summary"] == "conv-123: Need your sign-off"
 
 
+def test_pi_wrapper_given_session_title_then_prefers_it_over_session_id(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    payload = {
+        "message": "Need your sign-off",
+        "sessionTitle": "Better Session Name",
+        "conversationId": "conv-123",
+        "event": "needs_input",
+        "agent": "pi",
+    }
+    result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
+
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["summary"] == "Better Session Name: Need your sign-off"
+
+
+def test_pi_wrapper_given_both_title_variants_then_prefers_session_title(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    payload = {
+        "message": "Need your sign-off",
+        "title": "New Session",
+        "sessionTitle": "Code Changes Review Findings",
+        "conversationId": "conv-123",
+        "event": "needs_input",
+        "agent": "pi",
+    }
+    result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
+
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["summary"] == "Code Changes Review Findings: Need your sign-off"
+
+
+def test_pi_wrapper_given_explicit_empty_session_name_then_does_not_fall_back_to_conversation_id(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    payload = {
+        "message": "Need your sign-off",
+        "sessionName": "",
+        "conversationId": "conv-123",
+        "event": "needs_input",
+        "agent": "pi",
+    }
+    result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
+
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["summary"] == "Need your sign-off"
+
+
 def test_pi_wrapper_given_precomputed_summary_then_uses_it(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     payload = {
         "message": "Very long content that normally would be summarized differently",

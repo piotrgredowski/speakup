@@ -283,6 +283,77 @@ def extract_message(input_data: dict, droid_event: str) -> str | None:
     return None
 
 
+def _extract_named_value(source: dict | None, keys: tuple[str, ...]) -> tuple[bool, str | None]:
+    if not isinstance(source, dict):
+        return False, None
+
+    for key in keys:
+        if key in source:
+            value = source.get(key)
+            if isinstance(value, str):
+                return True, value.strip()
+            return True, value
+
+    return False, None
+
+
+def _humanize_session_id(session_id: str) -> str:
+    value = session_id.strip()
+    if not value:
+        return ""
+    short = value.split("-", 1)[0]
+    return f"session {short}"
+
+
+def extract_session_name(input_data: dict) -> str | None:
+    """Extract a readable session name from Droid hook payload."""
+    found, value = _extract_named_value(
+        input_data,
+        ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
+    )
+    if found:
+        return value
+
+    found, value = _extract_named_value(
+        input_data.get("session"),
+        ("sessionTitle", "title", "name", "session_title", "session_name", "sessionName"),
+    )
+    if found:
+        return value
+
+    found, value = _extract_named_value(
+        input_data.get("metadata"),
+        ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
+    )
+    if found:
+        return value
+
+    transcript_path = input_data.get("transcript_path")
+    if isinstance(transcript_path, str) and transcript_path.strip():
+        transcript = Path(transcript_path)
+        if transcript.exists():
+            try:
+                with transcript.open() as handle:
+                    first_line = handle.readline().strip()
+                if first_line:
+                    first_entry = json.loads(first_line)
+                    if isinstance(first_entry, dict) and first_entry.get("type") == "session_start":
+                        found, value = _extract_named_value(
+                            first_entry,
+                            ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
+                        )
+                        if found and value and value != "New Session":
+                            return value
+            except (IOError, json.JSONDecodeError):
+                logger.debug("Failed to derive session name from transcript", exc_info=True)
+
+    session_id = input_data.get("session_id")
+    if isinstance(session_id, str) and session_id.strip():
+        return _humanize_session_id(session_id)
+
+    return None
+
+
 def run_speakup(message: str, event: str, session_name: str | None = None):
     """Run speakup CLI with the extracted message.
 
@@ -370,8 +441,7 @@ def main():
     speakup_event = map_event_to_speakup(droid_event)
 
     # Get session name (optional)
-    session_id = input_data.get("session_id", "")
-    session_name = f"session {session_id[:8]}" if session_id else None
+    session_name = extract_session_name(input_data)
 
     # Run speakup
     run_speakup(message, speakup_event, session_name)

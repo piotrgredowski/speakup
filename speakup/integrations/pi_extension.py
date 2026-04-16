@@ -12,7 +12,12 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
         event = MessageEvent.FINAL
 
     conversation_id = payload.get("conversationId")
-    session_name = payload.get("session-name") or payload.get("sessionName") or conversation_id
+    session_name = conversation_id
+    for key in ("sessionTitle", "session_title", "session-name", "sessionName", "title"):
+        if key in payload:
+            value = payload.get(key)
+            session_name = value.strip() if isinstance(value, str) else value
+            break
 
     return NotifyRequest(
         message=message,
