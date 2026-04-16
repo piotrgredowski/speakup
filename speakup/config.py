@@ -139,6 +139,8 @@ class TTSConfig:
         default_factory=lambda: ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
     )
     voice: str = "default"
+    title_voice: str | None = None
+    message_voice: str | None = None
     speed: float = 1.0
     play_audio: bool = True
     audio_format: Literal["mp3", "wav", "aiff"] = "wav"
@@ -185,12 +187,16 @@ class LMStudioConfig:
     base_url: str = "http://localhost:1234/v1"
     model: str = "local-model"
     tts_model: str = "local-tts-model"
+    title_voice: str | None = None
+    message_voice: str | None = None
 
 
 @dataclass
 class ElevenLabsConfig:
     api_key_env: str = "ELEVENLABS_API_KEY"
     voice_id: str = ""
+    title_voice: str | None = None
+    message_voice: str | None = None
 
 
 @dataclass
@@ -199,6 +205,8 @@ class OpenAIConfig:
     model: str = "gpt-4o-mini-tts"
     summary_model: str = "gpt-4o-mini"
     voice: str = "alloy"
+    title_voice: str | None = None
+    message_voice: str | None = None
 
 
 @dataclass
@@ -213,6 +221,8 @@ class GeminiConfig:
     api_key_env: str = "GOOGLE_API_KEY"
     model: str = "gemini-2.5-flash-preview-tts"
     voice: str = "Kore"
+    title_voice: str | None = None
+    message_voice: str | None = None
 
 
 @dataclass
@@ -221,6 +231,8 @@ class OMLXConfig:
     api_key_env: str = "OMLX_API_KEY"
     model: str = "Kokoro-82M-bf16"
     voice: str = "af_heart"
+    title_voice: str | None = None
+    message_voice: str | None = None
     timeout: float = 60.0
 
 

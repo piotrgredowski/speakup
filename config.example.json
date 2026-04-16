@@ -38,6 +38,8 @@
   "tts": {
     "provider_order": ["omlx", "macos", "lmstudio", "elevenlabs", "openai"],
     "voice": "default",
+    "title_voice": null,
+    "message_voice": null,
     "speed": 1.0,
     "play_audio": true,
     "audio_format": "wav",
@@ -74,17 +76,23 @@
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",
-      "tts_model": "local-tts-model"
+      "tts_model": "local-tts-model",
+      "title_voice": null,
+      "message_voice": null
     },
     "elevenlabs": {
       "api_key_env": "ELEVENLABS_API_KEY",
-      "voice_id": ""
+      "voice_id": "",
+      "title_voice": null,
+      "message_voice": null
     },
     "openai": {
       "api_key_env": "OPENAI_API_KEY",
       "model": "gpt-4o-mini-tts",
       "summary_model": "gpt-4o-mini",
-      "voice": "alloy"
+      "voice": "alloy",
+      "title_voice": null,
+      "message_voice": null
     },
     "cerebras": {
       "api_key_env": "CEREBRAS_API_KEY",
@@ -94,13 +102,17 @@
     "gemini": {
       "api_key_env": "GOOGLE_API_KEY",
       "model": "gemini-2.5-flash-preview-tts",
-      "voice": "Kore"
+      "voice": "Kore",
+      "title_voice": null,
+      "message_voice": null
     },
     "omlx": {
       "base_url": "http://127.0.0.1:8000/v1",
       "api_key_env": "OMLX_API_KEY",
       "model": "Kokoro-82M-bf16",
       "voice": "af_heart",
+      "title_voice": null,
+      "message_voice": null,
       "timeout": 60.0
     },
     "command_summary": {

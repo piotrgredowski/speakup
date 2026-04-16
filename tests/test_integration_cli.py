@@ -124,6 +124,7 @@ def test_cli_given_event_sound_mapping_then_plays_sound_and_tts(tmp_path: Path, 
 
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
+    assert payload["played"] is True
 
     play_log = Path(env_with_fake_audio["PLAY_LOG"])
     lines = [ln.strip() for ln in play_log.read_text().splitlines() if ln.strip()]

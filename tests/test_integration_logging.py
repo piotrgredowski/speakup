@@ -28,6 +28,7 @@ def test_cli_given_debug_logging_then_emits_service_lifecycle_logs(base_config, 
     assert "notify_received" in stderr
     assert ("summarizer_selected" in stderr) or ("summarization_skipped_short_message" in stderr)
     assert "tts_selected" in stderr
+    assert "voice=default" in stderr
     assert "notify_completed" in stderr
 
 

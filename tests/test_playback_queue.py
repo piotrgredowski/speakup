@@ -63,13 +63,39 @@ class _FailOnPathPlayback(PlaybackAdapter):
 class _FakeTTS(TTSAdapter):
     name = "fake"
 
-    def __init__(self, audio_path: Path) -> None:
-        self.audio_path = audio_path
+    def __init__(self, audio_paths: list[Path]) -> None:
+        self.audio_paths = audio_paths
+        self.calls: list[tuple[str, str]] = []
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
-        self.audio_path.parent.mkdir(parents=True, exist_ok=True)
-        self.audio_path.write_text(text)
-        return AudioResult(kind="file", value=str(self.audio_path), provider=self.name)
+        audio_path = self.audio_paths[len(self.calls)]
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_text(text)
+        self.calls.append((text, voice))
+        return AudioResult(kind="file", value=str(audio_path), provider=self.name)
+
+
+class _FailingTTS(TTSAdapter):
+    name = "broken"
+
+    def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
+        raise AdapterError("broken")
+
+
+class _TitleOnlyTTS(TTSAdapter):
+    name = "title_only"
+
+    def __init__(self, title_audio: Path) -> None:
+        self.title_audio = title_audio
+        self.calls: list[tuple[str, str]] = []
+
+    def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
+        self.calls.append((text, voice))
+        if len(self.calls) > 1:
+            raise AdapterError("message failed")
+        self.title_audio.parent.mkdir(parents=True, exist_ok=True)
+        self.title_audio.write_text(text)
+        return AudioResult(kind="file", value=str(self.title_audio), provider=self.name)
 
 
 def test_sqlite_queue_given_busy_worker_then_enqueue_returns_and_owner_drains(tmp_path: Path) -> None:
@@ -174,7 +200,7 @@ def test_notify_service_given_event_sound_then_plays_cue_and_speech_together(tmp
     registry = AdapterRegistry()
     playback = _RecordingPlayback()
     registry.set_playback(playback)
-    registry.register_tts("fake", lambda: _FakeTTS(speech))
+    registry.register_tts("fake", lambda: _FakeTTS([speech]))
 
     service = NotifyService(config, registry=registry)
     result = service.notify(
@@ -188,3 +214,134 @@ def test_notify_service_given_event_sound_then_plays_cue_and_speech_together(tmp
     assert result.status == "ok"
     assert result.played is True
     assert playback.groups == [[beep, speech]]
+
+
+def test_notify_service_given_session_name_then_plays_title_and_message_with_split_voices(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["tts"]["title_voice"] = "global-title"
+    config_data["tts"]["message_voice"] = "global-message"
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="Nightly Run",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.summary == "Nightly Run: Build failed"
+    assert playback.groups == [[title_audio, message_audio]]
+    assert fake_tts.calls == [("Nightly Run", "provider-title"), ("Build failed", "provider-message")]
+
+
+def test_notify_service_given_missing_message_voice_then_falls_back_to_default_voice(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["tts"]["voice"] = "default-voice"
+    config_data["tts"]["title_voice"] = "title-voice"
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["fake"] = {}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Ship it",
+            event=MessageEvent.FINAL,
+            session_name="Release 42",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert fake_tts.calls == [("Release 42", "title-voice"), ("Ship it", "default-voice")]
+
+
+def test_notify_service_given_first_provider_failure_then_uses_next_provider_specific_voices(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["broken", "fake"]
+    config_data["tts"]["voice"] = "global-default"
+    config_data["tts"]["title_voice"] = "global-title"
+    config_data["tts"]["message_voice"] = "global-message"
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("broken", lambda: _FailingTTS())
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="Nightly Run",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.backend == "fake"
+    assert fake_tts.calls == [("Nightly Run", "provider-title"), ("Build failed", "provider-message")]
+
+
+def test_notify_service_given_message_synthesis_failure_then_preserves_title_audio(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["title_only"]
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    title_only_tts = _TitleOnlyTTS(title_audio)
+    registry.set_playback(playback)
+    registry.register_tts("title_only", lambda: title_only_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="Nightly Run",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.backend == "title_only"
+    assert result.played is True
+    assert playback.groups == [[title_audio]]

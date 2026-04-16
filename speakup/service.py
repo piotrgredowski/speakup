@@ -28,6 +28,13 @@ from .tts.macos import MacOSTTSAdapter
 from .tts.openai import OpenAITTSAdapter
 
 
+def _clean_voice(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    voice = value.strip()
+    return voice or None
+
+
 def build_registry_from_config(config: Config) -> AdapterRegistry:
     """Build an adapter registry from configuration.
 
@@ -212,8 +219,7 @@ class NotifyService:
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
-        if request.session_name:
-            summary_text = f"{request.session_name}: {summary_text}" if summary_text else str(request.session_name)
+        spoken_summary = f"{request.session_name}: {summary_text}" if request.session_name and summary_text else summary_text or str(request.session_name or "")
 
         self.logger.debug(
             "summary_and_input",
@@ -221,46 +227,51 @@ class NotifyService:
                 "request_id": request_id,
                 "event": event.value,
                 "message_text": request.message,
-                "summary_text": summary_text,
+                "summary_text": spoken_summary,
                 "message_length": len(request.message),
-                "summary_length": len(summary_text),
+                "summary_length": len(spoken_summary),
             },
         )
 
         with self._timed("tts", request_id):
-            tts_result, backend = self._synthesize(summary_text, request_id=request_id)
-        if tts_result is None:
+            tts_results, backend = self._synthesize_segments(
+                session_name=request.session_name,
+                summary_text=summary_text,
+                request_id=request_id,
+            )
+        if not tts_results:
             self.logger.warning("tts_failed_all_backends", extra={"request_id": request_id})
             return NotifyResult(
                 status="degraded_text_only",
-                summary=summary_text,
+                summary=spoken_summary,
                 state=event,
                 backend="none",
                 played=False,
                 error="No TTS backend succeeded",
             )
 
-        audio_path = Path(str(tts_result.value)) if tts_result.kind == "file" and tts_result.value else None
+        audio_paths = [Path(str(result.value)) for result in tts_results if result.kind == "file" and result.value]
+        audio_path = audio_paths[-1] if audio_paths else None
         played = False
         playback_error: str | None = None
         play_audio = bool(self.config.get("tts", "play_audio", default=True))
-        if audio_path and play_audio:
+        if audio_paths and play_audio:
             try:
-                audio_paths: list[Path] = []
+                playback_paths: list[Path] = []
                 event_sound_path = self._event_sound_path(event, request_id=request_id)
                 if event_sound_path is not None:
-                    audio_paths.append(event_sound_path)
-                audio_paths.append(audio_path)
+                    playback_paths.append(event_sound_path)
+                playback_paths.extend(audio_paths)
 
                 self.logger.info(
                     "playback_start",
                     extra={
                         "request_id": request_id,
                         "audio_path": str(audio_path),
-                        "queue_length": len(audio_paths),
+                        "queue_length": len(playback_paths),
                     },
                 )
-                self.registry.get_playback().play_files(audio_paths)
+                self.registry.get_playback().play_files(playback_paths)
                 played = True
                 self.logger.info("playback_success", extra={"request_id": request_id, "audio_path": str(audio_path)})
             except AdapterError as exc:
@@ -279,7 +290,7 @@ class NotifyService:
 
         result = NotifyResult(
             status=status,
-            summary=summary_text,
+            summary=spoken_summary,
             state=event,
             backend=backend,
             played=played,
@@ -363,17 +374,29 @@ class NotifyService:
         self.logger.info("summarizer_fallback_rule_based", extra={"request_id": request_id})
         return self.registry.get_summarizer("rule_based").summarize(message, event, max_chars)
 
-    def _synthesize(self, text: str, *, request_id: str):
+    def _resolve_voice(self, provider: str, role: str) -> str:
+        provider_cfg = self.config.get("providers", provider, default={})
+        return (
+            _clean_voice(provider_cfg.get(f"{role}_voice"))
+            or _clean_voice(self.config.get("tts", f"{role}_voice", default=None))
+            or _clean_voice(provider_cfg.get("voice"))
+            or _clean_voice(self.config.get("tts", "voice", default="default"))
+            or "default"
+        )
+
+    def _synthesize(self, text: str, *, request_id: str, voice: str | None = None, provider_override: str | None = None):
         provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
-        voice = self.config.get("tts", "voice", default="default")
+        resolved_voice = voice or self.config.get("tts", "voice", default="default")
         speed = float(self.config.get("tts", "speed", default=1.0))
         audio_format = self.config.get("tts", "audio_format", default="wav")
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
-        for provider in provider_order:
+        providers = [provider_override] if provider_override else provider_order
+
+        for provider in providers:
             # Skip remote providers based on privacy settings
             if provider in {"elevenlabs", "openai", "gemini"}:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
@@ -386,9 +409,9 @@ class NotifyService:
 
             try:
                 adapter = self.registry.get_tts(provider)
-                self.logger.debug("tts_try", extra={"request_id": request_id, "provider": provider})
-                audio = adapter.synthesize(text, output_dir, voice=voice, speed=speed, audio_format=audio_format)
-                self.logger.info("tts_selected", extra={"request_id": request_id, "provider": provider, "audio_kind": audio.kind})
+                self.logger.debug("tts_try", extra={"request_id": request_id, "provider": provider, "voice": resolved_voice})
+                audio = adapter.synthesize(text, output_dir, voice=resolved_voice, speed=speed, audio_format=audio_format)
+                self.logger.info("tts_selected", extra={"request_id": request_id, "provider": provider, "voice": resolved_voice, "audio_kind": audio.kind})
                 return audio, provider
             except AdapterError as exc:
                 self.logger.warning("tts_failed", extra={"request_id": request_id, "provider": provider, "error": str(exc)})
@@ -397,6 +420,41 @@ class NotifyService:
                 continue
 
         return None, "none"
+
+    def _synthesize_segments(self, *, session_name: str | None, summary_text: str, request_id: str):
+        provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
+        partial_results = []
+        partial_backend = "none"
+        for provider in provider_order:
+            results = []
+
+            if session_name:
+                title_audio, _ = self._synthesize(
+                    str(session_name),
+                    request_id=request_id,
+                    voice=self._resolve_voice(provider, "title"),
+                    provider_override=provider,
+                )
+                if title_audio is None:
+                    continue
+                results.append(title_audio)
+                partial_results = list(results)
+                partial_backend = provider
+
+            if summary_text:
+                message_audio, _ = self._synthesize(
+                    summary_text,
+                    request_id=request_id,
+                    voice=self._resolve_voice(provider, "message"),
+                    provider_override=provider,
+                )
+                if message_audio is None:
+                    continue
+                results.append(message_audio)
+
+            return results, provider
+
+        return partial_results, partial_backend
 
     def _event_sound_path(self, event: MessageEvent, *, request_id: str) -> Path | None:
         event_key = event.value
