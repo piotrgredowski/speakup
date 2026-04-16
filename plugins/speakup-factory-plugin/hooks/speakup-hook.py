@@ -59,6 +59,22 @@ def setup_logging(config: dict) -> None:
     hook_logger.propagate = False
 
 
+def redact_payload(value):
+    """Redact sensitive payload fields while preserving structure."""
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            lowered = key.lower()
+            if any(token in lowered for token in ("api_key", "apikey", "token", "secret", "password", "authorization")):
+                redacted[key] = "***"
+            else:
+                redacted[key] = redact_payload(item)
+        return redacted
+    if isinstance(value, list):
+        return [redact_payload(item) for item in value]
+    return value
+
+
 def get_config_path():
     """Get speakup config path, preferring JSONC."""
     config_dir = Path.home() / ".config" / "speakup"
@@ -167,6 +183,19 @@ def extract_message_from_transcript(
     Returns:
         Last assistant message text or None if not found
     """
+    def extract_text_content(content) -> str | None:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            return " ".join(text_parts).strip() if text_parts else None
+        return None
+
     path = Path(transcript_path)
     if not path.exists():
         logger.debug(f"Transcript file not found: {transcript_path}")
@@ -192,30 +221,25 @@ def extract_message_from_transcript(
 
             # Check for assistant message with content
             if entry.get("role") == "assistant" and entry.get("content"):
-                content = entry["content"]
-                # Handle both string and list content formats
-                if isinstance(content, str):
-                    logger.debug(f"Found assistant message ({len(content)} chars)")
-                    return content
-                elif isinstance(content, list):
-                    # Extract text from content blocks
-                    text_parts = []
-                    for block in content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            text_parts.append(block.get("text", ""))
-                        elif isinstance(block, str):
-                            text_parts.append(block)
-                    result = " ".join(text_parts).strip() if text_parts else None
+                result = extract_text_content(entry["content"])
+                if result:
+                    logger.debug(f"Found assistant message ({len(result)} chars)")
+                return result
+            elif entry.get("type") == "message" and isinstance(entry.get("message"), dict):
+                msg = entry["message"]
+                if msg.get("role") == "assistant" and msg.get("content"):
+                    result = extract_text_content(msg["content"])
                     if result:
-                        logger.debug(f"Found assistant message from blocks ({len(result)} chars)")
+                        logger.debug(f"Found assistant message in message envelope ({len(result)} chars)")
                     return result
             elif entry.get("type") == "assistant" and entry.get("message"):
                 # Alternative format
                 msg = entry["message"]
                 if isinstance(msg, dict):
-                    content = msg.get("content", "")
-                    logger.debug(f"Found assistant message (alt format, {len(content)} chars)")
-                    return content
+                    result = extract_text_content(msg.get("content", ""))
+                    if result:
+                        logger.debug(f"Found assistant message (alt format, {len(result)} chars)")
+                    return result
                 logger.debug("Found assistant message (alt format, str)")
                 return str(msg)
 
@@ -311,6 +335,7 @@ def main():
     setup_logging(full_config)
 
     logger.info(f"Hook invoked: event={droid_event}")
+    logger.debug(f"Hook payload: {json.dumps(redact_payload(input_data), ensure_ascii=False)}")
 
     # Load droid configuration
     config = load_droid_config()

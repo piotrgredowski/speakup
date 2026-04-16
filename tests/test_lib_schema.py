@@ -399,8 +399,8 @@ class TestAppConfigIntegration:
     def test_invalid_logging_destination(self):
         from speakup.config import default_config, AppConfig
         raw = default_config()
-        raw["logging"]["destination"] = "console"
-        with pytest.raises(SchemaValidationError, match="logging.destination must be one of"):
+        raw["logging"]["destination"] = ["console"]
+        with pytest.raises(SchemaValidationError, match=r"logging.destination\[0\] must be one of"):
             from_dict(AppConfig, raw)
 
     def test_invalid_fallback_fail_fast(self):

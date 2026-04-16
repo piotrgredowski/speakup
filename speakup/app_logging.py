@@ -105,20 +105,23 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
     effective_cfg = dict(cfg)
     if format_override:
         effective_cfg["format"] = format_override
-    destination = cfg.get("destination", "stderr")
+    destinations = cfg.get("destination", ["stderr"])
+    if isinstance(destinations, str):
+        destinations = [destinations]
+    selected = set(destinations)
     handlers: list[logging.Handler] = []
 
-    if destination in {"stderr", "both"}:
+    if "stderr" in selected:
         stderr_handler = logging.StreamHandler(sys.stderr)
         stderr_handler.setFormatter(_make_formatter(effective_cfg, colors=sys.stderr.isatty()))
         handlers.append(stderr_handler)
 
-    if destination == "stdout":
+    if "stdout" in selected:
         stdout_handler = logging.StreamHandler(sys.stdout)
         stdout_handler.setFormatter(_make_formatter(effective_cfg, colors=sys.stdout.isatty()))
         handlers.append(stdout_handler)
 
-    if destination in {"file", "both"} or file_override:
+    if "file" in selected or file_override:
         file_path = file_override or cfg.get("file_path")
         if not file_path:
             file_path = str(get_default_log_file_path())

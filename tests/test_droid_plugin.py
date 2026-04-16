@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import textwrap
 
 
 def load_hook_module():
@@ -108,3 +109,62 @@ def test_hook_falls_back_to_legacy_json_config(tmp_path, monkeypatch):
 
     assert module.get_config_path() == cfg_dir / "config.json"
     assert module.load_droid_config()["enabled"] is False
+
+
+def test_redact_payload_masks_sensitive_fields():
+    module = load_hook_module()
+
+    payload = {
+        "message": "hello",
+        "token": "secret-token",
+        "nested": {
+            "api_key": "secret-key",
+            "session_id": "abc123",
+        },
+        "items": [{"authorization": "Bearer abc"}, "ok"],
+    }
+
+    redacted = module.redact_payload(payload)
+
+    assert redacted["message"] == "hello"
+    assert redacted["token"] == "***"
+    assert redacted["nested"]["api_key"] == "***"
+    assert redacted["nested"]["session_id"] == "abc123"
+    assert redacted["items"][0]["authorization"] == "***"
+
+
+def test_hook_does_not_log_full_config(monkeypatch):
+    module = load_hook_module()
+    logged = []
+
+    monkeypatch.setattr(module, "load_full_config", lambda: {"providers": {"openai": {"api_key": "secret"}}})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": False})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module.logger, "info", lambda message: logged.append(message))
+    monkeypatch.setattr(module.logger, "debug", lambda message: logged.append(message))
+    monkeypatch.setattr(module.json, "load", lambda _: {"hook_event_name": "Notification", "message": "hello"})
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert all("Full config:" not in message for message in logged)
+    assert all("secret" not in message for message in logged)
+
+
+def test_extract_message_from_transcript_supports_message_envelope(tmp_path):
+    module = load_hook_module()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        textwrap.dedent(
+            """
+            {"type":"message","id":"1","message":{"role":"assistant","content":[{"type":"text","text":"# Hi\\n\\nDoing well."}]}}
+            """
+        ).strip()
+        + "\n"
+    )
+
+    result = module.extract_message_from_transcript(str(transcript))
+
+    assert result == "# Hi\n\nDoing well."

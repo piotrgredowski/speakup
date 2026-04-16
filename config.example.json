@@ -52,7 +52,7 @@
     "enabled": true,
     "level": "INFO",
     "format": "text",
-    "destination": "stderr",
+    "destination": ["stderr"],
     "file_path": "~/Library/Logs/speakup/speakup.log",
     "file_path_color": "~/Library/Logs/speakup/speakup.color.log",
     "rotate_max_bytes": 1048576,

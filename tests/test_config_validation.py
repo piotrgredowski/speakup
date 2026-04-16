@@ -44,7 +44,7 @@ def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization
         (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files key 'unknown' must be one of"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
-        (lambda c: c.setdefault("logging", {}).update({"destination": "console"}), "logging.destination"),
+        (lambda c: c.setdefault("logging", {}).update({"destination": ["console"]}), "logging.destination[0]"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
         (lambda c: c.setdefault("providers", {}).setdefault("command_summary", {}).update({"args": "-p {message}"}), "providers.command_summary.args"),
     ],

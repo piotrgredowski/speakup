@@ -157,7 +157,7 @@ class LoggingConfig:
     enabled: bool = True
     level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
     format: Literal["text", "json"] = "text"
-    destination: Literal["stderr", "stdout", "file", "both"] = "stderr"
+    destination: list[Literal["stderr", "stdout", "file"]] = field(default_factory=lambda: ["stderr"])
     file_path: str = field(default_factory=lambda: str(get_default_log_file_path()))
     file_path_color: Union[str, None] = None
     rotate_max_bytes: Annotated[int, Gt(0)] = 1_048_576
