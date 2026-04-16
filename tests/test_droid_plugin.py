@@ -221,6 +221,30 @@ def test_extract_session_name_humanizes_session_id_fallback():
     assert module.extract_session_name(payload) == "session 6b598d4b"
 
 
+def test_extract_session_name_ignores_hex_like_title_and_falls_back_to_session_id():
+    module = load_hook_module()
+
+    payload = {
+        "sessionTitle": "6b598d4b810341b5befb2caad634760b",
+        "session_id": "12345678-8103-41b5-befb-2caad634760b",
+    }
+
+    assert module.extract_session_name(payload) == "session 12345678"
+
+
+def test_extract_session_name_ignores_hex_like_transcript_title_and_falls_back_to_session_id(tmp_path):
+    module = load_hook_module()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text('{"type":"session_start","sessionTitle":"deadbeefcafebabe"}\n')
+
+    payload = {
+        "transcript_path": str(transcript),
+        "session_id": "abcdef12-8103-41b5-befb-2caad634760b",
+    }
+
+    assert module.extract_session_name(payload) == "session abcdef12"
+
+
 def test_run_speakup_uses_non_blocking_popen(monkeypatch):
     module = load_hook_module()
     captured = {}

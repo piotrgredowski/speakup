@@ -2,12 +2,15 @@ import json
 import logging
 import os
 import platform
+import re
 import subprocess
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 logger = logging.getLogger("speakup-droid")
+
+_HEX_LIKE_NAME_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
 
 
 def get_default_log_file_path() -> Path:
@@ -305,6 +308,29 @@ def _humanize_session_id(session_id: str) -> str:
     return f"session {short}"
 
 
+def _is_random_hex_like_name(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    stripped = value.strip()
+    if not stripped:
+        return False
+
+    normalized = stripped.replace("-", "").replace("_", "").replace(" ", "")
+    return bool(_HEX_LIKE_NAME_PATTERN.fullmatch(normalized))
+
+
+def _select_session_name(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    stripped = value.strip()
+    if not stripped or stripped == "New Session" or _is_random_hex_like_name(stripped):
+        return None
+
+    return stripped
+
+
 def extract_session_name(input_data: dict) -> str | None:
     """Extract a readable session name from Droid hook payload."""
     found, value = _extract_named_value(
@@ -312,21 +338,27 @@ def extract_session_name(input_data: dict) -> str | None:
         ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
     )
     if found:
-        return value
+        selected = _select_session_name(value)
+        if selected:
+            return selected
 
     found, value = _extract_named_value(
         input_data.get("session"),
         ("sessionTitle", "title", "name", "session_title", "session_name", "sessionName"),
     )
     if found:
-        return value
+        selected = _select_session_name(value)
+        if selected:
+            return selected
 
     found, value = _extract_named_value(
         input_data.get("metadata"),
         ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
     )
     if found:
-        return value
+        selected = _select_session_name(value)
+        if selected:
+            return selected
 
     transcript_path = input_data.get("transcript_path")
     if isinstance(transcript_path, str) and transcript_path.strip():
@@ -342,8 +374,10 @@ def extract_session_name(input_data: dict) -> str | None:
                             first_entry,
                             ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
                         )
-                        if found and value and value != "New Session":
-                            return value
+                        if found:
+                            selected = _select_session_name(value)
+                            if selected:
+                                return selected
             except (IOError, json.JSONDecodeError):
                 logger.debug("Failed to derive session name from transcript", exc_info=True)
 
