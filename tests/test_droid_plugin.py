@@ -221,3 +221,46 @@ def test_extract_session_name_humanizes_session_id_fallback():
     }
 
     assert module.extract_session_name(payload) == "session 6b598d4b"
+
+
+def test_run_speakup_uses_non_blocking_popen(monkeypatch):
+    module = load_hook_module()
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    result = module.run_speakup("hello", "info", "session name")
+
+    assert result is True
+    assert captured["cmd"] == ["speakup", "--message", "hello", "--event", "info", "--session-name", "session name"]
+    assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["start_new_session"] is True
+
+
+def test_run_speakup_returns_false_when_command_missing(monkeypatch):
+    module = load_hook_module()
+
+    def fake_popen(cmd, **kwargs):  # noqa: ARG001
+        raise FileNotFoundError
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    assert module.run_speakup("hello", "info") is False
+
+
+def test_run_speakup_returns_false_on_oserror(monkeypatch):
+    module = load_hook_module()
+
+    def fake_popen(cmd, **kwargs):  # noqa: ARG001
+        raise OSError("boom")
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    assert module.run_speakup("hello", "info") is False

@@ -370,20 +370,23 @@ def run_speakup(message: str, event: str, session_name: str | None = None):
     if session_name:
         cmd.extend(["--session-name", session_name])
 
-    logger.info(f"Running speakup: event={event}, session={session_name}, message_len={len(message)}")
+    logger.info(f"Launching speakup: event={event}, session={session_name}, message_len={len(message)}")
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if result.returncode == 0:
-            logger.info("speakup completed successfully")
-        else:
-            logger.warning(f"speakup exited with code {result.returncode}: {result.stderr}")
-        return result.returncode == 0
-    except subprocess.TimeoutExpired:
-        logger.error("speakup timed out")
-        return False
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        logger.info("speakup launched successfully")
+        return True
     except FileNotFoundError:
         logger.error("speakup command not found")
+        return False
+    except OSError as exc:
+        logger.error(f"Failed to launch speakup: {exc}")
         return False
 
 
