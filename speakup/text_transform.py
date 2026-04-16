@@ -107,6 +107,12 @@ _DECADE_WORDS = {
     9: "nineties",
 }
 
+_COMMIT_REFERENCE_PATTERN = re.compile(
+    r"(?P<prefix>\b(?:commit|sha|rev|revision|hash)\s+)(?P<hash>#?[0-9a-fA-F]{7,40})\b",
+    re.IGNORECASE,
+)
+_HASH_REFERENCE_PATTERN = re.compile(r"(?<!\w)#(?P<hash>[0-9a-fA-F]{7,40})\b")
+
 
 def transform_text_for_reading(text: str) -> str:
     transformed = _replace_file_paths(text)
@@ -114,6 +120,7 @@ def transform_text_for_reading(text: str) -> str:
     if re.fullmatch(r"\d{4}", transformed.strip()):
         return _year_to_words(int(transformed.strip()))
 
+    transformed = _replace_commit_like_hashes(transformed)
     transformed = _replace_math_operators(transformed)
     transformed = _replace_times(transformed)
     transformed = _replace_identifiers(transformed)
@@ -184,6 +191,24 @@ def _replace_math_operators(text: str) -> str:
         lambda match: f" {_MATH_OPERATORS[match.group(1)]} ",
         text,
     )
+
+
+def _replace_commit_like_hashes(text: str) -> str:
+    transformed = _COMMIT_REFERENCE_PATTERN.sub(_commit_reference_replacement, text)
+    return _HASH_REFERENCE_PATTERN.sub(_hash_reference_replacement, transformed)
+
+
+def _commit_reference_replacement(match: re.Match[str]) -> str:
+    return f"{match.group('prefix')}{_verbalize_commit_hash(match.group('hash'))}"
+
+
+def _hash_reference_replacement(match: re.Match[str]) -> str:
+    return _verbalize_commit_hash(match.group("hash"))
+
+
+def _verbalize_commit_hash(value: str) -> str:
+    hash_value = value[1:] if value.startswith("#") else value
+    return " ".join(hash_value[:4])
 
 
 def _replace_times(text: str) -> str:

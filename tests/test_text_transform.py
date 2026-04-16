@@ -36,6 +36,35 @@ def test_transform_text_for_reading_given_time_with_leading_zero_minutes_spells_
 @pytest.mark.parametrize(
     ("source_text", "expected_text"),
     [
+        ("Commit #a1b2c3d", "Commit a one b two"),
+        ("Commit a1b2c3d4", "Commit a one b two"),
+        ("sha deadbeef", "sha d e a d"),
+        ("revision cafebabe", "revision c a f e"),
+        ("Fix shipped in #deadbeef yesterday", "Fix shipped in d e a d yesterday"),
+    ],
+)
+def test_transform_text_for_reading_given_commit_like_hashes_preserves_only_first_four_characters(
+    source_text: str, expected_text: str
+) -> None:
+    assert transform_text_for_reading(source_text) == expected_text
+
+
+@pytest.mark.parametrize(
+    ("source_text", "expected_text"),
+    [
+        ("Version deadbeef is deployed", "Version deadbeef is deployed"),
+        ("Error code cafebabe happened", "Error code cafebabe happened"),
+    ],
+)
+def test_transform_text_for_reading_given_non_commit_hex_strings_leaves_them_unchanged(
+    source_text: str, expected_text: str
+) -> None:
+    assert transform_text_for_reading(source_text) == expected_text
+
+
+@pytest.mark.parametrize(
+    ("source_text", "expected_text"),
+    [
         (
             "/tmp/audio-1.mp3",
             "slash tmp slash audio dash one dot mp three",

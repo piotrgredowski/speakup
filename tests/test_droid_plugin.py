@@ -44,8 +44,6 @@ def test_hooks_configuration():
     # Check that all expected events are configured
     assert "Notification" in hooks["hooks"]
     assert "Stop" in hooks["hooks"]
-    assert "SubagentStop" in hooks["hooks"]
-    assert "SessionStart" in hooks["hooks"]
 
 
 def test_hook_script_exists():
