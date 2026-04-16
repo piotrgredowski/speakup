@@ -35,6 +35,12 @@ def _clean_voice(value: object) -> str | None:
     return voice or None
 
 
+def _provider_default_voice(provider: str, provider_cfg: dict[object, object]) -> str | None:
+    return _clean_voice(provider_cfg.get("voice")) or (
+        _clean_voice(provider_cfg.get("voice_id")) if provider == "elevenlabs" else None
+    )
+
+
 def build_registry_from_config(config: Config) -> AdapterRegistry:
     """Build an adapter registry from configuration.
 
@@ -378,10 +384,34 @@ class NotifyService:
         provider_cfg = self.config.get("providers", provider, default={})
         return (
             _clean_voice(provider_cfg.get(f"{role}_voice"))
-            or _clean_voice(provider_cfg.get("voice"))
+            or _provider_default_voice(provider, provider_cfg)
             or _clean_voice(self.config.get("tts", "voice", default="default"))
             or "default"
         )
+
+    def _should_skip_unconfigured_tts_provider(
+        self,
+        provider: str,
+        resolved_voice: str,
+        *,
+        request_id: str,
+        fail_fast: bool,
+    ) -> bool:
+        if provider != "elevenlabs" or resolved_voice != "default":
+            return False
+
+        provider_cfg = self.config.get("providers", provider, default={})
+        if _provider_default_voice(provider, provider_cfg):
+            return False
+
+        if fail_fast:
+            raise AdapterError("ElevenLabs voice_id is not configured")
+
+        self.logger.info(
+            "tts_skipped_unconfigured",
+            extra={"request_id": request_id, "provider": provider, "reason": "missing_voice_id"},
+        )
+        return True
 
     def _synthesize(self, text: str, *, request_id: str, voice: str | None = None, provider_override: str | None = None):
         provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
@@ -404,6 +434,14 @@ class NotifyService:
 
             if not self.registry.has_tts(provider):
                 self.logger.warning("tts_unknown_provider", extra={"request_id": request_id, "provider": provider})
+                continue
+
+            if self._should_skip_unconfigured_tts_provider(
+                provider,
+                resolved_voice,
+                request_id=request_id,
+                fail_fast=fail_fast,
+            ):
                 continue
 
             try:

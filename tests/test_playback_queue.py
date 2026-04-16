@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
 from pathlib import Path
+
+import pytest
 
 from speakup.config import Config, default_config
 from speakup.errors import AdapterError
@@ -344,6 +347,93 @@ def test_notify_service_given_elevenlabs_split_voices_then_uses_role_specific_vo
 
     assert result.status == "ok"
     assert fake_tts.calls == [("Nightly Run", "title-voice-id"), ("Build failed", "message-voice-id")]
+
+
+def test_notify_service_given_elevenlabs_voice_id_without_split_voices_then_uses_provider_default(tmp_path: Path) -> None:
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["elevenlabs"]
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["elevenlabs"] = {"voice_id": "fallback-voice"}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("elevenlabs", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert fake_tts.calls == [("Build failed", "fallback-voice")]
+
+
+def test_notify_service_given_unconfigured_elevenlabs_then_skips_without_warning(tmp_path: Path, caplog) -> None:
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["elevenlabs", "fake"]
+    config_data["tts"]["voice"] = "default"
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["elevenlabs"] = {}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("elevenlabs", lambda: _FailingTTS())
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    with caplog.at_level(logging.WARNING):
+        result = service.notify(
+            NotifyRequest(
+                message="Build failed",
+                event=MessageEvent.ERROR,
+                skip_summarization=True,
+            )
+        )
+
+    assert result.status == "ok"
+    assert result.backend == "fake"
+    assert fake_tts.calls == [("Build failed", "default")]
+    assert not any(record.message == "tts_failed" and getattr(record, "provider", None) == "elevenlabs" for record in caplog.records)
+
+
+def test_notify_service_given_unconfigured_elevenlabs_and_fail_fast_then_raises(tmp_path: Path) -> None:
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["elevenlabs", "fake"]
+    config_data["tts"]["voice"] = "default"
+    config_data["event_sounds"]["enabled"] = False
+    config_data["fallback"]["fail_fast"] = True
+    config_data["providers"]["elevenlabs"] = {}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    registry.set_playback(_RecordingPlayback())
+    registry.register_tts("elevenlabs", lambda: _FailingTTS())
+    registry.register_tts("fake", lambda: _FailingTTS())
+
+    service = NotifyService(config, registry=registry)
+
+    with pytest.raises(AdapterError, match="ElevenLabs voice_id is not configured"):
+        service.notify(
+            NotifyRequest(
+                message="Build failed",
+                event=MessageEvent.ERROR,
+                skip_summarization=True,
+            )
+        )
 
 
 def test_notify_service_given_message_synthesis_failure_then_preserves_title_audio(tmp_path: Path) -> None:

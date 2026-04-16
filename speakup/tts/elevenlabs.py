@@ -41,7 +41,9 @@ class ElevenLabsTTSAdapter(TTSAdapter):
         api_key = os.environ.get(self.api_key_env)
         if not api_key:
             raise AdapterError(f"Missing ElevenLabs API key in env: {self.api_key_env}")
-        voice_id = voice
+        voice_id = self.voice_id if voice == "default" else voice.strip()
+        if not voice_id:
+            raise AdapterError("ElevenLabs voice_id is not configured")
         payload = {
             "text": text,
             "model_id": self.model,
