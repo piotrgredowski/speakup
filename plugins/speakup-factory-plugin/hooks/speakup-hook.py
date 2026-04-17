@@ -18,7 +18,12 @@ from pathlib import Path
 
 import structlog
 
-DEFAULT_REQUEST_ID = "-"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from speakup.app_logging import DEFAULT_REQUEST_ID, make_formatter as shared_make_formatter
+
 LOG_FIELD_ORDER = ("request_id", "timestamp", "level", "logger", "event")
 LEVEL_COLOR_CODES = {
     "debug": "\x1b[2m",
@@ -199,20 +204,22 @@ def setup_logging(config: dict) -> None:
         maxBytes=int(log_cfg.get("rotate_max_bytes", 1_048_576)),
         backupCount=int(log_cfg.get("rotate_backup_count", 3)),
     )
-
-    fmt = log_cfg.get("format", "text")
-    if fmt == "json":
-        formatter = make_formatter(log_cfg, colors=False)
-    else:
-        formatter = make_formatter(log_cfg, colors=False)
-
     handler.addFilter(_RequestIdFilter())
-    handler.setFormatter(formatter)
+    handler.setFormatter(shared_make_formatter(log_cfg, colors=False))
+
+    color_handler = RotatingFileHandler(
+        f"{file_path}.color",
+        maxBytes=int(log_cfg.get("rotate_max_bytes", 1_048_576)),
+        backupCount=int(log_cfg.get("rotate_backup_count", 3)),
+    )
+    color_handler.addFilter(_RequestIdFilter())
+    color_handler.setFormatter(shared_make_formatter(log_cfg, target="color"))
 
     hook_logger = logging.getLogger("speakup-droid")
     hook_logger.setLevel(level)
     hook_logger.handlers.clear()
     hook_logger.addHandler(handler)
+    hook_logger.addHandler(color_handler)
     hook_logger.propagate = False
 
 
@@ -581,6 +588,20 @@ def extract_request_id(input_data: dict) -> str:
     return DEFAULT_REQUEST_ID
 
 
+def build_hook_summary(message: str, droid_event: str, session_name: str | None = None) -> str:
+    """Build a short summary shown in Droid hook output."""
+    event_label = {
+        "Notification": "notification",
+        "Stop": "final",
+        "SubagentStop": "progress",
+        "SessionStart": "info",
+    }.get(droid_event, droid_event.lower() if droid_event else "event")
+
+    if session_name:
+        return f"speakup {event_label} ({session_name}): {message}"
+    return f"speakup {event_label}: {message}"
+
+
 def run_speakup(message: str, event: str, session_name: str | None = None):
     """Run speakup CLI with the extracted message.
 
@@ -680,7 +701,8 @@ def main():
     session_name = extract_session_name(input_data)
 
     # Run speakup
-    run_speakup(message, speakup_event, session_name)
+    if run_speakup(message, speakup_event, session_name):
+        print(build_hook_summary(message, droid_event, session_name))
 
     # Exit cleanly - we don't want to block Droid
     sys.exit(0)

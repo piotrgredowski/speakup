@@ -14,14 +14,6 @@ from .config import get_default_log_file_path
 
 DEFAULT_REQUEST_ID = "-"
 LOG_FIELD_ORDER = ("request_id", "timestamp", "level", "logger", "event")
-LEVEL_COLOR_CODES = {
-    "debug": "\x1b[2m",
-    "info": "\x1b[36m",
-    "warning": "\x1b[33m",
-    "error": "\x1b[31m",
-    "critical": "\x1b[1;31m",
-}
-ANSI_RESET = "\x1b[0m"
 
 _RESERVED_RECORD_KEYS = {
     "name",
@@ -125,26 +117,37 @@ def _render_text_log_line(_: logging.Logger, __: str, event_dict: dict[str, Any]
     )
 
 
-def _render_text_log_line_with_colors(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> str:
-    line = _render_text_log_line(_, __, event_dict)
-    color = LEVEL_COLOR_CODES.get(str(event_dict.get("level", "")).lower())
-    if not color:
-        return line
-    return f"{color}{line}{ANSI_RESET}"
+def _make_json_renderer() -> structlog.processors.JSONRenderer:
+    def _safe_json_dumps(obj: Any, **kwargs: Any) -> str:
+        kwargs.setdefault("default", str)
+        return json.dumps(obj, **kwargs)
+
+    return structlog.processors.JSONRenderer(serializer=_safe_json_dumps)
 
 
-def make_formatter(config: dict[str, Any], *, colors: bool = False) -> logging.Formatter:
-    fmt = config.get("format", "text")
+def _make_console_renderer(*, colors: bool) -> structlog.dev.ConsoleRenderer:
+    return structlog.dev.ConsoleRenderer(colors=colors)
+
+
+def make_formatter(
+    config: dict[str, Any],
+    *,
+    colors: bool = False,
+    target: str = "configured",
+) -> logging.Formatter:
     processors = _build_shared_processors(config)
 
-    if fmt == "json":
-        def _safe_json_dumps(obj: Any, **kwargs: Any) -> str:
-            kwargs.setdefault("default", str)
-            return json.dumps(obj, **kwargs)
-
-        processor = structlog.processors.JSONRenderer(serializer=_safe_json_dumps)
+    fmt = config.get("format", "text")
+    if target == "color":
+        processor = _make_console_renderer(colors=True)
+    elif target == "plain":
+        processor = _render_text_log_line
+    elif fmt == "json":
+        processor = _make_json_renderer()
+    elif colors:
+        processor = _make_console_renderer(colors=True)
     else:
-        processor = _render_text_log_line_with_colors if colors else _render_text_log_line
+        processor = _render_text_log_line
 
     return structlog.stdlib.ProcessorFormatter(
         processor=processor,
@@ -200,7 +203,6 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
         file_handler.setFormatter(make_formatter(effective_cfg, colors=False))
         handlers.append(file_handler)
 
-        # Second file with colors
         color_file_path = cfg.get("file_path_color") or f"{file_path}.color"
         os.makedirs(os.path.dirname(color_file_path), exist_ok=True)
         color_file_handler = RotatingFileHandler(
@@ -208,7 +210,7 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
             maxBytes=int(cfg.get("rotate_max_bytes", 1_048_576)),
             backupCount=int(cfg.get("rotate_backup_count", 3)),
         )
-        color_file_handler.setFormatter(make_formatter(effective_cfg, colors=True))
+        color_file_handler.setFormatter(make_formatter(effective_cfg, target="color"))
         handlers.append(color_file_handler)
 
     if not handlers:

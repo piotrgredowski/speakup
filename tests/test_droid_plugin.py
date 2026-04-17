@@ -1,5 +1,6 @@
 """Tests for Droid plugin."""
 import importlib.util
+import io
 import json
 from pathlib import Path
 import textwrap
@@ -275,6 +276,82 @@ def test_extract_request_id_prefers_top_level_request_id():
     assert module.extract_request_id(payload) == "req-top"
 
 
+def test_build_hook_summary_includes_session_name():
+    module = load_hook_module()
+
+    assert module.build_hook_summary("Done.", "Stop", "Session Name") == "speakup final (Session Name): Done."
+
+
+def test_main_prints_notification_summary_to_stdout(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    captured = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(module.json, "load", lambda _: {"hook_event_name": "Notification", "message": "hello"})
+
+    def fake_run_speakup(message, event, session_name=None):
+        captured["message"] = message
+        captured["event"] = event
+        captured["session_name"] = session_name
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured == {"message": "hello", "event": "needs_input", "session_name": "Session Name"}
+    assert stdout.getvalue().strip() == "speakup notification (Session Name): hello"
+
+
+def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Final summary text"}]}}\n'
+    )
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"stop": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
+    )
+
+    def fake_run_speakup(message, event, session_name=None):
+        assert message == "Final summary text"
+        assert event == "final"
+        assert session_name == "Session Name"
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert stdout.getvalue().strip() == "speakup final (Session Name): Final summary text"
+
+
 def test_hook_logging_writes_request_id_first(tmp_path):
     module = load_hook_module()
 
@@ -298,6 +375,36 @@ def test_hook_logging_writes_request_id_first(tmp_path):
         assert log_text.startswith("request_id=req-123")
         assert "logger=speakup-droid" in log_text
         assert "event=hook_invoked" in log_text
+    finally:
+        for handler in list(module.logger.handlers):
+            handler.close()
+        module.logger.handlers.clear()
+
+
+def test_hook_logging_writes_colored_companion_log(tmp_path):
+    module = load_hook_module()
+
+    module.setup_logging(
+        {
+            "logging": {
+                "enabled": True,
+                "level": "INFO",
+                "format": "json",
+                "file_path": str(tmp_path / "speakup.log"),
+            }
+        }
+    )
+
+    try:
+        module.logger.info("hook_invoked", extra={"request_id": "req-123"})
+        for handler in module.logger.handlers:
+            handler.flush()
+
+        color_log_text = (tmp_path / "droid-hook.log.color").read_text().strip()
+        assert "\x1b[" in color_log_text
+        assert "hook_invoked" in color_log_text
+        assert "req-123" in color_log_text
+        assert not color_log_text.startswith("{")
     finally:
         for handler in list(module.logger.handlers):
             handler.close()

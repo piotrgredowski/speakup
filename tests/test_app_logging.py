@@ -47,6 +47,20 @@ def test_make_formatter_text_adds_ansi_colors_when_enabled():
     output = formatter.format(_make_record(message="hello", extra={"request_id": "req-123"}))
 
     assert "\x1b[" in output
-    assert "request_id=req-123" in output
-    assert "level=info" in output
-    assert output.endswith("\x1b[0m")
+    assert "hello" in output
+    assert "req-123" in output
+    assert "info" in output
+
+
+def test_make_formatter_color_target_ignores_json_format():
+    formatter = make_formatter(
+        {"format": "json", "include_timestamps": False, "include_module": True},
+        target="color",
+    )
+
+    output = formatter.format(_make_record(message="hello", extra={"request_id": "req-123"}))
+
+    assert "\x1b[" in output
+    assert "hello" in output
+    assert "req-123" in output
+    assert not output.lstrip().startswith("{")
