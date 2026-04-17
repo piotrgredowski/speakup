@@ -26,7 +26,19 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from speakup.app_logging import DEFAULT_REQUEST_ID, make_formatter as shared_make_formatter
+try:
+    from speakup import app_logging as _shared_app_logging
+except ImportError:
+    _shared_app_logging = None
+
+try:
+    from speakup.text_transform import sanitize_text_for_tts as _sanitize_text_for_tts
+except ImportError:
+    def _sanitize_text_for_tts(text: str) -> str:
+        return text.strip()
+
+DEFAULT_REQUEST_ID = getattr(_shared_app_logging, "DEFAULT_REQUEST_ID", "-")
+shared_make_formatter = getattr(_shared_app_logging, "make_formatter", None)
 
 LOG_FIELD_ORDER = ("request_id", "timestamp", "level", "logger", "event")
 LEVEL_COLOR_CODES = {
@@ -209,7 +221,6 @@ def setup_logging(config: dict) -> None:
         backupCount=int(log_cfg.get("rotate_backup_count", 3)),
     )
     handler.addFilter(_RequestIdFilter())
-    handler.setFormatter(shared_make_formatter(log_cfg, colors=False))
 
     color_handler = RotatingFileHandler(
         f"{file_path}.color",
@@ -217,7 +228,12 @@ def setup_logging(config: dict) -> None:
         backupCount=int(log_cfg.get("rotate_backup_count", 3)),
     )
     color_handler.addFilter(_RequestIdFilter())
-    color_handler.setFormatter(shared_make_formatter(log_cfg, target="color"))
+    if shared_make_formatter is not None:
+        handler.setFormatter(shared_make_formatter(log_cfg, colors=False))
+        color_handler.setFormatter(shared_make_formatter(log_cfg, target="color"))
+    else:
+        handler.setFormatter(make_formatter(log_cfg, colors=False))
+        color_handler.setFormatter(make_formatter(log_cfg, colors=True))
 
     hook_logger = logging.getLogger("speakup-droid")
     hook_logger.setLevel(level)
@@ -601,9 +617,16 @@ def build_hook_summary(message: str, droid_event: str, session_name: str | None 
         "SessionStart": "info",
     }.get(droid_event, droid_event.lower() if droid_event else "event")
 
+    display_message = _sanitize_text_for_tts(message) or {
+        "Notification": "Input needed",
+        "Stop": "Task finished",
+        "SubagentStop": "Task updated",
+        "SessionStart": "Session started",
+    }.get(droid_event, "Notification")
+
     if session_name:
-        return f"speakup {event_label} ({session_name}): {message}"
-    return f"speakup {event_label}: {message}"
+        return f"speakup {event_label} ({session_name}): {display_message}"
+    return f"speakup {event_label}: {display_message}"
 
 
 def run_speakup(message: str, event: str, session_name: str | None = None):

@@ -108,6 +108,10 @@ def test_transform_text_for_reading_given_file_paths_verbalizes_path_structure(
             "/tmp/.audio-1.mp3",
             "slash tmp slash dot audio dash one dot mp three",
         ),
+        (
+            "#",
+            "",
+        ),
     ],
 )
 def test_sanitize_text_for_tts_removes_non_spoken_markup_and_shortens_hashes(

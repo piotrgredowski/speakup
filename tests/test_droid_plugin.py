@@ -3,7 +3,9 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import sys
 import textwrap
+import types
 
 
 def load_hook_module():
@@ -45,9 +47,13 @@ def test_hooks_configuration():
     # Check that all expected events are configured
     assert "Notification" in hooks["hooks"]
     assert "Stop" in hooks["hooks"]
+    expected_commands = {
+        'uv run --script "${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py"',
+        'uv run "${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py"',
+    }
     for event_name in ("Notification", "Stop"):
         command = hooks["hooks"][event_name][0]["hooks"][0]["command"]
-        assert command == 'uv run --script "${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py"'
+        assert command in expected_commands
 
 
 def test_hook_script_exists():
@@ -114,6 +120,21 @@ def test_hook_falls_back_to_legacy_json_config(tmp_path, monkeypatch):
 
     assert module.get_config_path() == cfg_dir / "config.json"
     assert module.load_droid_config()["enabled"] is False
+
+
+def test_hook_uses_default_request_id_fallback_when_shared_module_lacks_it(monkeypatch):
+    fake_package = types.ModuleType("speakup")
+    fake_package.__path__ = []
+    fake_app_logging = types.ModuleType("speakup.app_logging")
+    fake_app_logging.make_formatter = lambda *args, **kwargs: object()
+    fake_package.app_logging = fake_app_logging
+
+    monkeypatch.setitem(sys.modules, "speakup", fake_package)
+    monkeypatch.setitem(sys.modules, "speakup.app_logging", fake_app_logging)
+
+    module = load_hook_module()
+
+    assert module.DEFAULT_REQUEST_ID == "-"
 
 
 def test_redact_payload_masks_sensitive_fields():
@@ -282,6 +303,13 @@ def test_build_hook_summary_includes_session_name():
     assert module.build_hook_summary("Done.", "Stop", "Session Name") == "speakup final (Session Name): Done."
 
 
+def test_build_hook_summary_sanitizes_markdown_and_falls_back_when_empty():
+    module = load_hook_module()
+
+    assert module.build_hook_summary("# Release Update", "Stop", "Session Name") == "speakup final (Session Name): Release Update"
+    assert module.build_hook_summary("#", "Stop", "Session Name") == "speakup final (Session Name): Task finished"
+
+
 def test_main_prints_notification_summary_to_stdout(monkeypatch):
     module = load_hook_module()
     stdout = io.StringIO()
@@ -319,7 +347,7 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
     stdout = io.StringIO()
     transcript = tmp_path / "session.jsonl"
     transcript.write_text(
-        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Final summary text"}]}}\n'
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"# Final summary text"}]}}\n'
     )
 
     monkeypatch.setattr(module.sys, "stdout", stdout)
@@ -337,7 +365,7 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
     )
 
     def fake_run_speakup(message, event, session_name=None):
-        assert message == "Final summary text"
+        assert message == "# Final summary text"
         assert event == "final"
         assert session_name == "Session Name"
         return True
