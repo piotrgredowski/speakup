@@ -2,8 +2,12 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
+#   "speakup",
 #   "structlog>=25.5.0",
 # ]
+#
+# [tool.uv.sources]
+# speakup = { path = "/Users/pg/Coding/_bucket/speakup/" }
 # ///
 
 import json
