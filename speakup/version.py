@@ -1,8 +1,25 @@
-"""Git-based versioning using dunamai."""
+"""Package-aware version resolution.
 
+Prefers git-derived versions from the speakup source tree itself, not the
+caller\'s current working directory.
+"""
+
+from importlib.metadata import PackageNotFoundError, version as package_version
+from pathlib import Path
 from typing import Optional
 
 _cached_version: Optional[str] = None
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _normalize_version(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return "0.0.0+unknown"
+    return value if value.startswith("v") else f"v{value}"
 
 
 def get_version() -> str:
@@ -23,7 +40,7 @@ def get_version() -> str:
     try:
         from dunamai import Version
 
-        v = Version.from_git()
+        v = Version.from_git(path=_repo_root())
         result = f"v{v.base}"
 
         if v.commit:
@@ -35,5 +52,9 @@ def get_version() -> str:
         _cached_version = result
         return result
     except Exception:
-        _cached_version = "0.0.0+unknown"
-        return _cached_version
+        try:
+            _cached_version = _normalize_version(package_version("speakup"))
+            return _cached_version
+        except (PackageNotFoundError, Exception):
+            _cached_version = "0.0.0+unknown"
+            return _cached_version

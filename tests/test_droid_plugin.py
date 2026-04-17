@@ -245,16 +245,32 @@ def test_extract_session_name_ignores_hex_like_transcript_title_and_falls_back_t
     assert module.extract_session_name(payload) == "session abcdef12"
 
 
+def test_get_speakup_version_reads_cli_version(monkeypatch):
+    module = load_hook_module()
+    module._SPEAKUP_VERSION = None
+
+    class CompletedProcess:
+        returncode = 0
+        stdout = "v1.2.3\n"
+
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: CompletedProcess())
+
+    assert module.get_speakup_version() == "v1.2.3"
+
+
 def test_run_speakup_uses_non_blocking_popen(monkeypatch):
     module = load_hook_module()
     captured = {}
+    logged = []
 
     def fake_popen(cmd, **kwargs):
         captured["cmd"] = cmd
         captured["kwargs"] = kwargs
         return object()
 
+    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module.logger, "info", lambda message: logged.append(message))
 
     result = module.run_speakup("hello", "info", "session name")
 
@@ -264,6 +280,7 @@ def test_run_speakup_uses_non_blocking_popen(monkeypatch):
     assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["start_new_session"] is True
+    assert logged[0] == "Launching speakup v1.2.3: event=info, session=session name, message_len=5"
 
 
 def test_run_speakup_returns_false_when_command_missing(monkeypatch):
@@ -272,6 +289,7 @@ def test_run_speakup_returns_false_when_command_missing(monkeypatch):
     def fake_popen(cmd, **kwargs):  # noqa: ARG001
         raise FileNotFoundError
 
+    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
 
     assert module.run_speakup("hello", "info") is False
@@ -283,6 +301,7 @@ def test_run_speakup_returns_false_on_oserror(monkeypatch):
     def fake_popen(cmd, **kwargs):  # noqa: ARG001
         raise OSError("boom")
 
+    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
 
     assert module.run_speakup("hello", "info") is False

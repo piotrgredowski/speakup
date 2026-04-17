@@ -11,6 +11,7 @@ from pathlib import Path
 logger = logging.getLogger("speakup-droid")
 
 _HEX_LIKE_NAME_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
+_SPEAKUP_VERSION: str | None = None
 
 
 def get_default_log_file_path() -> Path:
@@ -154,8 +155,8 @@ def load_droid_config() -> dict:
         "events": {
             "notification": True,
             "stop": True,
-            "subagent_stop": True,
-            "session_start": True,
+            "subagent_stop": False,
+            "session_start": False,
         },
     }
 
@@ -388,6 +389,30 @@ def extract_session_name(input_data: dict) -> str | None:
     return None
 
 
+def get_speakup_version() -> str:
+    """Get the installed speakup CLI version."""
+    global _SPEAKUP_VERSION
+
+    if _SPEAKUP_VERSION is not None:
+        return _SPEAKUP_VERSION
+
+    try:
+        result = subprocess.run(
+            ["speakup", "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        _SPEAKUP_VERSION = "unknown"
+        return _SPEAKUP_VERSION
+
+    version = result.stdout.strip() if result.returncode == 0 else ""
+    _SPEAKUP_VERSION = version or "unknown"
+    return _SPEAKUP_VERSION
+
+
 def run_speakup(message: str, event: str, session_name: str | None = None):
     """Run speakup CLI with the extracted message.
 
@@ -404,7 +429,9 @@ def run_speakup(message: str, event: str, session_name: str | None = None):
     if session_name:
         cmd.extend(["--session-name", session_name])
 
-    logger.info(f"Launching speakup: event={event}, session={session_name}, message_len={len(message)}")
+    logger.info(
+        f"Launching speakup {get_speakup_version()}: event={event}, session={session_name}, message_len={len(message)}"
+    )
 
     try:
         subprocess.Popen(
