@@ -30,6 +30,13 @@ def test_generate_session_name_returns_deterministic_adjective_and_polish_name()
     assert generate_session_name("conv-123") == generated
 
 
+def test_session_name_wordlists_are_curated_and_unique() -> None:
+    assert len(SESSION_NAME_ADJECTIVES) >= 50
+    assert len(SESSION_NAME_ADJECTIVES) == len(set(SESSION_NAME_ADJECTIVES))
+    assert len(POLISH_GIVEN_NAMES) >= 35
+    assert len(POLISH_GIVEN_NAMES) == len(set(POLISH_GIVEN_NAMES))
+
+
 def test_resolve_session_name_prefers_explicit_meaningful_name() -> None:
     request = NotifyRequest(
         message="Done",
