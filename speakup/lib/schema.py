@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import sys
 import types
 from typing import Annotated, Any, Literal, TypeVar, Union, get_args, get_origin, get_type_hints
 

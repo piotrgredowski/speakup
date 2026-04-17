@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Callable
 
 from .errors import AdapterError
-from .models import AudioResult
 from .playback.base import PlaybackAdapter
 from .summarizers.base import Summarizer
+from .tts.base import TTSAdapter
 
 
 TTSFactory = Callable[[], "TTSAdapter"]

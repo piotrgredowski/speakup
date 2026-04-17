@@ -66,7 +66,6 @@ class GeminiTTSAdapter(TTSAdapter):
 
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                content_type = resp.headers.get("Content-Type", "")
                 response_data = resp.read()
         except Exception as exc:
             raise AdapterError(f"Gemini TTS request failed: {exc}") from exc

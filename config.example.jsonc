@@ -45,6 +45,8 @@
     ],
     "voice": "default",
     "speed": 1.0,
+    "session_name_speed": null,
+    "message_speed": null,
     "play_audio": true,
     "audio_format": "wav",
     "save_audio_dir": "/tmp/speakup/audio"

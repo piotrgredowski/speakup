@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -245,7 +244,7 @@ class TestNotifyServiceWithHistory:
             agent="test_agent",
         )
         
-        result = service.notify(request)
+        service.notify(request)
         
         # Note: Result status might vary based on TTS availability
         # Just check that history was saved

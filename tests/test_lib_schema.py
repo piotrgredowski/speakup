@@ -446,10 +446,12 @@ class TestAppConfigIntegration:
 
     def test_valid_overrides(self):
         from speakup.config import AppConfig
-        raw = {"tts": {"voice": "custom_voice", "speed": 1.5}}
+        raw = {"tts": {"voice": "custom_voice", "speed": 1.5, "session_name_speed": 0.9, "message_speed": 1.1}}
         result = from_dict(AppConfig, raw)
         assert result.tts.voice == "custom_voice"
         assert result.tts.speed == 1.5
+        assert result.tts.session_name_speed == 0.9
+        assert result.tts.message_speed == 1.1
         # other sections get defaults
         assert result.privacy.mode == "prefer_local"
 

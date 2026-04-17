@@ -68,13 +68,13 @@ class _FakeTTS(TTSAdapter):
 
     def __init__(self, audio_paths: list[Path]) -> None:
         self.audio_paths = audio_paths
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, float]] = []
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
         audio_path = self.audio_paths[len(self.calls)]
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         audio_path.write_text(text)
-        self.calls.append((text, voice))
+        self.calls.append((text, voice, speed))
         return AudioResult(kind="file", value=str(audio_path), provider=self.name)
 
 
@@ -248,7 +248,40 @@ def test_notify_service_given_session_name_then_plays_title_and_message_with_spl
     assert result.status == "ok"
     assert result.summary == "Nightly Run: Build failed"
     assert playback.groups == [[title_audio, message_audio]]
-    assert fake_tts.calls == [("Nightly Run", "provider-title"), ("Build failed", "provider-message")]
+    assert fake_tts.calls == [("Nightly Run", "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
+
+
+def test_notify_service_given_split_speeds_then_uses_role_specific_speeds(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["tts"]["speed"] = 1.0
+    config_data["tts"]["session_name_speed"] = 0.9
+    config_data["tts"]["message_speed"] = 1.2
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="Nightly Run",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert fake_tts.calls == [("Nightly Run", "provider-title", 0.9), ("Build failed", "provider-message", 1.2)]
 
 
 def test_notify_service_given_missing_message_voice_then_falls_back_to_default_voice(tmp_path: Path) -> None:
@@ -279,7 +312,7 @@ def test_notify_service_given_missing_message_voice_then_falls_back_to_default_v
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Release 42", "title-voice"), ("Ship it", "default-voice")]
+    assert fake_tts.calls == [("Release 42", "title-voice", 1.0), ("Ship it", "default-voice", 1.0)]
 
 
 def test_notify_service_given_first_provider_failure_then_uses_next_provider_specific_voices(tmp_path: Path) -> None:
@@ -312,7 +345,7 @@ def test_notify_service_given_first_provider_failure_then_uses_next_provider_spe
 
     assert result.status == "ok"
     assert result.backend == "fake"
-    assert fake_tts.calls == [("Nightly Run", "provider-title"), ("Build failed", "provider-message")]
+    assert fake_tts.calls == [("Nightly Run", "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
 
 
 def test_notify_service_given_elevenlabs_split_voices_then_uses_role_specific_voices(tmp_path: Path) -> None:
@@ -346,7 +379,7 @@ def test_notify_service_given_elevenlabs_split_voices_then_uses_role_specific_vo
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Nightly Run", "title-voice-id"), ("Build failed", "message-voice-id")]
+    assert fake_tts.calls == [("Nightly Run", "title-voice-id", 1.0), ("Build failed", "message-voice-id", 1.0)]
 
 
 def test_notify_service_given_elevenlabs_voice_id_without_split_voices_then_uses_provider_default(tmp_path: Path) -> None:
@@ -374,7 +407,7 @@ def test_notify_service_given_elevenlabs_voice_id_without_split_voices_then_uses
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Build failed", "fallback-voice")]
+    assert fake_tts.calls == [("Build failed", "fallback-voice", 1.0)]
 
 
 def test_notify_service_given_unconfigured_elevenlabs_then_skips_without_warning(tmp_path: Path, caplog) -> None:
@@ -406,7 +439,7 @@ def test_notify_service_given_unconfigured_elevenlabs_then_skips_without_warning
 
     assert result.status == "ok"
     assert result.backend == "fake"
-    assert fake_tts.calls == [("Build failed", "default")]
+    assert fake_tts.calls == [("Build failed", "default", 1.0)]
     assert not any(record.message == "tts_failed" and getattr(record, "provider", None) == "elevenlabs" for record in caplog.records)
 
 

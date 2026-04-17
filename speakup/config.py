@@ -140,6 +140,8 @@ class TTSConfig:
     )
     voice: str = "default"
     speed: float = 1.0
+    session_name_speed: float | None = None
+    message_speed: float | None = None
     play_audio: bool = True
     audio_format: Literal["mp3", "wav", "aiff"] = "wav"
     save_audio_dir: str = field(default_factory=lambda: str(runtime_temp_dir() / "audio"))

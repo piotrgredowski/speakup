@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import runtime_temp_dir
-from .models import MessageEvent, NotifyRequest, NotifyResult
+from .models import NotifyRequest, NotifyResult
 
 
 @dataclass(slots=True)

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -66,8 +65,6 @@ def config_with_gemini(tmp_path: Path) -> Path:
 @pytest.mark.integration_gemini
 def test_gemini_real_api_given_final_event_then_synthesizes_audio(config_with_gemini: Path, tmp_path: Path):
     """Test real Gemini TTS API call with --tts-provider gemini flag."""
-    audio_dir = tmp_path / "audio"
-
     result = run_cli(
         [
             "--config",

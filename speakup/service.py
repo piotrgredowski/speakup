@@ -413,11 +413,19 @@ class NotifyService:
         )
         return True
 
-    def _synthesize(self, text: str, *, request_id: str, voice: str | None = None, provider_override: str | None = None):
+    def _synthesize(
+        self,
+        text: str,
+        *,
+        request_id: str,
+        voice: str | None = None,
+        speed: float | None = None,
+        provider_override: str | None = None,
+    ):
         provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         resolved_voice = voice or self.config.get("tts", "voice", default="default")
-        speed = float(self.config.get("tts", "speed", default=1.0))
+        resolved_speed = float(speed if speed is not None else self.config.get("tts", "speed", default=1.0))
         audio_format = self.config.get("tts", "audio_format", default="wav")
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
@@ -447,7 +455,7 @@ class NotifyService:
             try:
                 adapter = self.registry.get_tts(provider)
                 self.logger.debug("tts_try", extra={"request_id": request_id, "provider": provider, "voice": resolved_voice})
-                audio = adapter.synthesize(text, output_dir, voice=resolved_voice, speed=speed, audio_format=audio_format)
+                audio = adapter.synthesize(text, output_dir, voice=resolved_voice, speed=resolved_speed, audio_format=audio_format)
                 self.logger.info("tts_selected", extra={"request_id": request_id, "provider": provider, "voice": resolved_voice, "audio_kind": audio.kind})
                 return audio, provider
             except AdapterError as exc:
@@ -460,6 +468,9 @@ class NotifyService:
 
     def _synthesize_segments(self, *, session_name: str | None, summary_text: str, request_id: str):
         provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
+        default_speed = float(self.config.get("tts", "speed", default=1.0))
+        session_speed = float(self.config.get("tts", "session_name_speed", default=default_speed))
+        message_speed = float(self.config.get("tts", "message_speed", default=default_speed))
         partial_results = []
         partial_backend = "none"
         for provider in provider_order:
@@ -470,6 +481,7 @@ class NotifyService:
                     str(session_name),
                     request_id=request_id,
                     voice=self._resolve_voice(provider, "title"),
+                    speed=session_speed,
                     provider_override=provider,
                 )
                 if title_audio is None:
@@ -483,6 +495,7 @@ class NotifyService:
                     summary_text,
                     request_id=request_id,
                     voice=self._resolve_voice(provider, "message"),
+                    speed=message_speed,
                     provider_override=provider,
                 )
                 if message_audio is None:
