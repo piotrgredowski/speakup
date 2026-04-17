@@ -44,6 +44,9 @@ def test_hooks_configuration():
     # Check that all expected events are configured
     assert "Notification" in hooks["hooks"]
     assert "Stop" in hooks["hooks"]
+    for event_name in ("Notification", "Stop"):
+        command = hooks["hooks"][event_name][0]["hooks"][0]["command"]
+        assert command == 'uv run --script "${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py"'
 
 
 def test_hook_script_exists():
@@ -55,6 +58,9 @@ def test_hook_script_exists():
     # Check it's a Python file (not executable via shebang on Windows)
     with open(hook_script) as f:
         content = f.read()
+        assert content.startswith("#!/usr/bin/env -S uv run --script\n")
+        assert '# /// script' in content
+        assert '"structlog>=25.5.0"' in content
         assert "import json" in content
         assert "import subprocess" in content
         assert "def main():" in content
@@ -256,6 +262,46 @@ def test_get_speakup_version_reads_cli_version(monkeypatch):
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: CompletedProcess())
 
     assert module.get_speakup_version() == "v1.2.3"
+
+
+def test_extract_request_id_prefers_top_level_request_id():
+    module = load_hook_module()
+
+    payload = {
+        "request_id": "req-top",
+        "metadata": {"requestId": "req-metadata"},
+    }
+
+    assert module.extract_request_id(payload) == "req-top"
+
+
+def test_hook_logging_writes_request_id_first(tmp_path):
+    module = load_hook_module()
+
+    module.setup_logging(
+        {
+            "logging": {
+                "enabled": True,
+                "level": "INFO",
+                "format": "text",
+                "file_path": str(tmp_path / "speakup.log"),
+            }
+        }
+    )
+
+    try:
+        module.logger.info("hook_invoked", extra={"request_id": "req-123"})
+        for handler in module.logger.handlers:
+            handler.flush()
+
+        log_text = (tmp_path / "droid-hook.log").read_text().strip()
+        assert log_text.startswith("request_id=req-123")
+        assert "logger=speakup-droid" in log_text
+        assert "event=hook_invoked" in log_text
+    finally:
+        for handler in list(module.logger.handlers):
+            handler.close()
+        module.logger.handlers.clear()
 
 
 def test_run_speakup_uses_non_blocking_popen(monkeypatch):

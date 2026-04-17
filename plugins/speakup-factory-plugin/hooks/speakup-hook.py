@@ -1,3 +1,11 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "structlog>=25.5.0",
+# ]
+# ///
+
 import json
 import logging
 import os
@@ -8,10 +16,156 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import structlog
+
+DEFAULT_REQUEST_ID = "-"
+LOG_FIELD_ORDER = ("request_id", "timestamp", "level", "logger", "event")
+LEVEL_COLOR_CODES = {
+    "debug": "\x1b[2m",
+    "info": "\x1b[36m",
+    "warning": "\x1b[33m",
+    "error": "\x1b[31m",
+    "critical": "\x1b[1;31m",
+}
+ANSI_RESET = "\x1b[0m"
+
+_RESERVED_RECORD_KEYS = {
+    "name",
+    "msg",
+    "args",
+    "levelname",
+    "levelno",
+    "pathname",
+    "filename",
+    "module",
+    "exc_info",
+    "exc_text",
+    "stack_info",
+    "lineno",
+    "funcName",
+    "created",
+    "msecs",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "processName",
+    "process",
+    "asctime",
+    "message",
+}
+
 logger = logging.getLogger("speakup-droid")
+_CURRENT_REQUEST_ID = DEFAULT_REQUEST_ID
 
 _HEX_LIKE_NAME_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
 _SPEAKUP_VERSION: str | None = None
+
+
+class _RequestIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not getattr(record, "request_id", None):
+            record.request_id = _CURRENT_REQUEST_ID
+        return True
+
+
+def _copy_extra_record_fields(_: logging.Logger, __: str, event_dict: dict) -> dict:
+    record = event_dict.get("_record")
+    if not record:
+        return event_dict
+    for key, value in record.__dict__.items():
+        if key.startswith("_") or key in _RESERVED_RECORD_KEYS or value is None:
+            continue
+        event_dict.setdefault(key, value)
+    return event_dict
+
+
+def _ensure_request_id(_: logging.Logger, __: str, event_dict: dict) -> dict:
+    event_dict.setdefault("request_id", DEFAULT_REQUEST_ID)
+    return event_dict
+
+
+def _reorder_event_dict(_: logging.Logger, __: str, event_dict: dict) -> dict:
+    ordered: dict = {}
+    for key in LOG_FIELD_ORDER:
+        if key in event_dict:
+            ordered[key] = event_dict[key]
+    for key, value in event_dict.items():
+        if key not in ordered:
+            ordered[key] = value
+    return ordered
+
+
+def _build_shared_processors(config: dict) -> list:
+    include_timestamps = bool(config.get("include_timestamps", True))
+    include_module = bool(config.get("include_module", True))
+    include_pid = bool(config.get("include_pid", False))
+
+    processors = [structlog.stdlib.add_log_level]
+    if include_module:
+        processors.append(structlog.stdlib.add_logger_name)
+    processors.extend([
+        _copy_extra_record_fields,
+        structlog.processors.format_exc_info,
+    ])
+    if include_timestamps:
+        processors.append(structlog.processors.TimeStamper(fmt="iso"))
+    if include_pid:
+        processors.append(
+            structlog.processors.CallsiteParameterAdder(
+                parameters={structlog.processors.CallsiteParameter.PROCESS}
+            )
+        )
+
+    processors.extend([_ensure_request_id, _reorder_event_dict])
+    return processors
+
+
+def _render_text_value(value) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)):
+        return str(value)
+
+    text = str(value)
+    if not text:
+        return '""'
+    if any(char.isspace() for char in text) or any(char in text for char in ('"', "=")):
+        return json.dumps(text, ensure_ascii=False)
+    return text
+
+
+def _render_text_log_line(_: logging.Logger, __: str, event_dict: dict) -> str:
+    return " ".join(
+        f"{key}={_render_text_value(value)}"
+        for key, value in event_dict.items()
+        if value is not None
+    )
+
+
+def _render_text_log_line_with_colors(_: logging.Logger, __: str, event_dict: dict) -> str:
+    line = _render_text_log_line(_, __, event_dict)
+    color = LEVEL_COLOR_CODES.get(str(event_dict.get("level", "")).lower())
+    if not color:
+        return line
+    return f"{color}{line}{ANSI_RESET}"
+
+
+def make_formatter(config: dict, *, colors: bool = False) -> logging.Formatter:
+    processors = _build_shared_processors(config)
+
+    if config.get("format", "text") == "json":
+        def _safe_json_dumps(obj, **kwargs) -> str:
+            kwargs.setdefault("default", str)
+            return json.dumps(obj, **kwargs)
+
+        processor = structlog.processors.JSONRenderer(serializer=_safe_json_dumps)
+    else:
+        processor = _render_text_log_line_with_colors if colors else _render_text_log_line
+
+    return structlog.stdlib.ProcessorFormatter(
+        processor=processor,
+        foreign_pre_chain=processors,
+    )
 
 
 def get_default_log_file_path() -> Path:
@@ -48,12 +202,11 @@ def setup_logging(config: dict) -> None:
 
     fmt = log_cfg.get("format", "text")
     if fmt == "json":
-        formatter = logging.Formatter(
-            '{"time":"%(asctime)s","level":"%(levelname)s","name":"%(name)s","message":"%(message)s"}'
-        )
+        formatter = make_formatter(log_cfg, colors=False)
     else:
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        formatter = make_formatter(log_cfg, colors=False)
 
+    handler.addFilter(_RequestIdFilter())
     handler.setFormatter(formatter)
 
     hook_logger = logging.getLogger("speakup-droid")
@@ -413,6 +566,21 @@ def get_speakup_version() -> str:
     return _SPEAKUP_VERSION
 
 
+def extract_request_id(input_data: dict) -> str:
+    """Extract request id from Droid hook payload when available."""
+    candidates = (
+        input_data,
+        input_data.get("request"),
+        input_data.get("metadata"),
+        input_data.get("session"),
+    )
+    for source in candidates:
+        found, value = _extract_named_value(source, ("request_id", "requestId", "request-id"))
+        if found and isinstance(value, str) and value.strip():
+            return value.strip()
+    return DEFAULT_REQUEST_ID
+
+
 def run_speakup(message: str, event: str, session_name: str | None = None):
     """Run speakup CLI with the extracted message.
 
@@ -453,6 +621,8 @@ def run_speakup(message: str, event: str, session_name: str | None = None):
 
 def main():
     """Main hook entry point."""
+    global _CURRENT_REQUEST_ID
+
     # Read JSON input from stdin
     try:
         input_data = json.load(sys.stdin)
@@ -464,6 +634,8 @@ def main():
     droid_event = input_data.get("hook_event_name", "")
     if not droid_event:
         sys.exit(0)
+
+    _CURRENT_REQUEST_ID = extract_request_id(input_data)
 
     # Load full config and set up logging
     full_config = load_full_config()

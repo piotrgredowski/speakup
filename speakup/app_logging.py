@@ -12,6 +12,17 @@ import structlog
 from .config import get_default_log_file_path
 
 
+DEFAULT_REQUEST_ID = "-"
+LOG_FIELD_ORDER = ("request_id", "timestamp", "level", "logger", "event")
+LEVEL_COLOR_CODES = {
+    "debug": "\x1b[2m",
+    "info": "\x1b[36m",
+    "warning": "\x1b[33m",
+    "error": "\x1b[31m",
+    "critical": "\x1b[1;31m",
+}
+ANSI_RESET = "\x1b[0m"
+
 _RESERVED_RECORD_KEYS = {
     "name",
     "msg",
@@ -53,23 +64,78 @@ def _copy_extra_record_fields(_: logging.Logger, __: str, event_dict: dict[str, 
     return event_dict
 
 
-def _make_formatter(config: dict[str, Any], *, colors: bool = False) -> logging.Formatter:
-    fmt = config.get("format", "text")
+def _ensure_request_id(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    event_dict.setdefault("request_id", DEFAULT_REQUEST_ID)
+    return event_dict
+
+
+def _reorder_event_dict(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    ordered: dict[str, Any] = {}
+    for key in LOG_FIELD_ORDER:
+        if key in event_dict:
+            ordered[key] = event_dict[key]
+    for key, value in event_dict.items():
+        if key not in ordered:
+            ordered[key] = value
+    return ordered
+
+
+def _build_shared_processors(config: dict[str, Any]) -> list[Any]:
     include_timestamps = bool(config.get("include_timestamps", True))
     include_module = bool(config.get("include_module", True))
     include_pid = bool(config.get("include_pid", False))
 
-    pre_chain: list[Any] = [
+    processors: list[Any] = [
         structlog.stdlib.add_log_level,
-        _copy_extra_record_fields,
-        structlog.processors.format_exc_info,
     ]
     if include_module:
-        pre_chain.insert(1, structlog.stdlib.add_logger_name)
+        processors.append(structlog.stdlib.add_logger_name)
+    processors.extend([
+        _copy_extra_record_fields,
+        structlog.processors.format_exc_info,
+    ])
     if include_timestamps:
-        pre_chain.append(structlog.processors.TimeStamper(fmt="iso"))
+        processors.append(structlog.processors.TimeStamper(fmt="iso"))
     if include_pid:
-        pre_chain.append(structlog.processors.CallsiteParameterAdder(parameters={structlog.processors.CallsiteParameter.PROCESS}))
+        processors.append(structlog.processors.CallsiteParameterAdder(parameters={structlog.processors.CallsiteParameter.PROCESS}))
+
+    processors.extend([_ensure_request_id, _reorder_event_dict])
+    return processors
+
+
+def _render_text_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)):
+        return str(value)
+
+    text = str(value)
+    if not text:
+        return '""'
+    if any(char.isspace() for char in text) or any(char in text for char in ('"', "=")):
+        return json.dumps(text, ensure_ascii=False)
+    return text
+
+
+def _render_text_log_line(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> str:
+    return " ".join(
+        f"{key}={_render_text_value(value)}"
+        for key, value in event_dict.items()
+        if value is not None
+    )
+
+
+def _render_text_log_line_with_colors(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> str:
+    line = _render_text_log_line(_, __, event_dict)
+    color = LEVEL_COLOR_CODES.get(str(event_dict.get("level", "")).lower())
+    if not color:
+        return line
+    return f"{color}{line}{ANSI_RESET}"
+
+
+def make_formatter(config: dict[str, Any], *, colors: bool = False) -> logging.Formatter:
+    fmt = config.get("format", "text")
+    processors = _build_shared_processors(config)
 
     if fmt == "json":
         def _safe_json_dumps(obj: Any, **kwargs: Any) -> str:
@@ -78,11 +144,11 @@ def _make_formatter(config: dict[str, Any], *, colors: bool = False) -> logging.
 
         processor = structlog.processors.JSONRenderer(serializer=_safe_json_dumps)
     else:
-        processor = structlog.dev.ConsoleRenderer(colors=colors)
+        processor = _render_text_log_line_with_colors if colors else _render_text_log_line
 
     return structlog.stdlib.ProcessorFormatter(
         processor=processor,
-        foreign_pre_chain=pre_chain,
+        foreign_pre_chain=processors,
     )
 
 
@@ -113,12 +179,12 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
 
     if "stderr" in selected:
         stderr_handler = logging.StreamHandler(sys.stderr)
-        stderr_handler.setFormatter(_make_formatter(effective_cfg, colors=sys.stderr.isatty()))
+        stderr_handler.setFormatter(make_formatter(effective_cfg, colors=sys.stderr.isatty()))
         handlers.append(stderr_handler)
 
     if "stdout" in selected:
         stdout_handler = logging.StreamHandler(sys.stdout)
-        stdout_handler.setFormatter(_make_formatter(effective_cfg, colors=sys.stdout.isatty()))
+        stdout_handler.setFormatter(make_formatter(effective_cfg, colors=sys.stdout.isatty()))
         handlers.append(stdout_handler)
 
     if "file" in selected or file_override:
@@ -131,7 +197,7 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
             maxBytes=int(cfg.get("rotate_max_bytes", 1_048_576)),
             backupCount=int(cfg.get("rotate_backup_count", 3)),
         )
-        file_handler.setFormatter(_make_formatter(effective_cfg, colors=False))
+        file_handler.setFormatter(make_formatter(effective_cfg, colors=False))
         handlers.append(file_handler)
 
         # Second file with colors
@@ -142,23 +208,21 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
             maxBytes=int(cfg.get("rotate_max_bytes", 1_048_576)),
             backupCount=int(cfg.get("rotate_backup_count", 3)),
         )
-        color_file_handler.setFormatter(_make_formatter(effective_cfg, colors=True))
+        color_file_handler.setFormatter(make_formatter(effective_cfg, colors=True))
         handlers.append(color_file_handler)
 
     if not handlers:
         fallback = logging.StreamHandler(sys.stderr)
-        fallback.setFormatter(_make_formatter(effective_cfg, colors=sys.stderr.isatty()))
+        fallback.setFormatter(make_formatter(effective_cfg, colors=sys.stderr.isatty()))
         handlers.append(fallback)
 
     for handler in handlers:
         root.addHandler(handler)
 
+    shared_processors = _build_shared_processors(effective_cfg)
     structlog.configure(
         processors=[
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.add_logger_name,
-            _copy_extra_record_fields,
-            structlog.processors.format_exc_info,
+            *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
