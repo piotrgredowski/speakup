@@ -239,17 +239,17 @@ def test_extract_session_name_reads_transcript_session_title(tmp_path):
     assert module.extract_session_name(payload) == "Investigate Droid Speakup Plugin Failure"
 
 
-def test_extract_session_name_humanizes_session_id_fallback():
+def test_extract_session_name_given_session_id_only_then_returns_none():
     module = load_hook_module()
 
     payload = {
         "session_id": "6b598d4b-8103-41b5-befb-2caad634760b",
     }
 
-    assert module.extract_session_name(payload) == "session 6b598d4b"
+    assert module.extract_session_name(payload) is None
 
 
-def test_extract_session_name_ignores_hex_like_title_and_falls_back_to_session_id():
+def test_extract_session_name_ignores_hex_like_title_without_fallback():
     module = load_hook_module()
 
     payload = {
@@ -257,10 +257,10 @@ def test_extract_session_name_ignores_hex_like_title_and_falls_back_to_session_i
         "session_id": "12345678-8103-41b5-befb-2caad634760b",
     }
 
-    assert module.extract_session_name(payload) == "session 12345678"
+    assert module.extract_session_name(payload) is None
 
 
-def test_extract_session_name_ignores_hex_like_transcript_title_and_falls_back_to_session_id(tmp_path):
+def test_extract_session_name_ignores_hex_like_transcript_title_without_fallback(tmp_path):
     module = load_hook_module()
     transcript = tmp_path / "session.jsonl"
     transcript.write_text('{"type":"session_start","sessionTitle":"deadbeefcafebabe"}\n')
@@ -270,7 +270,13 @@ def test_extract_session_name_ignores_hex_like_transcript_title_and_falls_back_t
         "session_id": "abcdef12-8103-41b5-befb-2caad634760b",
     }
 
-    assert module.extract_session_name(payload) == "session abcdef12"
+    assert module.extract_session_name(payload) is None
+
+
+def test_extract_session_id_reads_top_level_value():
+    module = load_hook_module()
+
+    assert module.extract_session_id({"session_id": "6b598d4b-8103-41b5-befb-2caad634760b"}) == "6b598d4b-8103-41b5-befb-2caad634760b"
 
 
 def test_get_speakup_version_reads_cli_version(monkeypatch):
@@ -325,10 +331,11 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     monkeypatch.setattr(module.logger, "debug", lambda message: None)
     monkeypatch.setattr(module.json, "load", lambda _: {"hook_event_name": "Notification", "message": "hello"})
 
-    def fake_run_speakup(message, event, session_name=None):
+    def fake_run_speakup(message, event, session_name=None, session_id=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
+        captured["session_id"] = session_id
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -338,7 +345,7 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     except SystemExit:
         pass
 
-    assert captured == {"message": "hello", "event": "needs_input", "session_name": "Session Name"}
+    assert captured == {"message": "hello", "event": "needs_input", "session_name": "Session Name", "session_id": None}
     assert stdout.getvalue().strip() == "speakup notification (Session Name): hello"
 
 
@@ -364,10 +371,11 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
         lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
     )
 
-    def fake_run_speakup(message, event, session_name=None):
+    def fake_run_speakup(message, event, session_name=None, session_id=None):
         assert message == "# Final summary text"
         assert event == "final"
         assert session_name == "Session Name"
+        assert session_id is None
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -461,7 +469,29 @@ def test_run_speakup_uses_non_blocking_popen(monkeypatch):
     assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["start_new_session"] is True
-    assert logged[0] == "Launching speakup v1.2.3: event=info, session=session name, message_len=5"
+    assert logged[0] == "Launching speakup v1.2.3: event=info, session=session name, session_id=None, message_len=5"
+
+
+def test_run_speakup_passes_session_id(monkeypatch):
+    module = load_hook_module()
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+
+    result = module.run_speakup("hello", "info", session_id="sess-123")
+
+    assert result is True
+    assert captured["cmd"] == ["speakup", "--message", "hello", "--event", "info", "--session-id", "sess-123"]
+    assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["start_new_session"] is True
 
 
 def test_run_speakup_returns_false_when_command_missing(monkeypatch):

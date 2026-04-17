@@ -51,6 +51,9 @@
     "audio_format": "wav",
     "save_audio_dir": "/tmp/speakup/audio"
   },
+  "session_naming": {
+    "enabled": true
+  },
   "dedup": {
     "enabled": true,
     "window_seconds": 30,

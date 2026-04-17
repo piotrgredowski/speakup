@@ -15,6 +15,7 @@ from speakup.models import AudioResult, MessageEvent, NotifyRequest
 from speakup.playback.base import PlaybackAdapter
 from speakup.playback.queued import SQLiteQueuedPlayback
 from speakup.registry import AdapterRegistry
+from speakup.session_naming import generate_session_name
 from speakup.service import NotifyService
 from speakup.tts.base import TTSAdapter
 
@@ -334,6 +335,41 @@ def test_notify_service_given_session_name_then_plays_title_and_message_with_spl
     assert result.summary == "Nightly Run: Build failed"
     assert playback.groups == [[title_audio, message_audio]]
     assert fake_tts.calls == [("Nightly Run", "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
+
+
+def test_notify_service_given_empty_session_name_and_conversation_id_then_generates_title(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="",
+            conversation_id="conv-123",
+            skip_summarization=True,
+        )
+    )
+
+    generated = generate_session_name("conv-123")
+    assert generated is not None
+    assert result.status == "ok"
+    assert result.summary == f"{generated}: Build failed"
+    assert playback.groups == [[title_audio, message_audio]]
+    assert fake_tts.calls == [(generated, "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
 
 
 def test_notify_service_given_split_speeds_then_uses_role_specific_speeds(tmp_path: Path) -> None:

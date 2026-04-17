@@ -20,6 +20,7 @@ class NotifyRequest:
     event: MessageEvent = MessageEvent.FINAL
     session_name: str | None = None
     conversation_id: str | None = None
+    session_id: str | None = None
     task_id: str | None = None
     agent: str = "pi"
     precomputed_summary: str | None = None

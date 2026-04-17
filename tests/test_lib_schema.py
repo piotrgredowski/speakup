@@ -442,16 +442,21 @@ class TestAppConfigIntegration:
         result = from_dict(AppConfig, {})
         assert result.playback.queue_enabled is True
         assert result.tts.speed == 1.0
+        assert result.session_naming.enabled is True
         assert result.providers.omlx.model == "Kokoro-82M-bf16"
 
     def test_valid_overrides(self):
         from speakup.config import AppConfig
-        raw = {"tts": {"voice": "custom_voice", "speed": 1.5, "session_name_speed": 0.9, "message_speed": 1.1}}
+        raw = {
+            "tts": {"voice": "custom_voice", "speed": 1.5, "session_name_speed": 0.9, "message_speed": 1.1},
+            "session_naming": {"enabled": False},
+        }
         result = from_dict(AppConfig, raw)
         assert result.tts.voice == "custom_voice"
         assert result.tts.speed == 1.5
         assert result.tts.session_name_speed == 0.9
         assert result.tts.message_speed == 1.1
+        assert result.session_naming.enabled is False
         # other sections get defaults
         assert result.privacy.mode == "prefer_local"
 

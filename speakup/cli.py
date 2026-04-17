@@ -137,6 +137,8 @@ def _run_notify(
     message: Optional[str],
     event: str,
     session_name: Optional[str],
+    conversation_id: Optional[str],
+    session_id: Optional[str],
     input_json: Optional[str],
     input_file: Optional[Path],
     message_file: Optional[Path],
@@ -185,6 +187,8 @@ def _run_notify(
         message,
         event,
         session_name,
+        conversation_id,
+        session_id,
         input_json,
         str(input_file) if input_file else None,
         str(message_file) if message_file else None,
@@ -258,6 +262,12 @@ def main_callback(
     session_name: Optional[str] = typer.Option(
         None, "--session-name", "-s", help="Optional session label spoken at the start"
     ),
+    conversation_id: Optional[str] = typer.Option(
+        None, "--conversation-id", help="Optional stable conversation identifier for session-name generation"
+    ),
+    session_id: Optional[str] = typer.Option(
+        None, "--session-id", help="Optional stable session identifier for session-name generation"
+    ),
     no_summarize: bool = typer.Option(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
@@ -318,6 +328,8 @@ def main_callback(
             message=message,
             event=event,
             session_name=session_name,
+            conversation_id=conversation_id,
+            session_id=session_id,
             input_json=input_json,
             input_file=input_file,
             message_file=message_file,
@@ -386,6 +398,8 @@ def _load_payload(
     message: Optional[str],
     event: str,
     session_name: Optional[str],
+    conversation_id: Optional[str],
+    session_id: Optional[str],
     input_json: Optional[str],
     input_file: Optional[str],
     message_file: Optional[str] = None,
@@ -412,7 +426,13 @@ def _load_payload(
         msg_event = MessageEvent(event)
     except Exception:
         msg_event = MessageEvent.FINAL
-    return NotifyRequest(message=message, event=msg_event, session_name=session_name)
+    return NotifyRequest(
+        message=message,
+        event=msg_event,
+        session_name=session_name,
+        conversation_id=conversation_id,
+        session_id=session_id,
+    )
 
 
 def _load_text_input(

@@ -148,6 +148,11 @@ class TTSConfig:
 
 
 @dataclass
+class SessionNamingConfig:
+    enabled: bool = True
+
+
+@dataclass
 class DedupConfig:
     enabled: bool = True
     window_seconds: Annotated[int, Gt(0)] = 30
@@ -278,6 +283,7 @@ class AppConfig:
     fallback: FallbackConfig = field(default_factory=FallbackConfig)
     event_sounds: EventSoundsConfig = field(default_factory=EventSoundsConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
+    session_naming: SessionNamingConfig = field(default_factory=SessionNamingConfig)
     dedup: DedupConfig = field(default_factory=DedupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)

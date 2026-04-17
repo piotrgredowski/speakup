@@ -12,7 +12,7 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
         event = MessageEvent.FINAL
 
     conversation_id = payload.get("conversationId")
-    session_name = conversation_id
+    session_name = None
     for key in ("sessionTitle", "session_title", "session-name", "sessionName", "title"):
         if key in payload:
             value = payload.get(key)

@@ -7,6 +7,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+from speakup.session_naming import generate_session_name
+
 from .conftest import run_cli
 
 
@@ -150,6 +152,26 @@ def test_cli_given_session_name_then_prefixes_spoken_summary(base_config: Path, 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["summary"] == "nightly-fix: Done implementing the feature"
+
+
+def test_cli_given_conversation_id_without_session_name_then_generates_session_name(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    result = run_cli(
+        [
+            "--config",
+            str(base_config),
+            "--message",
+            "Done implementing the feature",
+            "--event",
+            "final",
+            "--conversation-id",
+            "conv-123",
+        ],
+        env=env_with_fake_audio,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == f"{generate_session_name('conv-123')}: Done implementing the feature"
 
 
 def test_cli_given_playback_failure_then_returns_partial_success(tmp_path: Path, base_config: Path) -> None:

@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import platform
-import re
 import subprocess
 import sys
 from logging.handlers import RotatingFileHandler
@@ -26,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+<<<<<<< HEAD
 try:
     from speakup import app_logging as _shared_app_logging
 except ImportError:
@@ -36,6 +36,15 @@ try:
 except ImportError:
     def _sanitize_text_for_tts(text: str) -> str:
         return text.strip()
+
+try:
+    from speakup.session_naming import normalize_session_name_candidate
+except ImportError:
+    def normalize_session_name_candidate(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 DEFAULT_REQUEST_ID = getattr(_shared_app_logging, "DEFAULT_REQUEST_ID", "-")
 shared_make_formatter = getattr(_shared_app_logging, "make_formatter", None)
@@ -78,7 +87,6 @@ _RESERVED_RECORD_KEYS = {
 logger = logging.getLogger("speakup-droid")
 _CURRENT_REQUEST_ID = DEFAULT_REQUEST_ID
 
-_HEX_LIKE_NAME_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
 _SPEAKUP_VERSION: str | None = None
 
 
@@ -481,37 +489,6 @@ def _extract_named_value(source: dict | None, keys: tuple[str, ...]) -> tuple[bo
     return False, None
 
 
-def _humanize_session_id(session_id: str) -> str:
-    value = session_id.strip()
-    if not value:
-        return ""
-    short = value.split("-", 1)[0]
-    return f"session {short}"
-
-
-def _is_random_hex_like_name(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-
-    stripped = value.strip()
-    if not stripped:
-        return False
-
-    normalized = stripped.replace("-", "").replace("_", "").replace(" ", "")
-    return bool(_HEX_LIKE_NAME_PATTERN.fullmatch(normalized))
-
-
-def _select_session_name(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-
-    stripped = value.strip()
-    if not stripped or stripped == "New Session" or _is_random_hex_like_name(stripped):
-        return None
-
-    return stripped
-
-
 def extract_session_name(input_data: dict) -> str | None:
     """Extract a readable session name from Droid hook payload."""
     found, value = _extract_named_value(
@@ -519,7 +496,7 @@ def extract_session_name(input_data: dict) -> str | None:
         ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
     )
     if found:
-        selected = _select_session_name(value)
+        selected = normalize_session_name_candidate(value)
         if selected:
             return selected
 
@@ -528,7 +505,7 @@ def extract_session_name(input_data: dict) -> str | None:
         ("sessionTitle", "title", "name", "session_title", "session_name", "sessionName"),
     )
     if found:
-        selected = _select_session_name(value)
+        selected = normalize_session_name_candidate(value)
         if selected:
             return selected
 
@@ -537,7 +514,7 @@ def extract_session_name(input_data: dict) -> str | None:
         ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
     )
     if found:
-        selected = _select_session_name(value)
+        selected = normalize_session_name_candidate(value)
         if selected:
             return selected
 
@@ -556,15 +533,11 @@ def extract_session_name(input_data: dict) -> str | None:
                             ("sessionTitle", "session_title", "session_name", "sessionName", "session-name", "title"),
                         )
                         if found:
-                            selected = _select_session_name(value)
+                            selected = normalize_session_name_candidate(value)
                             if selected:
                                 return selected
             except (IOError, json.JSONDecodeError):
                 logger.debug("Failed to derive session name from transcript", exc_info=True)
-
-    session_id = input_data.get("session_id")
-    if isinstance(session_id, str) and session_id.strip():
-        return _humanize_session_id(session_id)
 
     return None
 
@@ -629,13 +602,21 @@ def build_hook_summary(message: str, droid_event: str, session_name: str | None 
     return f"speakup {event_label}: {display_message}"
 
 
-def run_speakup(message: str, event: str, session_name: str | None = None):
+def extract_session_id(input_data: dict) -> str | None:
+    session_id = input_data.get("session_id")
+    if isinstance(session_id, str) and session_id.strip():
+        return session_id.strip()
+    return None
+
+
+def run_speakup(message: str, event: str, session_name: str | None = None, session_id: str | None = None):
     """Run speakup CLI with the extracted message.
 
     Args:
         message: Message to speak
         event: Speakup event type
         session_name: Optional session name
+        session_id: Optional session identifier for core session-name generation
 
     Returns:
         True if successful, False otherwise
@@ -644,9 +625,11 @@ def run_speakup(message: str, event: str, session_name: str | None = None):
 
     if session_name:
         cmd.extend(["--session-name", session_name])
+    if session_id:
+        cmd.extend(["--session-id", session_id])
 
     logger.info(
-        f"Launching speakup {get_speakup_version()}: event={event}, session={session_name}, message_len={len(message)}"
+        f"Launching speakup {get_speakup_version()}: event={event}, session={session_name}, session_id={session_id}, message_len={len(message)}"
     )
 
     try:
@@ -726,9 +709,10 @@ def main():
 
     # Get session name (optional)
     session_name = extract_session_name(input_data)
+    session_id = extract_session_id(input_data)
 
     # Run speakup
-    if run_speakup(message, speakup_event, session_name):
+    if run_speakup(message, speakup_event, session_name, session_id):
         print(build_hook_summary(message, droid_event, session_name))
 
     # Exit cleanly - we don't want to block Droid

@@ -15,6 +15,7 @@ from .models import MessageEvent, NotifyRequest, NotifyResult, SummaryResult
 from .playback.macos import MacOSPlaybackAdapter
 from .playback.queued import SQLiteQueuedPlayback
 from .registry import AdapterRegistry
+from .session_naming import resolve_session_name
 from .summarizers.cerebras import CerebrasSummarizer
 from .summarizers.command import CommandSummarizer
 from .summarizers.lmstudio import LMStudioSummarizer
@@ -212,6 +213,11 @@ class NotifyService:
         with self._timed("infer_event", request_id):
             event = infer_event(request.message, request.event)
         self.logger.info("event_inferred", extra={"request_id": request_id, "event": event.value})
+
+        request.session_name = resolve_session_name(
+            request,
+            self.config.get("session_naming", default={}),
+        )
 
         if not self._should_speak(event):
             self.logger.info("notify_skipped_speak_disabled", extra={"request_id": request_id, "event": event.value})
