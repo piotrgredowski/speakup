@@ -27,6 +27,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _skip_on_gemini_rate_limit(result) -> None:
+    error_output = f"{result.stdout}\n{result.stderr}"
+    if "HTTP Error 429" in error_output or "Too Many Requests" in error_output:
+        pytest.skip("Gemini API rate limited the integration test")
+
+    if result.returncode == 0:
+        try:
+            output = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return
+        error = str(output.get("error") or "")
+        if output.get("backend") == "none" and ("429" in error or "Too Many Requests" in error):
+            pytest.skip("Gemini API rate limited the integration test")
+
+
 @pytest.fixture
 def config_with_gemini(tmp_path: Path) -> Path:
     """Create a config that uses Gemini TTS."""
@@ -86,6 +101,7 @@ def test_gemini_real_api_given_final_event_then_synthesizes_audio(config_with_ge
     print(f"\nSTDOUT: {result.stdout}")
     print(f"\nSTDERR: {result.stderr}")
 
+    _skip_on_gemini_rate_limit(result)
     assert result.returncode == 0, f"CLI failed: {result.stderr}"
 
     # Parse JSON output
@@ -148,6 +164,7 @@ def test_gemini_real_api_given_custom_voice_then_synthesizes(tmp_path: Path):
         env=os.environ,
     )
 
+    _skip_on_gemini_rate_limit(result)
     assert result.returncode == 0, f"CLI failed: {result.stderr}"
 
     output = json.loads(result.stdout)
@@ -203,6 +220,7 @@ def test_gemini_real_api_given_no_play_then_saves_audio_without_playback(tmp_pat
     print(f"\nSTDOUT: {result.stdout}")
     print(f"\nSTDERR: {result.stderr}")
 
+    _skip_on_gemini_rate_limit(result)
     assert result.returncode == 0, f"CLI failed: {result.stderr}"
 
     output = json.loads(result.stdout)

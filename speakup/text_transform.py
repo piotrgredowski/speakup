@@ -112,6 +112,13 @@ _COMMIT_REFERENCE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _HASH_REFERENCE_PATTERN = re.compile(r"(?<!\w)#(?P<hash>[0-9a-fA-F]{7,40})\b")
+_FENCED_CODE_BLOCK_PATTERN = re.compile(r"```.*?```", re.DOTALL)
+_MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\((?:[^()\\]|\\.)*?\)")
+_MARKDOWN_PREFIX_PATTERN = re.compile(r"(?m)^\s*(?:#{1,6}\s+|>\s*|(?:[-*+]|\d+[.)])\s+)")
+_EMPTY_COLLECTION_PATTERN = re.compile(r"(?<!\w)(?:\[\s*\]|\{\s*\}|\(\s*\))(?!\w)")
+_STANDALONE_BRACKETS_PATTERN = re.compile(r"(?<!\w)[\[\]{}()<>]+(?!\w)")
+_MARKDOWN_DECORATION_PATTERN = re.compile(r"[*_~`|]+")
+_HEX_HASH_TOKEN_PATTERN = re.compile(r"\b(?P<hash>(?=[0-9a-fA-F]{7,40}\b)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]+)\b")
 
 
 def transform_text_for_reading(text: str) -> str:
@@ -130,6 +137,26 @@ def transform_text_for_reading(text: str) -> str:
     transformed = _replace_cardinals(transformed)
 
     return re.sub(r" {2,}", " ", transformed)
+
+
+def sanitize_text_for_tts(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+
+    cleaned = _replace_file_paths(cleaned)
+    cleaned = _FENCED_CODE_BLOCK_PATTERN.sub(" ", cleaned)
+    cleaned = _MARKDOWN_LINK_PATTERN.sub(r"\1", cleaned)
+    cleaned = _MARKDOWN_PREFIX_PATTERN.sub("", cleaned)
+    cleaned = _MARKDOWN_DECORATION_PATTERN.sub(" ", cleaned)
+    cleaned = _EMPTY_COLLECTION_PATTERN.sub(" ", cleaned)
+    cleaned = _STANDALONE_BRACKETS_PATTERN.sub(" ", cleaned)
+    cleaned = _replace_commit_like_hashes(cleaned)
+    cleaned = _HEX_HASH_TOKEN_PATTERN.sub(_hash_reference_replacement, cleaned)
+    cleaned = re.sub(r"\s+([?!.,])", r"\1", cleaned)
+    cleaned = re.sub(r"([,:;])(?=\S)", r"\1 ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" \t\r\n,;:-")
 
 
 def _replace_file_paths(text: str) -> str:

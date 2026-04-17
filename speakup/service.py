@@ -20,6 +20,7 @@ from .summarizers.command import CommandSummarizer
 from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
+from .text_transform import sanitize_text_for_tts
 from .tts.elevenlabs import ElevenLabsTTSAdapter
 from .tts.gemini import GeminiTTSAdapter
 from .tts.omlx import OmlxTTSAdapter
@@ -39,6 +40,17 @@ def _provider_default_voice(provider: str, provider_cfg: dict[object, object]) -
     return _clean_voice(provider_cfg.get("voice")) or (
         _clean_voice(provider_cfg.get("voice_id")) if provider == "elevenlabs" else None
     )
+
+
+def _fallback_spoken_summary(event: MessageEvent) -> str:
+    mapping = {
+        MessageEvent.FINAL: "Task finished",
+        MessageEvent.ERROR: "Task failed",
+        MessageEvent.NEEDS_INPUT: "Input needed",
+        MessageEvent.PROGRESS: "Task updated",
+        MessageEvent.INFO: "Notification",
+    }
+    return mapping.get(event, "Notification")
 
 
 def build_registry_from_config(config: Config) -> AdapterRegistry:
@@ -175,6 +187,15 @@ class NotifyService:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
             self.logger.debug("operation_end", extra={"request_id": request_id, "operation": operation, "elapsed_ms": elapsed_ms, **extra})
 
+    def _save_history(self, request: NotifyRequest, result: NotifyResult, *, request_id: str) -> None:
+        if not self.history:
+            return
+
+        try:
+            self.history.add(request, result)
+        except Exception as exc:
+            self.logger.warning("history_save_failed", extra={"request_id": request_id, "error": str(exc)})
+
     def notify(self, request: NotifyRequest) -> NotifyResult:
         request_id = uuid4().hex[:12]
         include_message = bool(self.config.get("logging", "log_message_text", default=False))
@@ -194,17 +215,19 @@ class NotifyService:
 
         if not self._should_speak(event):
             self.logger.info("notify_skipped_speak_disabled", extra={"request_id": request_id, "event": event.value})
-            return NotifyResult(
+            result = NotifyResult(
                 status="skipped",
                 summary="",
                 state=event,
                 backend="none",
                 played=False,
             )
+            self._save_history(request, result, request_id=request_id)
+            return result
 
         if self._dedup_progress(event, request.message):
             self.logger.info("notify_skipped_dedup", extra={"request_id": request_id, "event": event.value})
-            return NotifyResult(
+            result = NotifyResult(
                 status="skipped",
                 summary="",
                 state=event,
@@ -212,6 +235,8 @@ class NotifyService:
                 played=False,
                 dedup_skipped=True,
             )
+            self._save_history(request, result, request_id=request_id)
+            return result
 
         if request.skip_summarization:
             summary_text = request.message
@@ -225,7 +250,16 @@ class NotifyService:
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
-        spoken_summary = f"{request.session_name}: {summary_text}" if request.session_name and summary_text else summary_text or str(request.session_name or "")
+        spoken_session_name = sanitize_text_for_tts(str(request.session_name or "")) or None
+        spoken_message = sanitize_text_for_tts(summary_text)
+        if not spoken_message:
+            spoken_message = _fallback_spoken_summary(event)
+
+        spoken_summary = (
+            f"{spoken_session_name}: {spoken_message}"
+            if spoken_session_name
+            else spoken_message
+        )
 
         self.logger.debug(
             "summary_and_input",
@@ -241,13 +275,13 @@ class NotifyService:
 
         with self._timed("tts", request_id):
             tts_results, backend = self._synthesize_segments(
-                session_name=request.session_name,
-                summary_text=summary_text,
+                session_name=spoken_session_name,
+                summary_text=spoken_message,
                 request_id=request_id,
             )
         if not tts_results:
             self.logger.warning("tts_failed_all_backends", extra={"request_id": request_id})
-            return NotifyResult(
+            result = NotifyResult(
                 status="degraded_text_only",
                 summary=spoken_summary,
                 state=event,
@@ -255,6 +289,8 @@ class NotifyService:
                 played=False,
                 error="No TTS backend succeeded",
             )
+            self._save_history(request, result, request_id=request_id)
+            return result
 
         audio_paths = [Path(str(result.value)) for result in tts_results if result.kind == "file" and result.value]
         audio_path = audio_paths[-1] if audio_paths else None
@@ -304,13 +340,7 @@ class NotifyService:
             error=playback_error,
         )
 
-        # Save to history
-        if self.history:
-            try:
-                self.history.add(request, result)
-            except Exception as exc:
-                self.logger.warning("history_save_failed", extra={"request_id": request_id, "error": str(exc)})
-
+        self._save_history(request, result, request_id=request_id)
         return result
 
     def _should_speak(self, event: MessageEvent) -> bool:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from speakup.text_transform import transform_text_for_reading
+from speakup.text_transform import sanitize_text_for_tts, transform_text_for_reading
 
 
 @pytest.mark.parametrize(
@@ -87,3 +87,34 @@ def test_transform_text_for_reading_given_file_paths_verbalizes_path_structure(
     source_text: str, expected_text: str
 ) -> None:
     assert transform_text_for_reading(source_text) == expected_text
+
+
+@pytest.mark.parametrize(
+    ("source_text", "expected_text"),
+    [
+        (
+            "# Release Update\n- shipped commit deadbeef\n- []\n",
+            "Release Update shipped commit d e a d",
+        ),
+        (
+            "See [build logs](https://example.com) and `done`",
+            "See build logs and done",
+        ),
+        (
+            "hash deadbeef and #cafebabe",
+            "hash d e a d and c a f e",
+        ),
+        (
+            "/tmp/.audio-1.mp3",
+            "slash tmp slash dot audio dash one dot mp three",
+        ),
+    ],
+)
+def test_sanitize_text_for_tts_removes_non_spoken_markup_and_shortens_hashes(
+    source_text: str, expected_text: str
+) -> None:
+    assert sanitize_text_for_tts(source_text) == expected_text
+
+
+def test_sanitize_text_for_tts_given_only_empty_collections_returns_empty_string() -> None:
+    assert sanitize_text_for_tts("[] {} ()") == ""

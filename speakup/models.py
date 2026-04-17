@@ -50,7 +50,7 @@ class NotifyResult:
     summary: str
     state: MessageEvent
     backend: str
-    played: bool
+    played: bool = False
     audio_path: Path | None = None
     dedup_skipped: bool = False
     error: str | None = None

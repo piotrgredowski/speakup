@@ -219,6 +219,91 @@ def test_notify_service_given_event_sound_then_plays_cue_and_speech_together(tmp
     assert playback.groups == [[beep, speech]]
 
 
+def test_notify_service_given_short_message_then_sanitizes_text_before_tts(tmp_path: Path) -> None:
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config_data["summarization"]["max_chars"] = 400
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="# Release Update\n- shipped commit deadbeef\n- []",
+            event=MessageEvent.FINAL,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.summary == "Release Update shipped commit d e a d"
+    assert fake_tts.calls == [("Release Update shipped commit d e a d", "default", 1.0)]
+
+
+def test_notify_service_given_precomputed_summary_then_sanitizes_before_tts(tmp_path: Path) -> None:
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Original message",
+            precomputed_summary="[] sha deadbeef",
+            event=MessageEvent.FINAL,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.summary == "sha d e a d"
+    assert fake_tts.calls == [("sha d e a d", "default", 1.0)]
+
+
+def test_notify_service_given_empty_spoken_text_then_uses_event_fallback(tmp_path: Path) -> None:
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="[]",
+            session_name="[]",
+            event=MessageEvent.NEEDS_INPUT,
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.summary == "Input needed"
+    assert fake_tts.calls == [("Input needed", "default", 1.0)]
+
+
 def test_notify_service_given_session_name_then_plays_title_and_message_with_split_voices(tmp_path: Path) -> None:
     title_audio = tmp_path / "title.wav"
     message_audio = tmp_path / "message.wav"

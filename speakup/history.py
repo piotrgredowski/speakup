@@ -94,7 +94,7 @@ class NotificationHistory:
         timestamp: float | None = None,
     ) -> int:
         """Add a notification to history. Returns the inserted row ID."""
-        ts = timestamp or time.time()
+        ts = time.time() if timestamp is None else timestamp
         metadata_json = json.dumps(request.metadata) if request.metadata else "{}"
 
         with self._connect() as conn:
