@@ -363,6 +363,41 @@ def map_event_to_speakup(droid_event: str) -> str:
     return mapping.get(droid_event, "info")
 
 
+def _extract_question_from_questionnaire(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    for line in value.splitlines():
+        stripped = line.strip()
+        marker = "[question]"
+        if marker in stripped:
+            question = stripped.split(marker, 1)[1].strip()
+            if question:
+                return question
+    return None
+
+
+def extract_notification_message(input_data: dict) -> str | None:
+    candidates = (
+        input_data,
+        input_data.get("metadata"),
+        input_data.get("request"),
+    )
+    for source in candidates:
+        found, value = _extract_named_value(source, ("message", "text", "prompt", "question"))
+        if found and isinstance(value, str) and value.strip():
+            return value.strip()
+
+    for source in candidates:
+        found, value = _extract_named_value(source, ("questionnaire",))
+        if found:
+            question = _extract_question_from_questionnaire(value)
+            if question:
+                return question
+
+    return None
+
+
 def extract_message_from_transcript(
     transcript_path: str, max_lines: int = 50
 ) -> str | None:
@@ -453,8 +488,7 @@ def extract_message(input_data: dict, droid_event: str) -> str | None:
         Message text to speak or None
     """
     if droid_event == "Notification":
-        # Use the message field directly
-        msg = input_data.get("message")
+        msg = extract_notification_message(input_data)
         if msg:
             logger.debug(f"Extracted notification message ({len(msg)} chars)")
         return msg

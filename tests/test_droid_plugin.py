@@ -316,6 +316,17 @@ def test_build_hook_summary_sanitizes_markdown_and_falls_back_when_empty():
     assert module.build_hook_summary("#", "Stop", "Session Name") == "speakup final (Session Name): Task finished"
 
 
+def test_extract_message_reads_questionnaire_question_for_notification():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "questionnaire": "1. [question] Which region should we deploy to?\n[topic] Region\n[option] us-east-1",
+    }
+
+    assert module.extract_message(payload, "Notification") == "Which region should we deploy to?"
+
+
 def test_main_prints_notification_summary_to_stdout(monkeypatch):
     module = load_hook_module()
     stdout = io.StringIO()
@@ -347,6 +358,51 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
 
     assert captured == {"message": "hello", "event": "needs_input", "session_name": "Session Name", "session_id": None}
     assert stdout.getvalue().strip() == "speakup notification (Session Name): hello"
+
+
+def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    captured = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: None)
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "Notification",
+            "questionnaire": "1. [question] Which region should we deploy to?\n[topic] Region\n[option] us-east-1",
+        },
+    )
+
+    def fake_run_speakup(message, event, session_name=None, session_id=None):
+        captured["message"] = message
+        captured["event"] = event
+        captured["session_name"] = session_name
+        captured["session_id"] = session_id
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured == {
+        "message": "Which region should we deploy to?",
+        "event": "needs_input",
+        "session_name": None,
+        "session_id": None,
+    }
+    assert stdout.getvalue().strip() == "speakup notification: Which region should we deploy to?"
 
 
 def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
