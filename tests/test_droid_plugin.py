@@ -84,6 +84,9 @@ def test_slash_command_exists():
         content = f.read()
         assert "description:" in content
         assert "Control speakup notifications" in content
+        assert "replay" in content
+        assert "--session-key" in content
+        assert "droid-session-pointers" in content
 
 
 def test_readme_exists():
@@ -303,6 +306,24 @@ def test_extract_request_id_prefers_top_level_request_id():
     assert module.extract_request_id(payload) == "req-top"
 
 
+def test_extract_session_key_reads_droid_session_id():
+    module = load_hook_module()
+
+    assert module.extract_session_key({"session_id": "sess-123"}) == "sess-123"
+
+
+def test_save_current_session_pointer_writes_cwd_scoped_pointer(tmp_path, monkeypatch):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+
+    module.save_current_session_pointer("/Users/pg/Coding/_bucket/speakup", "sess-123", "Session Name")
+
+    pointer_path = module.get_session_pointer_path("/Users/pg/Coding/_bucket/speakup")
+    payload = json.loads(pointer_path.read_text())
+    assert payload["session_key"] == "sess-123"
+    assert payload["session_name"] == "Session Name"
+
+
 def test_build_hook_summary_includes_session_name():
     module = load_hook_module()
 
@@ -338,14 +359,19 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     monkeypatch.setattr(module, "setup_logging", lambda config: None)
     monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
     monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module, "extract_session_id", lambda _: "sess-123")
+    monkeypatch.setattr(module, "extract_session_key", lambda _: "sess-123")
+    saved = {}
+    monkeypatch.setattr(module, "save_current_session_pointer", lambda cwd, session_key, session_name=None: saved.update({"cwd": cwd, "session_key": session_key, "session_name": session_name}))
     monkeypatch.setattr(module.logger, "info", lambda message: None)
     monkeypatch.setattr(module.logger, "debug", lambda message: None)
-    monkeypatch.setattr(module.json, "load", lambda _: {"hook_event_name": "Notification", "message": "hello"})
+    monkeypatch.setattr(module.json, "load", lambda _: {"hook_event_name": "Notification", "message": "hello", "cwd": "/tmp/project"})
 
-    def fake_run_speakup(message, event, session_name=None, session_id=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
+        captured["session_key"] = session_key
         captured["session_id"] = session_id
         return True
 
@@ -356,7 +382,14 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     except SystemExit:
         pass
 
-    assert captured == {"message": "hello", "event": "needs_input", "session_name": "Session Name", "session_id": None}
+    assert captured == {
+        "message": "hello",
+        "event": "needs_input",
+        "session_name": "Session Name",
+        "session_key": "sess-123",
+        "session_id": "sess-123",
+    }
+    assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
     assert stdout.getvalue().strip() == "speakup notification (Session Name): hello"
 
 
@@ -382,10 +415,11 @@ def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
         },
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_id=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
+        captured["session_key"] = session_key
         captured["session_id"] = session_id
         return True
 
@@ -400,6 +434,7 @@ def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
         "message": "Which region should we deploy to?",
         "event": "needs_input",
         "session_name": None,
+        "session_key": None,
         "session_id": None,
     }
     assert stdout.getvalue().strip() == "speakup notification: Which region should we deploy to?"
@@ -427,10 +462,11 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
         lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_id=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None):
         assert message == "# Final summary text"
         assert event == "final"
         assert session_name == "Session Name"
+        assert session_key is None
         assert session_id is None
         return True
 
@@ -517,15 +553,29 @@ def test_run_speakup_uses_non_blocking_popen(monkeypatch):
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(module.logger, "info", lambda message: logged.append(message))
 
-    result = module.run_speakup("hello", "info", "session name")
+    result = module.run_speakup("hello", "info", "session name", "sess-123", "sess-123")
 
     assert result is True
-    assert captured["cmd"] == ["speakup", "--message", "hello", "--event", "info", "--session-name", "session name"]
+    assert captured["cmd"] == [
+        "speakup",
+        "--agent",
+        "droid",
+        "--message",
+        "hello",
+        "--event",
+        "info",
+        "--session-name",
+        "session name",
+        "--session-key",
+        "sess-123",
+        "--session-id",
+        "sess-123",
+    ]
     assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["start_new_session"] is True
-    assert logged[0] == "Launching speakup v1.2.3: event=info, session=session name, session_id=None, message_len=5"
+    assert logged[0] == "Launching speakup v1.2.3: event=info, session=session name, session_key=sess-123, session_id=sess-123, message_len=5"
 
 
 def test_run_speakup_passes_session_id(monkeypatch):
@@ -543,7 +593,17 @@ def test_run_speakup_passes_session_id(monkeypatch):
     result = module.run_speakup("hello", "info", session_id="sess-123")
 
     assert result is True
-    assert captured["cmd"] == ["speakup", "--message", "hello", "--event", "info", "--session-id", "sess-123"]
+    assert captured["cmd"] == [
+        "speakup",
+        "--agent",
+        "droid",
+        "--message",
+        "hello",
+        "--event",
+        "info",
+        "--session-id",
+        "sess-123",
+    ]
     assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
     assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL

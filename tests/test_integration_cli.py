@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -10,6 +11,9 @@ from pathlib import Path
 from speakup.session_naming import generate_session_name
 
 from .conftest import run_cli
+from speakup.history import NotificationHistory
+from speakup.models import MessageEvent, NotifyRequest, NotifyResult
+from speakup.config import runtime_temp_dir
 
 
 class _SummaryHandler(BaseHTTPRequestHandler):
@@ -172,6 +176,195 @@ def test_cli_given_conversation_id_without_session_name_then_generates_session_n
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["summary"] == f"{generate_session_name('conv-123')}: Done implementing the feature"
+
+
+def test_cli_given_session_key_then_replay_finds_saved_notification(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    notify = run_cli(
+        [
+            "--config",
+            str(base_config),
+            "--message",
+            "Stored for replay",
+            "--event",
+            "final",
+            "--session-key",
+            "sess-cli",
+        ],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+    assert notify.returncode == 0, notify.stderr
+
+    replay = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "speakup", "--session-key", "sess-cli"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+    assert replay.returncode == 0, replay.stderr
+    payload = json.loads(replay.stdout)
+    assert payload["status"] == "ok"
+    assert payload["replayed"] == 1
+
+
+def test_cli_replay_given_saved_audio_then_replays_exact_session_entry(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    saved_audio = tmp_path / "saved.wav"
+    saved_audio.write_text("FAKEAUDIO")
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.FINAL,
+            agent="droid",
+            session_name="Session Name",
+            session_key="sess-123",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Stored summary",
+            state=MessageEvent.FINAL,
+            backend="macos",
+            played=True,
+            audio_path=saved_audio,
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "1", "--config", str(base_config), "--agent", "droid", "--session-key", "sess-123"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["replayed"] == 1
+    assert payload["from_audio"] == 1
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert str(saved_audio) in play_log.read_text()
+
+
+def test_cli_replay_given_missing_audio_then_falls_back_to_summary_without_saving_history(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.NEEDS_INPUT,
+            agent="pi",
+            session_name="Session Name",
+            session_key="sess-456",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Stored summary",
+            state=MessageEvent.NEEDS_INPUT,
+            backend="macos",
+            played=True,
+            audio_path=tmp_path / "missing.wav",
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "pi", "--session-key", "sess-456"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["requested"] == 1
+    assert payload["replayed"] == 1
+    assert payload["from_summary"] == 1
+    assert history.count() == 1
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert "tts-" in play_log.read_text()
+
+
+def test_cli_replay_skips_history_rows_that_were_never_spoken(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    history.add(
+        NotifyRequest(
+            message="Still indexing files",
+            event=MessageEvent.PROGRESS,
+            agent="pi",
+            session_name="Session Name",
+            session_key="sess-789",
+        ),
+        NotifyResult(
+            status="skipped",
+            summary="",
+            state=MessageEvent.PROGRESS,
+            backend="none",
+            played=False,
+            dedup_skipped=True,
+        ),
+        timestamp=2.0,
+    )
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.NEEDS_INPUT,
+            agent="pi",
+            session_name="Session Name",
+            session_key="sess-789",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Session Name: Stored summary",
+            state=MessageEvent.NEEDS_INPUT,
+            backend="macos",
+            played=True,
+            audio_path=tmp_path / "missing.wav",
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "pi", "--session-key", "sess-789"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["replayed"] == 1
+    assert payload["from_summary"] == 1
+    assert payload["failed"] == 0
 
 
 def test_cli_given_playback_failure_then_returns_partial_success(tmp_path: Path, base_config: Path) -> None:

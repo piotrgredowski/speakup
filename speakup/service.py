@@ -197,6 +197,102 @@ class NotifyService:
         except Exception as exc:
             self.logger.warning("history_save_failed", extra={"request_id": request_id, "error": str(exc)})
 
+    def _prepare_spoken_summary(
+        self,
+        *,
+        event: MessageEvent,
+        session_name: str | None,
+        summary_text: str,
+    ) -> tuple[str | None, str, str]:
+        spoken_session_name = sanitize_text_for_tts(str(session_name or "")) or None
+        spoken_message = sanitize_text_for_tts(summary_text)
+        if not spoken_message:
+            spoken_message = _fallback_spoken_summary(event)
+
+        spoken_summary = (
+            f"{spoken_session_name}: {spoken_message}"
+            if spoken_session_name
+            else spoken_message
+        )
+        return spoken_session_name, spoken_message, spoken_summary
+
+    def _play_synthesized_summary(
+        self,
+        *,
+        event: MessageEvent,
+        spoken_session_name: str | None,
+        spoken_message: str,
+        spoken_summary: str,
+        request_id: str,
+        include_event_sound: bool,
+        force_play_audio: bool | None = None,
+    ) -> NotifyResult:
+        with self._timed("tts", request_id):
+            tts_results, backend = self._synthesize_segments(
+                session_name=spoken_session_name,
+                summary_text=spoken_message,
+                request_id=request_id,
+            )
+        if not tts_results:
+            self.logger.warning("tts_failed_all_backends", extra={"request_id": request_id})
+            return NotifyResult(
+                status="degraded_text_only",
+                summary=spoken_summary,
+                state=event,
+                backend="none",
+                played=False,
+                error="No TTS backend succeeded",
+            )
+
+        audio_paths = [Path(str(result.value)) for result in tts_results if result.kind == "file" and result.value]
+        audio_path = audio_paths[-1] if audio_paths else None
+        played = False
+        playback_error: str | None = None
+        play_audio = force_play_audio if force_play_audio is not None else bool(self.config.get("tts", "play_audio", default=True))
+        if audio_paths and play_audio:
+            try:
+                playback_paths: list[Path] = []
+                if include_event_sound:
+                    event_sound_path = self._event_sound_path(event, request_id=request_id)
+                    if event_sound_path is not None:
+                        playback_paths.append(event_sound_path)
+                playback_paths.extend(audio_paths)
+
+                self.logger.info(
+                    "playback_start",
+                    extra={
+                        "request_id": request_id,
+                        "audio_path": str(audio_path),
+                        "queue_length": len(playback_paths),
+                    },
+                )
+                self.registry.get_playback().play_files(playback_paths)
+                played = True
+                self.logger.info("playback_success", extra={"request_id": request_id, "audio_path": str(audio_path)})
+            except AdapterError as exc:
+                played = False
+                playback_error = str(exc)
+                self.logger.warning("playback_failed", extra={"request_id": request_id, "error": playback_error})
+
+        status = "ok" if played or not play_audio else "partial_success"
+        if audio_path is None:
+            status = "ok"
+
+        self.logger.info(
+            "notify_completed",
+            extra={"request_id": request_id, "status": status, "backend": backend, "played": played, "audio_path": str(audio_path) if audio_path else None},
+        )
+
+        return NotifyResult(
+            status=status,
+            summary=spoken_summary,
+            state=event,
+            backend=backend,
+            played=played,
+            audio_path=audio_path,
+            error=playback_error,
+        )
+
     def notify(self, request: NotifyRequest) -> NotifyResult:
         request_id = uuid4().hex[:12]
         include_message = bool(self.config.get("logging", "log_message_text", default=False))
@@ -256,15 +352,10 @@ class NotifyService:
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
-        spoken_session_name = sanitize_text_for_tts(str(request.session_name or "")) or None
-        spoken_message = sanitize_text_for_tts(summary_text)
-        if not spoken_message:
-            spoken_message = _fallback_spoken_summary(event)
-
-        spoken_summary = (
-            f"{spoken_session_name}: {spoken_message}"
-            if spoken_session_name
-            else spoken_message
+        spoken_session_name, spoken_message, spoken_summary = self._prepare_spoken_summary(
+            event=event,
+            session_name=request.session_name,
+            summary_text=summary_text,
         )
 
         self.logger.debug(
@@ -278,76 +369,34 @@ class NotifyService:
                 "summary_length": len(spoken_summary),
             },
         )
-
-        with self._timed("tts", request_id):
-            tts_results, backend = self._synthesize_segments(
-                session_name=spoken_session_name,
-                summary_text=spoken_message,
-                request_id=request_id,
-            )
-        if not tts_results:
-            self.logger.warning("tts_failed_all_backends", extra={"request_id": request_id})
-            result = NotifyResult(
-                status="degraded_text_only",
-                summary=spoken_summary,
-                state=event,
-                backend="none",
-                played=False,
-                error="No TTS backend succeeded",
-            )
-            self._save_history(request, result, request_id=request_id)
-            return result
-
-        audio_paths = [Path(str(result.value)) for result in tts_results if result.kind == "file" and result.value]
-        audio_path = audio_paths[-1] if audio_paths else None
-        played = False
-        playback_error: str | None = None
-        play_audio = bool(self.config.get("tts", "play_audio", default=True))
-        if audio_paths and play_audio:
-            try:
-                playback_paths: list[Path] = []
-                event_sound_path = self._event_sound_path(event, request_id=request_id)
-                if event_sound_path is not None:
-                    playback_paths.append(event_sound_path)
-                playback_paths.extend(audio_paths)
-
-                self.logger.info(
-                    "playback_start",
-                    extra={
-                        "request_id": request_id,
-                        "audio_path": str(audio_path),
-                        "queue_length": len(playback_paths),
-                    },
-                )
-                self.registry.get_playback().play_files(playback_paths)
-                played = True
-                self.logger.info("playback_success", extra={"request_id": request_id, "audio_path": str(audio_path)})
-            except AdapterError as exc:
-                played = False
-                playback_error = str(exc)
-                self.logger.warning("playback_failed", extra={"request_id": request_id, "error": playback_error})
-
-        status = "ok" if played or not play_audio else "partial_success"
-        if audio_path is None:
-            status = "ok"
-
-        self.logger.info(
-            "notify_completed",
-            extra={"request_id": request_id, "status": status, "backend": backend, "played": played, "audio_path": str(audio_path) if audio_path else None},
-        )
-
-        result = NotifyResult(
-            status=status,
-            summary=spoken_summary,
-            state=event,
-            backend=backend,
-            played=played,
-            audio_path=audio_path,
-            error=playback_error,
+        result = self._play_synthesized_summary(
+            event=event,
+            spoken_session_name=spoken_session_name,
+            spoken_message=spoken_message,
+            spoken_summary=spoken_summary,
+            request_id=request_id,
+            include_event_sound=True,
         )
 
         self._save_history(request, result, request_id=request_id)
         return result
+
+    def replay_summary(self, *, summary: str, event: MessageEvent) -> NotifyResult:
+        request_id = uuid4().hex[:12]
+        spoken_session_name, spoken_message, spoken_summary = self._prepare_spoken_summary(
+            event=event,
+            session_name=None,
+            summary_text=summary,
+        )
+        return self._play_synthesized_summary(
+            event=event,
+            spoken_session_name=spoken_session_name,
+            spoken_message=spoken_message,
+            spoken_summary=spoken_summary,
+            request_id=request_id,
+            include_event_sound=False,
+            force_play_audio=True,
+        )
 
     def _should_speak(self, event: MessageEvent) -> bool:
         mapping = {

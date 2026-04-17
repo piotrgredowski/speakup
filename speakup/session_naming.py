@@ -182,4 +182,8 @@ def resolve_session_name(request: NotifyRequest, config: dict[str, object] | Non
     if isinstance(config, dict) and not bool(config.get("enabled", True)):
         return None
 
-    return generate_session_name(_normalize_seed(request.conversation_id) or _normalize_seed(request.session_id))
+    return generate_session_name(
+        _normalize_seed(request.conversation_id)
+        or _normalize_seed(request.session_id)
+        or _normalize_seed(request.session_key)
+    )

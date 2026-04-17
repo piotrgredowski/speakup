@@ -24,6 +24,7 @@ class HistoryEntry:
     status: str = ""
     backend: str = ""
     session_name: str | None = None
+    session_key: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,6 +39,7 @@ class HistoryEntry:
             "status": self.status,
             "backend": self.backend,
             "session_name": self.session_name,
+            "session_key": self.session_key,
             "metadata": self.metadata,
         }
 
@@ -72,10 +74,17 @@ class NotificationHistory:
                     status TEXT NOT NULL,
                     backend TEXT NOT NULL,
                     session_name TEXT,
+                    session_key TEXT,
                     metadata TEXT
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(notifications)").fetchall()
+            }
+            if "session_key" not in columns:
+                conn.execute("ALTER TABLE notifications ADD COLUMN session_key TEXT")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notifications_timestamp ON notifications(timestamp DESC)"
             )
@@ -84,6 +93,9 @@ class NotificationHistory:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notifications_event ON notifications(event)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notifications_agent_session_key_timestamp ON notifications(agent, session_key, timestamp DESC)"
             )
 
     def add(
@@ -101,8 +113,8 @@ class NotificationHistory:
             cursor = conn.execute(
                 """
                 INSERT INTO notifications 
-                (timestamp, agent, event, message, summary, audio_path, status, backend, session_name, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ts,
@@ -114,6 +126,7 @@ class NotificationHistory:
                     result.status,
                     result.backend,
                     request.session_name,
+                    request.session_key,
                     metadata_json,
                 ),
             )
@@ -124,7 +137,7 @@ class NotificationHistory:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, metadata
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
                 FROM notifications
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
@@ -139,7 +152,7 @@ class NotificationHistory:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, metadata
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
                 FROM notifications
                 WHERE agent = ?
                 ORDER BY timestamp DESC
@@ -155,7 +168,7 @@ class NotificationHistory:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, metadata
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
                 FROM notifications
                 WHERE event = ?
                 ORDER BY timestamp DESC
@@ -171,7 +184,7 @@ class NotificationHistory:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, metadata
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
                 FROM notifications
                 WHERE message LIKE ? OR summary LIKE ?
                 ORDER BY timestamp DESC
@@ -187,7 +200,7 @@ class NotificationHistory:
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, metadata
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
                 FROM notifications
                 WHERE id = ?
                 """,
@@ -195,6 +208,38 @@ class NotificationHistory:
             ).fetchone()
 
             return self._row_to_entry(row) if row else None
+
+    def get_recent_for_session(self, agent: str, session_key: str, limit: int = 100) -> list[HistoryEntry]:
+        """Get recent notifications for an exact agent/session key pair."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
+                FROM notifications
+                WHERE agent = ? AND session_key = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (agent, session_key, limit),
+            ).fetchall()
+
+            return [self._row_to_entry(row) for row in rows]
+
+    def get_recent_replayable_for_session(self, agent: str, session_key: str, limit: int = 100) -> list[HistoryEntry]:
+        """Get recent replayable notifications for an exact agent/session key pair."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
+                FROM notifications
+                WHERE agent = ? AND session_key = ? AND status != 'skipped'
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (agent, session_key, limit),
+            ).fetchall()
+
+            return [self._row_to_entry(row) for row in rows]
 
     def count(self) -> int:
         """Get total number of notifications."""
@@ -265,5 +310,6 @@ class NotificationHistory:
             status=row["status"],
             backend=row["backend"],
             session_name=row["session_name"],
+            session_key=row["session_key"],
             metadata=metadata,
         )

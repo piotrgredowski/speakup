@@ -15,6 +15,7 @@ import typer
 from .app_logging import setup_logging
 from .config import Config, get_default_log_file_path, write_default_config
 from .errors import AdapterError
+from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
 from .service import NotifyService
@@ -139,6 +140,8 @@ def _run_notify(
     session_name: Optional[str],
     conversation_id: Optional[str],
     session_id: Optional[str],
+    agent: Optional[str],
+    session_key: Optional[str],
     input_json: Optional[str],
     input_file: Optional[Path],
     message_file: Optional[Path],
@@ -184,14 +187,16 @@ def _run_notify(
     )
 
     request = _load_payload(
-        message,
-        event,
-        session_name,
-        conversation_id,
-        session_id,
-        input_json,
-        str(input_file) if input_file else None,
-        str(message_file) if message_file else None,
+        message=message,
+        event=event,
+        session_name=session_name,
+        conversation_id=conversation_id,
+        session_id=session_id,
+        agent=agent,
+        input_json=input_json,
+        input_file=str(input_file) if input_file else None,
+        session_key=session_key,
+        message_file=str(message_file) if message_file else None,
     )
     request.skip_summarization = no_summarize
     logger.info(
@@ -203,7 +208,7 @@ def _run_notify(
         },
     )
 
-    result = NotifyService(cfg).notify(request)
+    result = NotifyService(cfg, history=NotificationHistory()).notify(request)
     logger.info(
         "notify_completed",
         extra={
@@ -268,6 +273,12 @@ def main_callback(
     session_id: Optional[str] = typer.Option(
         None, "--session-id", help="Optional stable session identifier for session-name generation"
     ),
+    agent: Optional[str] = typer.Option(
+        None, "--agent", help="Agent name to persist in history and use for replay filtering"
+    ),
+    session_key: Optional[str] = typer.Option(
+        None, "--session-key", help="Exact unique session identifier used for history lookup"
+    ),
     no_summarize: bool = typer.Option(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
@@ -330,6 +341,8 @@ def main_callback(
             session_name=session_name,
             conversation_id=conversation_id,
             session_id=session_id,
+            agent=agent,
+            session_key=session_key,
             input_json=input_json,
             input_file=input_file,
             message_file=message_file,
@@ -393,6 +406,29 @@ def _self_test_audio(config: Config) -> dict:
     return {"status": "ok" if overall_ok else "error", "checks": checks}
 
 
+def _apply_request_cli_overrides(
+    request: NotifyRequest,
+    *,
+    session_name: Optional[str],
+    conversation_id: Optional[str],
+    session_id: Optional[str],
+    agent: Optional[str],
+    session_key: Optional[str],
+) -> NotifyRequest:
+    if agent:
+        request.agent = agent
+    if session_key:
+        request.session_key = session_key
+    if conversation_id is not None:
+        request.conversation_id = conversation_id
+    if session_id is not None:
+        request.session_id = session_id
+    if session_name is not None:
+        request.session_name = session_name
+    if request.session_key and not request.conversation_id and not request.session_id:
+        request.session_id = request.session_key
+    return request
+
 
 def _load_payload(
     message: Optional[str],
@@ -400,17 +436,35 @@ def _load_payload(
     session_name: Optional[str],
     conversation_id: Optional[str],
     session_id: Optional[str],
+    agent: Optional[str],
     input_json: Optional[str],
     input_file: Optional[str],
+    session_key: Optional[str],
     message_file: Optional[str] = None,
 ) -> NotifyRequest:
     if input_json:
         payload = json.loads(input_json)
-        return NotifyRequest(**payload)
+        request = NotifyRequest(**payload)
+        return _apply_request_cli_overrides(
+            request,
+            session_name=session_name,
+            conversation_id=conversation_id,
+            session_id=session_id,
+            agent=agent,
+            session_key=session_key,
+        )
 
     if input_file:
         payload = json.loads(open(input_file).read())
-        return NotifyRequest(**payload)
+        request = NotifyRequest(**payload)
+        return _apply_request_cli_overrides(
+            request,
+            session_name=session_name,
+            conversation_id=conversation_id,
+            session_id=session_id,
+            agent=agent,
+            session_key=session_key,
+        )
 
     if message_file:
         message = Path(message_file).read_text().strip()
@@ -431,8 +485,93 @@ def _load_payload(
         event=msg_event,
         session_name=session_name,
         conversation_id=conversation_id,
-        session_id=session_id,
+        session_id=session_id or (session_key if session_key and not conversation_id else None),
+        session_key=session_key,
+        agent=agent or "speakup",
     )
+
+
+@app.command()
+def replay(
+    count: int = typer.Argument(1, min=1, help="How many notifications to replay"),
+    agent: str = typer.Option(..., "--agent", help="Agent name to filter by, e.g. droid or pi"),
+    session_key: str = typer.Option(..., "--session-key", help="Exact unique session identifier to replay"),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None, "--log-level", "-l", help="Override logging level"
+    ),
+    log_format: Optional[str] = typer.Option(
+        None, "--log-format", help="Override log format"
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", help="Write logs to file path"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
+    ),
+) -> None:
+    """Replay the most recent notifications for an exact agent/session pair."""
+    cfg = Config.load(config)
+    _setup_logging_from_options(
+        cfg, debug, log_level, log_format, str(log_file) if log_file else None
+    )
+
+    history = NotificationHistory()
+    entries = history.get_recent_replayable_for_session(agent, session_key, limit=count)
+    if not entries:
+        json.dump(
+            {
+                "status": "error",
+                "error": f"No replayable notifications found for agent={agent} session_key={session_key}",
+            },
+            sys.stdout,
+        )
+        sys.stdout.write("\n")
+        raise typer.Exit(1)
+
+    service = NotifyService(cfg, history=history)
+    replayed = 0
+    from_audio = 0
+    from_summary = 0
+    failed = 0
+
+    for entry in reversed(entries):
+        audio_path = Path(entry.audio_path) if entry.audio_path else None
+        if audio_path and audio_path.exists():
+            try:
+                service.registry.get_playback().play_files([audio_path])
+                replayed += 1
+                from_audio += 1
+                continue
+            except AdapterError:
+                pass
+
+        result = service.replay_summary(
+            summary=entry.summary,
+            event=MessageEvent(entry.event),
+        )
+        if result.played:
+            replayed += 1
+            from_summary += 1
+        else:
+            failed += 1
+
+    json.dump(
+        {
+            "status": "ok" if failed == 0 else ("partial_success" if replayed > 0 else "error"),
+            "agent": agent,
+            "session_key": session_key,
+            "requested": count,
+            "replayed": replayed,
+            "from_audio": from_audio,
+            "from_summary": from_summary,
+            "failed": failed,
+        },
+        sys.stdout,
+    )
+    sys.stdout.write("\n")
 
 
 def _load_text_input(
@@ -575,7 +714,7 @@ def pi(
     logger.info("pi_payload", extra={"payload": payload})
 
     request = request_from_pi_payload(payload)
-    result = NotifyService(cfg).notify(request)
+    result = NotifyService(cfg, history=NotificationHistory()).notify(request)
     logger.info(
         "pi_wrapper_completed",
         extra={

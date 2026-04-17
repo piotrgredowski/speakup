@@ -11,7 +11,9 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
     except Exception:
         event = MessageEvent.FINAL
 
+    session_key = payload.get("sessionKey")
     conversation_id = payload.get("conversationId")
+    session_id = payload.get("sessionId") or session_key
     session_name = None
     for key in ("sessionTitle", "session_title", "session-name", "sessionName", "title"):
         if key in payload:
@@ -23,7 +25,9 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
         message=message,
         event=event,
         session_name=session_name,
-        conversation_id=conversation_id,
+        conversation_id=conversation_id or session_key,
+        session_id=session_id,
+        session_key=session_key,
         task_id=payload.get("taskId"),
         agent=payload.get("agent", "pi"),
         precomputed_summary=payload.get("summary"),

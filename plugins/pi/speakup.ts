@@ -50,6 +50,22 @@ function extractText(message: any): string {
   return parts.join("\n").trim();
 }
 
+function extractSessionKey(event: any): string {
+  const candidates = [
+    event?.sessionKey,
+    event?.conversationId,
+    event?.sessionId,
+    event?.session?.id,
+    event?.session?.sessionId,
+    event?.message?.sessionKey,
+    event?.message?.conversationId,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 function getVersion(command: string, ctx: any): void {
   const child = spawn(command, ["--version"], {
     stdio: ["pipe", "pipe", "pipe"],
@@ -95,9 +111,28 @@ function runNotifier(command: string, args: string[], payload: Record<string, un
   });
 }
 
+function buildReplayCommandArgs(cfg: Required<ExtensionConfig>, count: string, sessionKey: string): string[] {
+  const baseArgs = [...cfg.args];
+
+  for (let i = 0; i < baseArgs.length; i += 1) {
+    if (baseArgs[i] === "speakup-pi") {
+      baseArgs[i] = "speakup";
+      break;
+    }
+  }
+
+  const piIndex = baseArgs.findIndex((value) => value === "pi");
+  if (piIndex >= 0) {
+    baseArgs.splice(piIndex, 1);
+  }
+
+  return [...baseArgs, "replay", count, "--agent", "pi", "--session-key", sessionKey];
+}
+
 export default function (pi: ExtensionAPI) {
   let config: Required<ExtensionConfig> | undefined;
   let sessionTitle = "Pi";
+  let sessionKey = "";
 
   const getConfig = (ctx: any): Required<ExtensionConfig> => {
     if (!config) config = loadConfig(ctx);
@@ -106,9 +141,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (event, ctx) => {
     config = loadConfig(ctx);
-    if (event?.session?.name) {
-      sessionTitle = event.session.name;
-    }
+    sessionTitle = typeof event?.session?.name === "string" && event.session.name.trim() ? event.session.name : "Pi";
+    const nextSessionKey = extractSessionKey(event);
+    sessionKey = nextSessionKey;
     if (config.enabled) {
       ctx.ui.notify("speakup extension active", "info");
       getVersion(config.command, ctx);
@@ -118,6 +153,12 @@ export default function (pi: ExtensionAPI) {
   pi.on("message_end", async (event, ctx) => {
     const cfg = getConfig(ctx);
     if (!cfg.enabled) return;
+    const nextSessionKey = extractSessionKey(event);
+    if (nextSessionKey) {
+      sessionKey = nextSessionKey;
+    } else if (event?.message?.role === "assistant") {
+      sessionKey = "";
+    }
 
     const role = event?.message?.role;
     if (cfg.onlyAssistant && role !== "assistant") return;
@@ -131,10 +172,12 @@ export default function (pi: ExtensionAPI) {
       event: eventType,
       agent: "pi",
       sessionName: sessionTitle,
+      sessionKey,
       metadata: {
         source: "pi-message_end",
         role,
         sessionName: sessionTitle,
+        sessionKey,
       },
     };
 
@@ -142,17 +185,43 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("speakup", {
-    description: "Toggle speakup extension notifications (on/off/status)",
+    description: "Toggle speakup extension notifications or replay recent messages",
     handler: async (args, ctx) => {
       const cfg = getConfig(ctx);
-      const cmd = (args || "status").trim().toLowerCase();
+      const input = (args || "status").trim();
+      const [cmd, rawCount] = input.split(/\s+/, 2);
+      const normalized = cmd.toLowerCase();
 
-      if (cmd === "on") {
+      if (normalized === "on") {
         cfg.enabled = true;
         ctx.ui.notify("speakup enabled", "info");
-      } else if (cmd === "off") {
+      } else if (normalized === "off") {
         cfg.enabled = false;
         ctx.ui.notify("speakup disabled", "info");
+      } else if (normalized === "replay") {
+        if (!sessionKey) {
+          ctx.ui.notify("speakup: current Pi session key is unavailable", "error");
+          return;
+        }
+        const count = rawCount && /^\d+$/.test(rawCount) ? rawCount : "1";
+        const child = spawn(cfg.command, buildReplayCommandArgs(cfg, count, sessionKey), {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (d) => (stdout += d.toString()));
+        child.stderr.on("data", (d) => (stderr += d.toString()));
+        child.on("error", (err: any) => {
+          ctx.ui.notify(`speakup: replay failed to start: ${err?.message ?? err}`, "error");
+        });
+        child.on("close", (code) => {
+          if (code === 0) {
+            ctx.ui.notify(`speakup replayed ${count} notification${count === "1" ? "" : "s"}`, "info");
+            return;
+          }
+          const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
+          ctx.ui.notify(`speakup: replay failed (${detail})`, "error");
+        });
       } else {
         ctx.ui.notify(`speakup is ${cfg.enabled ? "enabled" : "disabled"}`, "info");
       }

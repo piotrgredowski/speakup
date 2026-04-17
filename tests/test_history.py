@@ -44,6 +44,7 @@ class TestNotificationHistory:
             event=MessageEvent.FINAL,
             agent="test_agent",
             session_name="test_session",
+            session_key="session-key-1",
         )
         
         result = NotifyResult(
@@ -70,6 +71,7 @@ class TestNotificationHistory:
         assert entry.status == "ok"
         assert entry.backend == "test_backend"
         assert entry.session_name == "test_session"
+        assert entry.session_key == "session-key-1"
 
     def test_filter_by_agent(self, tmp_path: Path) -> None:
         """Test filtering by agent."""
@@ -91,6 +93,81 @@ class TestNotificationHistory:
         entries = history.get_by_agent("agent2", limit=10)
         assert len(entries) == 1
         assert entries[0].agent == "agent2"
+
+    def test_get_recent_for_session(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+
+        history.add(
+            NotifyRequest(message="A", event=MessageEvent.FINAL, agent="pi", session_key="sess-1"),
+            NotifyResult(status="ok", summary="A", state=MessageEvent.FINAL, backend="test", played=True),
+            timestamp=1.0,
+        )
+        history.add(
+            NotifyRequest(message="B", event=MessageEvent.FINAL, agent="pi", session_key="sess-2"),
+            NotifyResult(status="ok", summary="B", state=MessageEvent.FINAL, backend="test", played=True),
+            timestamp=2.0,
+        )
+        history.add(
+            NotifyRequest(message="C", event=MessageEvent.FINAL, agent="pi", session_key="sess-1"),
+            NotifyResult(status="ok", summary="C", state=MessageEvent.FINAL, backend="test", played=True),
+            timestamp=3.0,
+        )
+
+        entries = history.get_recent_for_session("pi", "sess-1", limit=10)
+
+        assert [entry.message for entry in entries] == ["C", "A"]
+
+    def test_get_recent_replayable_for_session_skips_skipped_entries(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+
+        history.add(
+            NotifyRequest(message="A", event=MessageEvent.PROGRESS, agent="pi", session_key="sess-1"),
+            NotifyResult(status="skipped", summary="", state=MessageEvent.PROGRESS, backend="none", played=False),
+            timestamp=1.0,
+        )
+        history.add(
+            NotifyRequest(message="B", event=MessageEvent.FINAL, agent="pi", session_key="sess-1"),
+            NotifyResult(status="ok", summary="B", state=MessageEvent.FINAL, backend="test", played=True),
+            timestamp=2.0,
+        )
+
+        entries = history.get_recent_replayable_for_session("pi", "sess-1", limit=10)
+
+        assert [entry.message for entry in entries] == ["B"]
+
+    def test_init_adds_session_key_column_to_existing_database(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+        with history._connect() as conn:
+            conn.execute("DROP TABLE notifications")
+            conn.execute(
+                """
+                CREATE TABLE notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    agent TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    audio_path TEXT,
+                    status TEXT NOT NULL,
+                    backend TEXT NOT NULL,
+                    session_name TEXT,
+                    metadata TEXT
+                )
+                """
+            )
+
+        migrated = NotificationHistory(db_path)
+        with migrated._connect() as conn:
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(notifications)").fetchall()
+            }
+
+        assert "session_key" in columns
 
     def test_filter_by_event(self, tmp_path: Path) -> None:
         """Test filtering by event type."""

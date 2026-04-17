@@ -21,8 +21,9 @@ class NotifyRequest:
     session_name: str | None = None
     conversation_id: str | None = None
     session_id: str | None = None
+    session_key: str | None = None
     task_id: str | None = None
-    agent: str = "pi"
+    agent: str = "speakup"
     precomputed_summary: str | None = None
     skip_summarization: bool = False
     force_summarization: bool = False

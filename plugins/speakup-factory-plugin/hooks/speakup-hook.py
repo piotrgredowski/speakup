@@ -25,7 +25,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-<<<<<<< HEAD
 try:
     from speakup import app_logging as _shared_app_logging
 except ImportError:
@@ -615,6 +614,40 @@ def extract_request_id(input_data: dict) -> str:
     return DEFAULT_REQUEST_ID
 
 
+def extract_session_key(input_data: dict) -> str | None:
+    """Extract exact unique session identifier from Droid hook payload."""
+    found, value = _extract_named_value(
+        input_data,
+        ("session_id", "sessionId", "session-id"),
+    )
+    if found and isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _cwd_slug(cwd: str) -> str:
+    return cwd.replace("\\", "-").replace("/", "-").replace(":", "-")
+
+
+def get_session_pointer_path(cwd: str) -> Path:
+    pointer_dir = Path.home() / ".config" / "speakup" / "droid-session-pointers"
+    return pointer_dir / f"{_cwd_slug(cwd)}.json"
+
+
+def save_current_session_pointer(cwd: str, session_key: str, session_name: str | None = None) -> None:
+    pointer_path = get_session_pointer_path(cwd)
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+    pointer_path.write_text(
+        json.dumps(
+            {
+                "cwd": cwd,
+                "session_key": session_key,
+                "session_name": session_name,
+            }
+        )
+    )
+
+
 def build_hook_summary(message: str, droid_event: str, session_name: str | None = None) -> str:
     """Build a short summary shown in Droid hook output."""
     event_label = {
@@ -637,33 +670,45 @@ def build_hook_summary(message: str, droid_event: str, session_name: str | None 
 
 
 def extract_session_id(input_data: dict) -> str | None:
-    session_id = input_data.get("session_id")
-    if isinstance(session_id, str) and session_id.strip():
-        return session_id.strip()
+    found, value = _extract_named_value(
+        input_data,
+        ("session_id", "sessionId", "session-id"),
+    )
+    if found and isinstance(value, str) and value.strip():
+        return value.strip()
     return None
 
 
-def run_speakup(message: str, event: str, session_name: str | None = None, session_id: str | None = None):
+def run_speakup(
+    message: str,
+    event: str,
+    session_name: str | None = None,
+    session_key: str | None = None,
+    session_id: str | None = None,
+):
     """Run speakup CLI with the extracted message.
 
     Args:
         message: Message to speak
         event: Speakup event type
         session_name: Optional session name
+        session_key: Exact unique session identifier
         session_id: Optional session identifier for core session-name generation
 
     Returns:
         True if successful, False otherwise
     """
-    cmd = ["speakup", "--message", message, "--event", event]
+    cmd = ["speakup", "--agent", "droid", "--message", message, "--event", event]
 
     if session_name:
         cmd.extend(["--session-name", session_name])
+    if session_key:
+        cmd.extend(["--session-key", session_key])
     if session_id:
         cmd.extend(["--session-id", session_id])
 
     logger.info(
-        f"Launching speakup {get_speakup_version()}: event={event}, session={session_name}, session_id={session_id}, message_len={len(message)}"
+        f"Launching speakup {get_speakup_version()}: event={event}, session={session_name}, session_key={session_key}, session_id={session_id}, message_len={len(message)}"
     )
 
     try:
@@ -744,9 +789,19 @@ def main():
     # Get session name (optional)
     session_name = extract_session_name(input_data)
     session_id = extract_session_id(input_data)
+    session_key = extract_session_key(input_data) or session_id
+    cwd = input_data.get("cwd")
+    if session_key and isinstance(cwd, str) and cwd.strip():
+        save_current_session_pointer(cwd.strip(), session_key, session_name)
 
     # Run speakup
-    if run_speakup(message, speakup_event, session_name, session_id):
+    if run_speakup(
+        message,
+        speakup_event,
+        session_name,
+        session_key=session_key,
+        session_id=session_id or session_key,
+    ):
         print(build_hook_summary(message, droid_event, session_name))
 
     # Exit cleanly - we don't want to block Droid
