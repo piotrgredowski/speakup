@@ -7,7 +7,7 @@
 # ]
 #
 # [tool.uv.sources]
-# speakup = { path = "/Users/pg/Coding/_bucket/speakup/" }
+# speakup = { path = "/Users/pg/Coding/_bucket/speakup/", editable = true }
 # ///
 
 import json
@@ -633,44 +633,10 @@ def save_current_session_pointer(cwd: str, session_key: str, session_name: str |
     )
 
 
-def build_hook_summary(message: str, droid_event: str, session_name: str | None = None) -> str:
-    """Build a short summary shown in Droid hook output."""
-    event_label = {
-        "Notification": "notification",
-        "Stop": "final",
-        "SubagentStop": "progress",
-        "SessionStart": "info",
-    }.get(droid_event, droid_event.lower() if droid_event else "event")
-
-    display_message = _sanitize_text_for_tts(message) or {
-        "Notification": "Input needed",
-        "Stop": "Task finished",
-        "SubagentStop": "Task updated",
-        "SessionStart": "Session started",
-    }.get(droid_event, "Notification")
-
-    if session_name:
-        return f"speakup {event_label} ({session_name}): {display_message}"
-    return f"speakup {event_label}: {display_message}"
-
-
-def build_replay_summary(session_key: str | None) -> str | None:
+def build_hook_output(session_key: str | None = None) -> str:
     if not session_key or build_replay_command is None:
-        return None
-    return f"Replay: {build_replay_command(session_key)}"
-
-
-def build_hook_output(
-    message: str,
-    droid_event: str,
-    session_name: str | None = None,
-    session_key: str | None = None,
-) -> str:
-    summary = build_hook_summary(message, droid_event, session_name)
-    replay_summary = build_replay_summary(session_key)
-    if replay_summary:
-        return f"{summary}\n{replay_summary}"
-    return summary
+        return ""
+    return build_replay_command(session_key)
 
 
 def extract_session_id(input_data: dict) -> str | None:
@@ -796,7 +762,9 @@ def main():
         session_key=session_key,
         session_id=session_id or session_key,
     ):
-        print(build_hook_output(message, droid_event, session_name, session_key))
+        output = build_hook_output(session_key)
+        if output:
+            print(output)
 
     # Exit cleanly - we don't want to block Droid
     sys.exit(0)

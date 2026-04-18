@@ -67,6 +67,7 @@ def test_hook_script_exists():
         content = f.read()
         assert content.startswith("#!/usr/bin/env -S uv run --script\n")
         assert '# /// script' in content
+        assert 'editable = true' in content
         assert '"structlog>=25.5.0"' in content
         assert "import json" in content
         assert "from speakup.integrations.droid import" in content
@@ -401,26 +402,10 @@ def test_save_current_session_pointer_writes_cwd_scoped_pointer(tmp_path, monkey
     assert payload["session_name"] == "Session Name"
 
 
-def test_build_hook_summary_includes_session_name():
-    module = load_hook_module()
-
-    assert module.build_hook_summary("Done.", "Stop", "Session Name") == "speakup final (Session Name): Done."
-
-
-def test_build_hook_summary_sanitizes_markdown_and_falls_back_when_empty():
-    module = load_hook_module()
-
-    assert module.build_hook_summary("# Release Update", "Stop", "Session Name") == "speakup final (Session Name): Release Update"
-    assert module.build_hook_summary("#", "Stop", "Session Name") == "speakup final (Session Name): Task finished"
-
-
 def test_build_hook_output_includes_replay_command_when_session_key_present():
     module = load_hook_module()
 
-    assert module.build_hook_output("Done.", "Stop", "Session Name", "sess-123") == (
-        "speakup final (Session Name): Done.\n"
-        "Replay: speakup replay 1 --agent droid --session-key sess-123"
-    )
+    assert module.build_hook_output("sess-123") == "speakup replay 1 --agent droid --session-key sess-123"
 
 
 def test_extract_message_reads_questionnaire_question_for_notification():
@@ -476,7 +461,7 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
         "session_id": "sess-123",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
-    assert stdout.getvalue().strip() == "speakup notification (Session Name): hello\nReplay: speakup replay 1 --agent droid --session-key sess-123"
+    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
 
 
 def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
@@ -523,7 +508,7 @@ def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
         "session_key": None,
         "session_id": None,
     }
-    assert stdout.getvalue().strip() == "speakup notification: Which region should we deploy to?"
+    assert stdout.getvalue() == ""
 
 
 def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
@@ -563,7 +548,7 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
     except SystemExit:
         pass
 
-    assert stdout.getvalue().strip() == "speakup final (Session Name): Final summary text"
+    assert stdout.getvalue() == ""
 
 
 def test_hook_logging_writes_request_id_first(tmp_path):
