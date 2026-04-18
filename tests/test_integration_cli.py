@@ -178,6 +178,190 @@ def test_cli_given_conversation_id_without_session_name_then_generates_session_n
     assert payload["summary"] == f"{generate_session_name('conv-123')}: Done implementing the feature"
 
 
+def test_cli_replay_without_filters_defaults_to_latest_replayable_message(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    older_audio = tmp_path / "older.wav"
+    older_audio.write_text("OLDER")
+    latest_audio = tmp_path / "latest.wav"
+    latest_audio.write_text("LATEST")
+    history.add(
+        NotifyRequest(
+            message="Older",
+            event=MessageEvent.FINAL,
+            agent="pi",
+            session_name="Older Session",
+            session_key="sess-older",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Older summary",
+            state=MessageEvent.FINAL,
+            backend="macos",
+            played=True,
+            audio_path=older_audio,
+        ),
+        timestamp=1.0,
+    )
+    history.add(
+        NotifyRequest(
+            message="Latest",
+            event=MessageEvent.ERROR,
+            agent="droid",
+            session_name="Latest Session",
+            session_key="sess-latest",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Latest summary",
+            state=MessageEvent.ERROR,
+            backend="macos",
+            played=True,
+            audio_path=latest_audio,
+        ),
+        timestamp=2.0,
+    )
+
+    result = run_cli(
+        ["replay", "--config", str(base_config)],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["requested"] == 1
+    assert payload["replayed"] == 1
+    assert payload["from_audio"] == 1
+    assert payload["agent"] == "droid"
+    assert payload["session_key"] == "sess-latest"
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert str(latest_audio) in play_log.read_text()
+
+
+def test_cli_replay_without_filters_returns_sessions_for_mixed_results(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    older_audio = tmp_path / "older.wav"
+    older_audio.write_text("OLDER")
+    latest_audio = tmp_path / "latest.wav"
+    latest_audio.write_text("LATEST")
+    history.add(
+        NotifyRequest(
+            message="Older",
+            event=MessageEvent.FINAL,
+            agent="pi",
+            session_name="Older Session",
+            session_key="sess-older",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Older summary",
+            state=MessageEvent.FINAL,
+            backend="macos",
+            played=True,
+            audio_path=older_audio,
+        ),
+        timestamp=1.0,
+    )
+    history.add(
+        NotifyRequest(
+            message="Latest",
+            event=MessageEvent.ERROR,
+            agent="droid",
+            session_name="Latest Session",
+            session_key="sess-latest",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Latest summary",
+            state=MessageEvent.ERROR,
+            backend="macos",
+            played=True,
+            audio_path=latest_audio,
+        ),
+        timestamp=2.0,
+    )
+
+    result = run_cli(
+        ["replay", "2", "--config", str(base_config)],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["requested"] == 2
+    assert payload["replayed"] == 2
+    assert payload["from_audio"] == 2
+    assert "agent" not in payload
+    assert "session_key" not in payload
+    assert payload["sessions"] == [
+        {"agent": "droid", "session_key": "sess-latest"},
+        {"agent": "pi", "session_key": "sess-older"},
+    ]
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    log_text = play_log.read_text()
+    assert str(latest_audio) in log_text
+    assert str(older_audio) in log_text
+
+
+def test_cli_replay_without_filters_keeps_distinct_entries_without_session_keys(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    first = run_cli(
+        ["--config", str(base_config), "--message", "First", "--event", "final"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+    second = run_cli(
+        ["--config", str(base_config), "--message", "Second", "--event", "final"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+
+    replay = run_cli(
+        ["replay", "2", "--config", str(base_config)],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert replay.returncode == 0, replay.stderr
+    payload = json.loads(replay.stdout)
+    assert payload["requested"] == 2
+    assert payload["replayed"] == 2
+    assert "agent" not in payload
+    assert "session_key" not in payload
+    assert payload["sessions"] == [
+        {"agent": "speakup", "session_key": None},
+        {"agent": "speakup", "session_key": None},
+    ]
+
+
 def test_cli_given_session_key_then_replay_finds_saved_notification(
     tmp_path: Path,
     base_config: Path,
@@ -212,6 +396,8 @@ def test_cli_given_session_key_then_replay_finds_saved_notification(
     payload = json.loads(replay.stdout)
     assert payload["status"] == "ok"
     assert payload["replayed"] == 1
+    assert payload["agent"] == "speakup"
+    assert payload["session_key"] == "sess-cli"
 
 
 def test_cli_replay_given_saved_audio_then_replays_exact_session_entry(

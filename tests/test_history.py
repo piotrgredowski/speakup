@@ -118,6 +118,30 @@ class TestNotificationHistory:
 
         assert [entry.message for entry in entries] == ["C", "A"]
 
+    def test_get_recent_replayable_skips_skipped_entries(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+
+        history.add(
+            NotifyRequest(message="A", event=MessageEvent.PROGRESS, agent="pi", session_key="sess-1"),
+            NotifyResult(status="skipped", summary="", state=MessageEvent.PROGRESS, backend="none", played=False),
+            timestamp=1.0,
+        )
+        history.add(
+            NotifyRequest(message="B", event=MessageEvent.FINAL, agent="pi", session_key="sess-1"),
+            NotifyResult(status="ok", summary="B", state=MessageEvent.FINAL, backend="test", played=True),
+            timestamp=2.0,
+        )
+        history.add(
+            NotifyRequest(message="C", event=MessageEvent.FINAL, agent="droid", session_key="sess-2"),
+            NotifyResult(status="ok", summary="C", state=MessageEvent.FINAL, backend="test", played=True),
+            timestamp=3.0,
+        )
+
+        entries = history.get_recent_replayable(limit=10)
+
+        assert [entry.message for entry in entries] == ["C", "B"]
+
     def test_get_recent_replayable_for_session_skips_skipped_entries(self, tmp_path: Path) -> None:
         db_path = tmp_path / "history.db"
         history = NotificationHistory(db_path)

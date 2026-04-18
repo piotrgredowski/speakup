@@ -494,8 +494,8 @@ def _load_payload(
 @app.command()
 def replay(
     count: int = typer.Argument(1, min=1, help="How many notifications to replay"),
-    agent: str = typer.Option(..., "--agent", help="Agent name to filter by, e.g. droid or pi"),
-    session_key: str = typer.Option(..., "--session-key", help="Exact unique session identifier to replay"),
+    agent: Optional[str] = typer.Option(None, "--agent", help="Agent name to filter by, e.g. droid or pi"),
+    session_key: Optional[str] = typer.Option(None, "--session-key", help="Exact unique session identifier to replay"),
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to config JSON"
     ),
@@ -512,19 +512,28 @@ def replay(
         False, "--debug", "-d", help="Shortcut for --log-level DEBUG"
     ),
 ) -> None:
-    """Replay the most recent notifications for an exact agent/session pair."""
+    """Replay recent notifications, optionally scoped to an exact agent/session pair."""
     cfg = Config.load(config)
     _setup_logging_from_options(
         cfg, debug, log_level, log_format, str(log_file) if log_file else None
     )
 
+    if bool(agent) != bool(session_key):
+        raise typer.BadParameter("Provide both --agent and --session-key together")
+
     history = NotificationHistory()
-    entries = history.get_recent_replayable_for_session(agent, session_key, limit=count)
+    if agent and session_key:
+        entries = history.get_recent_replayable_for_session(agent, session_key, limit=count)
+        error = f"No replayable notifications found for agent={agent} session_key={session_key}"
+    else:
+        entries = history.get_recent_replayable(limit=count)
+        error = "No replayable notifications found"
+
     if not entries:
         json.dump(
             {
                 "status": "error",
-                "error": f"No replayable notifications found for agent={agent} session_key={session_key}",
+                "error": error,
             },
             sys.stdout,
         )
@@ -536,6 +545,17 @@ def replay(
     from_audio = 0
     from_summary = 0
     failed = 0
+    replay_sessions: list[dict[str, Optional[str]]] = []
+    seen_sessions: set[tuple[str, Optional[str]]] = set()
+    for entry in entries:
+        if entry.session_key is None:
+            replay_sessions.append({"agent": entry.agent, "session_key": entry.session_key})
+            continue
+        session = (entry.agent, entry.session_key)
+        if session in seen_sessions:
+            continue
+        seen_sessions.add(session)
+        replay_sessions.append({"agent": entry.agent, "session_key": entry.session_key})
 
     for entry in reversed(entries):
         audio_path = Path(entry.audio_path) if entry.audio_path else None
@@ -558,19 +578,21 @@ def replay(
         else:
             failed += 1
 
-    json.dump(
-        {
-            "status": "ok" if failed == 0 else ("partial_success" if replayed > 0 else "error"),
-            "agent": agent,
-            "session_key": session_key,
-            "requested": count,
-            "replayed": replayed,
-            "from_audio": from_audio,
-            "from_summary": from_summary,
-            "failed": failed,
-        },
-        sys.stdout,
-    )
+    payload = {
+        "status": "ok" if failed == 0 else ("partial_success" if replayed > 0 else "error"),
+        "requested": count,
+        "replayed": replayed,
+        "from_audio": from_audio,
+        "from_summary": from_summary,
+        "failed": failed,
+    }
+    if len(replay_sessions) == 1:
+        payload["agent"] = replay_sessions[0]["agent"]
+        payload["session_key"] = replay_sessions[0]["session_key"]
+    else:
+        payload["sessions"] = replay_sessions
+
+    json.dump(payload, sys.stdout)
     sys.stdout.write("\n")
 
 

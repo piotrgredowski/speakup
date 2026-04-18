@@ -225,6 +225,22 @@ class NotificationHistory:
 
             return [self._row_to_entry(row) for row in rows]
 
+    def get_recent_replayable(self, limit: int = 100) -> list[HistoryEntry]:
+        """Get recent replayable notifications across all agents."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata
+                FROM notifications
+                WHERE status != 'skipped'
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+            return [self._row_to_entry(row) for row in rows]
+
     def get_recent_replayable_for_session(self, agent: str, session_key: str, limit: int = 100) -> list[HistoryEntry]:
         """Get recent replayable notifications for an exact agent/session key pair."""
         with self._connect() as conn:
