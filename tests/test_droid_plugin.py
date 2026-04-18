@@ -69,7 +69,7 @@ def test_hook_script_exists():
         assert '# /// script' in content
         assert '"structlog>=25.5.0"' in content
         assert "import json" in content
-        assert "import subprocess" in content
+        assert "from speakup.integrations.droid import" in content
         assert "def main():" in content
 
 
@@ -282,17 +282,57 @@ def test_extract_session_id_reads_top_level_value():
     assert module.extract_session_id({"session_id": "6b598d4b-8103-41b5-befb-2caad634760b"}) == "6b598d4b-8103-41b5-befb-2caad634760b"
 
 
-def test_get_speakup_version_reads_cli_version(monkeypatch):
-    module = load_hook_module()
-    module._SPEAKUP_VERSION = None
+def test_build_droid_notify_request_sets_droid_fields():
+    from speakup.integrations.droid import build_droid_notify_request
 
-    class CompletedProcess:
-        returncode = 0
-        stdout = "v1.2.3\n"
+    request = build_droid_notify_request(
+        message="hello",
+        event="info",
+        session_name="Session Name",
+        session_key="sess-123",
+        session_id="sess-123",
+    )
 
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: CompletedProcess())
+    assert request.message == "hello"
+    assert request.event.value == "info"
+    assert request.session_name == "Session Name"
+    assert request.session_key == "sess-123"
+    assert request.session_id == "sess-123"
+    assert request.agent == "droid"
 
-    assert module.get_speakup_version() == "v1.2.3"
+
+def test_notify_in_background_uses_spawn_process(monkeypatch):
+    from speakup.integrations import droid as integration
+
+    captured = {}
+
+    class FakeProcess:
+        pid = 321
+
+        def start(self):
+            captured["started"] = True
+
+    class FakeContext:
+        def Process(self, *, target, args, daemon):
+            captured["target"] = target
+            captured["args"] = args
+            captured["daemon"] = daemon
+            return FakeProcess()
+
+    def fake_get_context(mode):
+        captured["mode"] = mode
+        return FakeContext()
+
+    monkeypatch.setattr(integration.multiprocessing, "get_context", fake_get_context)
+
+    request = integration.build_droid_notify_request(message="hello", event="info")
+    pid = integration.notify_in_background(request, config_path=Path("/tmp/config.jsonc"))
+
+    assert captured["mode"] == "spawn"
+    assert captured["args"] == (request, "/tmp/config.jsonc")
+    assert captured["daemon"] is False
+    assert captured["started"] is True
+    assert pid == 321
 
 
 def test_extract_request_id_prefers_top_level_request_id():
@@ -335,6 +375,15 @@ def test_build_hook_summary_sanitizes_markdown_and_falls_back_when_empty():
 
     assert module.build_hook_summary("# Release Update", "Stop", "Session Name") == "speakup final (Session Name): Release Update"
     assert module.build_hook_summary("#", "Stop", "Session Name") == "speakup final (Session Name): Task finished"
+
+
+def test_build_hook_output_includes_replay_command_when_session_key_present():
+    module = load_hook_module()
+
+    assert module.build_hook_output("Done.", "Stop", "Session Name", "sess-123") == (
+        "speakup final (Session Name): Done.\n"
+        "Replay: speakup replay 1 --agent droid --session-key sess-123"
+    )
 
 
 def test_extract_message_reads_questionnaire_question_for_notification():
@@ -390,7 +439,7 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
         "session_id": "sess-123",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
-    assert stdout.getvalue().strip() == "speakup notification (Session Name): hello"
+    assert stdout.getvalue().strip() == "speakup notification (Session Name): hello\nReplay: speakup replay 1 --agent droid --session-key sess-123"
 
 
 def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
@@ -539,85 +588,76 @@ def test_hook_logging_writes_colored_companion_log(tmp_path):
         module.logger.handlers.clear()
 
 
-def test_run_speakup_uses_non_blocking_popen(monkeypatch):
+def test_run_speakup_dispatches_internal_background_notify(monkeypatch, tmp_path):
     module = load_hook_module()
     captured = {}
     logged = []
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text("{}")
+    fake_request = object()
 
-    def fake_popen(cmd, **kwargs):
-        captured["cmd"] = cmd
-        captured["kwargs"] = kwargs
-        return object()
+    def fake_build_request(**kwargs):
+        captured["request_kwargs"] = kwargs
+        return fake_request
 
-    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
-    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    def fake_notify_in_background(request, *, config_path):
+        captured["request"] = request
+        captured["config_path"] = config_path
+        return 321
+
+    monkeypatch.setattr(module, "get_config_path", lambda: config_path)
+    monkeypatch.setattr(module, "build_droid_notify_request", fake_build_request)
+    monkeypatch.setattr(module, "notify_in_background", fake_notify_in_background)
     monkeypatch.setattr(module.logger, "info", lambda message: logged.append(message))
 
     result = module.run_speakup("hello", "info", "session name", "sess-123", "sess-123")
 
     assert result is True
-    assert captured["cmd"] == [
-        "speakup",
-        "--agent",
-        "droid",
-        "--message",
-        "hello",
-        "--event",
-        "info",
-        "--session-name",
-        "session name",
-        "--session-key",
-        "sess-123",
-        "--session-id",
-        "sess-123",
-    ]
-    assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
-    assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
-    assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
-    assert captured["kwargs"]["start_new_session"] is True
-    assert logged[0] == "Launching speakup v1.2.3: event=info, session=session name, session_key=sess-123, session_id=sess-123, message_len=5"
+    assert captured["request_kwargs"] == {
+        "message": "hello",
+        "event": "info",
+        "session_name": "session name",
+        "session_key": "sess-123",
+        "session_id": "sess-123",
+    }
+    assert captured["request"] is fake_request
+    assert captured["config_path"] == config_path
+    assert logged[0] == "Launching speakup internals: event=info, session=session name, session_key=sess-123, session_id=sess-123, message_len=5"
+    assert logged[1] == "speakup launched successfully: pid=321"
 
 
-def test_run_speakup_passes_session_id(monkeypatch):
+def test_run_speakup_passes_session_id(monkeypatch, tmp_path):
     module = load_hook_module()
     captured = {}
+    config_path = tmp_path / "config.jsonc"
+    config_path.write_text("{}")
 
-    def fake_popen(cmd, **kwargs):
-        captured["cmd"] = cmd
-        captured["kwargs"] = kwargs
+    def fake_build_request(**kwargs):
+        captured["request_kwargs"] = kwargs
+        return object()
 
-    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
-    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module, "get_config_path", lambda: config_path)
+    monkeypatch.setattr(module, "build_droid_notify_request", fake_build_request)
+    monkeypatch.setattr(module, "notify_in_background", lambda request, *, config_path: 321)
     monkeypatch.setattr(module.logger, "info", lambda message: None)
 
     result = module.run_speakup("hello", "info", session_id="sess-123")
 
     assert result is True
-    assert captured["cmd"] == [
-        "speakup",
-        "--agent",
-        "droid",
-        "--message",
-        "hello",
-        "--event",
-        "info",
-        "--session-id",
-        "sess-123",
-    ]
-    assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
-    assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
-    assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
-    assert captured["kwargs"]["start_new_session"] is True
+    assert captured["request_kwargs"] == {
+        "message": "hello",
+        "event": "info",
+        "session_name": None,
+        "session_key": None,
+        "session_id": "sess-123",
+    }
 
 
-def test_run_speakup_returns_false_when_command_missing(monkeypatch):
+def test_run_speakup_returns_false_when_integration_missing(monkeypatch):
     module = load_hook_module()
 
-    def fake_popen(cmd, **kwargs):  # noqa: ARG001
-        raise FileNotFoundError
-
-    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
-    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module, "build_droid_notify_request", None)
+    monkeypatch.setattr(module, "notify_in_background", None)
 
     assert module.run_speakup("hello", "info") is False
 
@@ -625,10 +665,7 @@ def test_run_speakup_returns_false_when_command_missing(monkeypatch):
 def test_run_speakup_returns_false_on_oserror(monkeypatch):
     module = load_hook_module()
 
-    def fake_popen(cmd, **kwargs):  # noqa: ARG001
-        raise OSError("boom")
-
-    monkeypatch.setattr(module, "get_speakup_version", lambda: "v1.2.3")
-    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module, "build_droid_notify_request", lambda **kwargs: object())
+    monkeypatch.setattr(module, "notify_in_background", lambda request, *, config_path: (_ for _ in ()).throw(OSError("boom")))
 
     assert module.run_speakup("hello", "info") is False

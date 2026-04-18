@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import platform
-import subprocess
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -44,6 +43,17 @@ except ImportError:
             return None
         stripped = value.strip()
         return stripped or None
+
+try:
+    from speakup.integrations.droid import (
+        build_droid_notify_request,
+        build_replay_command,
+        notify_in_background,
+    )
+except ImportError:
+    build_droid_notify_request = None
+    build_replay_command = None
+    notify_in_background = None
 
 DEFAULT_REQUEST_ID = getattr(_shared_app_logging, "DEFAULT_REQUEST_ID", "-")
 shared_make_formatter = getattr(_shared_app_logging, "make_formatter", None)
@@ -86,7 +96,6 @@ _RESERVED_RECORD_KEYS = {
 logger = logging.getLogger("speakup-droid")
 _CURRENT_REQUEST_ID = DEFAULT_REQUEST_ID
 
-_SPEAKUP_VERSION: str | None = None
 
 
 class _RequestIdFilter(logging.Filter):
@@ -575,30 +584,6 @@ def extract_session_name(input_data: dict) -> str | None:
     return None
 
 
-def get_speakup_version() -> str:
-    """Get the installed speakup CLI version."""
-    global _SPEAKUP_VERSION
-
-    if _SPEAKUP_VERSION is not None:
-        return _SPEAKUP_VERSION
-
-    try:
-        result = subprocess.run(
-            ["speakup", "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (FileNotFoundError, OSError, subprocess.SubprocessError):
-        _SPEAKUP_VERSION = "unknown"
-        return _SPEAKUP_VERSION
-
-    version = result.stdout.strip() if result.returncode == 0 else ""
-    _SPEAKUP_VERSION = version or "unknown"
-    return _SPEAKUP_VERSION
-
-
 def extract_request_id(input_data: dict) -> str:
     """Extract request id from Droid hook payload when available."""
     candidates = (
@@ -669,6 +654,25 @@ def build_hook_summary(message: str, droid_event: str, session_name: str | None 
     return f"speakup {event_label}: {display_message}"
 
 
+def build_replay_summary(session_key: str | None) -> str | None:
+    if not session_key or build_replay_command is None:
+        return None
+    return f"Replay: {build_replay_command(session_key)}"
+
+
+def build_hook_output(
+    message: str,
+    droid_event: str,
+    session_name: str | None = None,
+    session_key: str | None = None,
+) -> str:
+    summary = build_hook_summary(message, droid_event, session_name)
+    replay_summary = build_replay_summary(session_key)
+    if replay_summary:
+        return f"{summary}\n{replay_summary}"
+    return summary
+
+
 def extract_session_id(input_data: dict) -> str | None:
     found, value = _extract_named_value(
         input_data,
@@ -686,46 +690,36 @@ def run_speakup(
     session_key: str | None = None,
     session_id: str | None = None,
 ):
-    """Run speakup CLI with the extracted message.
-
-    Args:
-        message: Message to speak
-        event: Speakup event type
-        session_name: Optional session name
-        session_key: Exact unique session identifier
-        session_id: Optional session identifier for core session-name generation
-
-    Returns:
-        True if successful, False otherwise
-    """
-    cmd = ["speakup", "--agent", "droid", "--message", message, "--event", event]
-
-    if session_name:
-        cmd.extend(["--session-name", session_name])
-    if session_key:
-        cmd.extend(["--session-key", session_key])
-    if session_id:
-        cmd.extend(["--session-id", session_id])
+    """Launch speakup package internals in a background worker."""
+    if build_droid_notify_request is None or notify_in_background is None:
+        logger.error("speakup droid integration is unavailable")
+        return False
 
     logger.info(
-        f"Launching speakup {get_speakup_version()}: event={event}, session={session_name}, session_key={session_key}, session_id={session_id}, message_len={len(message)}"
+        f"Launching speakup internals: event={event}, session={session_name}, session_key={session_key}, session_id={session_id}, message_len={len(message)}"
     )
 
+    request = build_droid_notify_request(
+        message=message,
+        event=event,
+        session_name=session_name,
+        session_key=session_key,
+        session_id=session_id,
+    )
+
+    config_path = get_config_path()
+    if not config_path.exists():
+        config_path = None
+
     try:
-        subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        logger.info("speakup launched successfully")
+        pid = notify_in_background(request, config_path=config_path)
+        logger.info(f"speakup launched successfully: pid={pid}")
         return True
-    except FileNotFoundError:
-        logger.error("speakup command not found")
-        return False
     except OSError as exc:
-        logger.error(f"Failed to launch speakup: {exc}")
+        logger.error(f"Failed to launch speakup internals: {exc}")
+        return False
+    except RuntimeError as exc:
+        logger.error(f"Failed to launch speakup internals: {exc}")
         return False
 
 
@@ -802,7 +796,7 @@ def main():
         session_key=session_key,
         session_id=session_id or session_key,
     ):
-        print(build_hook_summary(message, droid_event, session_name))
+        print(build_hook_output(message, droid_event, session_name, session_key))
 
     # Exit cleanly - we don't want to block Droid
     sys.exit(0)
