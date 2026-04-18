@@ -200,6 +200,38 @@ def test_extract_message_from_transcript_supports_message_envelope(tmp_path):
     assert result == "# Hi\n\nDoing well."
 
 
+def test_extract_message_from_transcript_allows_worker_stop_after_assistant(tmp_path):
+    module = load_hook_module()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        textwrap.dedent(
+            """
+            {"type":"message","id":"1","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+            {"type":"workers_stopped"}
+            """
+        ).strip()
+        + "\n"
+    )
+
+    assert module.extract_message_from_transcript(str(transcript)) == "done"
+
+
+def test_extract_message_from_transcript_allows_session_end_after_assistant(tmp_path):
+    module = load_hook_module()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        textwrap.dedent(
+            """
+            {"type":"message","id":"1","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+            {"type":"session_end"}
+            """
+        ).strip()
+        + "\n"
+    )
+
+    assert module.extract_message_from_transcript(str(transcript)) == "done"
+
+
 def test_extract_session_name_prefers_session_title_over_title():
     module = load_hook_module()
 

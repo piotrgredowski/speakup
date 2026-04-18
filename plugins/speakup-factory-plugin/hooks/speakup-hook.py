@@ -409,15 +409,8 @@ def extract_notification_message(input_data: dict) -> str | None:
 def extract_message_from_transcript(
     transcript_path: str, max_lines: int = 50
 ) -> str | None:
-    """Extract last assistant message from transcript file.
+    """Extract the most recent assistant message from transcript file."""
 
-    Args:
-        transcript_path: Path to transcript JSONL file
-        max_lines: Maximum number of lines to read from the end
-
-    Returns:
-        Last assistant message text or None if not found
-    """
     def extract_text_content(content) -> str | None:
         if isinstance(content, str):
             return content
@@ -431,6 +424,36 @@ def extract_message_from_transcript(
             return " ".join(text_parts).strip() if text_parts else None
         return None
 
+    def extract_assistant_text(entry: dict) -> str | None:
+        if entry.get("role") == "assistant" and entry.get("content"):
+            result = extract_text_content(entry["content"])
+            if result:
+                logger.debug(f"Found assistant message ({len(result)} chars)")
+            return result
+
+        if entry.get("type") == "message" and isinstance(entry.get("message"), dict):
+            msg = entry["message"]
+            if msg.get("role") == "assistant" and msg.get("content"):
+                result = extract_text_content(msg["content"])
+                if result:
+                    logger.debug(f"Found assistant message in message envelope ({len(result)} chars)")
+                return result
+
+        if entry.get("type") == "assistant" and entry.get("message"):
+            msg = entry["message"]
+            if isinstance(msg, dict):
+                result = extract_text_content(msg.get("content", ""))
+                if result:
+                    logger.debug(f"Found assistant message (alt format, {len(result)} chars)")
+                return result
+            logger.debug("Found assistant message (alt format, str)")
+            return str(msg)
+
+        return None
+
+    def is_ignorable_trailing_entry(entry: dict) -> bool:
+        return entry.get("type") in {"session_end", "workers_stopped"}
+
     path = Path(transcript_path)
     if not path.exists():
         logger.debug(f"Transcript file not found: {transcript_path}")
@@ -443,7 +466,7 @@ def extract_message_from_transcript(
 
         logger.debug(f"Read {len(lines)} lines from transcript")
 
-        # Search backwards for assistant message
+        # Search backwards for the latest meaningful entry.
         for line in reversed(lines[-max_lines:]):
             line = line.strip()
             if not line:
@@ -454,29 +477,18 @@ def extract_message_from_transcript(
             except json.JSONDecodeError:
                 continue
 
-            # Check for assistant message with content
-            if entry.get("role") == "assistant" and entry.get("content"):
-                result = extract_text_content(entry["content"])
-                if result:
-                    logger.debug(f"Found assistant message ({len(result)} chars)")
+            if not isinstance(entry, dict):
+                continue
+
+            result = extract_assistant_text(entry)
+            if result:
                 return result
-            elif entry.get("type") == "message" and isinstance(entry.get("message"), dict):
-                msg = entry["message"]
-                if msg.get("role") == "assistant" and msg.get("content"):
-                    result = extract_text_content(msg["content"])
-                    if result:
-                        logger.debug(f"Found assistant message in message envelope ({len(result)} chars)")
-                    return result
-            elif entry.get("type") == "assistant" and entry.get("message"):
-                # Alternative format
-                msg = entry["message"]
-                if isinstance(msg, dict):
-                    result = extract_text_content(msg.get("content", ""))
-                    if result:
-                        logger.debug(f"Found assistant message (alt format, {len(result)} chars)")
-                    return result
-                logger.debug("Found assistant message (alt format, str)")
-                return str(msg)
+
+            if is_ignorable_trailing_entry(entry):
+                continue
+
+            logger.debug(f"Latest transcript entry is not an assistant message: {entry.get('type') or entry.get('role')}")
+            return None
 
         logger.debug("No assistant message found in transcript")
         return None
