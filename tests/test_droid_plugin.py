@@ -301,7 +301,7 @@ def test_build_droid_notify_request_sets_droid_fields():
     assert request.agent == "droid"
 
 
-def test_notify_in_background_uses_spawn_process(monkeypatch):
+def test_notify_in_background_uses_detached_python_process(monkeypatch, tmp_path):
     from speakup.integrations import droid as integration
 
     captured = {}
@@ -309,30 +309,67 @@ def test_notify_in_background_uses_spawn_process(monkeypatch):
     class FakeProcess:
         pid = 321
 
-        def start(self):
-            captured["started"] = True
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return FakeProcess()
 
-    class FakeContext:
-        def Process(self, *, target, args, daemon):
-            captured["target"] = target
-            captured["args"] = args
-            captured["daemon"] = daemon
-            return FakeProcess()
-
-    def fake_get_context(mode):
-        captured["mode"] = mode
-        return FakeContext()
-
-    monkeypatch.setattr(integration.multiprocessing, "get_context", fake_get_context)
+    monkeypatch.setattr(integration, "_write_payload_file", lambda request, config_path: tmp_path / "payload.json")
+    monkeypatch.setattr(integration.subprocess, "Popen", fake_popen)
 
     request = integration.build_droid_notify_request(message="hello", event="info")
     pid = integration.notify_in_background(request, config_path=Path("/tmp/config.jsonc"))
 
-    assert captured["mode"] == "spawn"
-    assert captured["args"] == (request, "/tmp/config.jsonc")
-    assert captured["daemon"] is False
-    assert captured["started"] is True
+    assert captured["cmd"] == [
+        integration.sys.executable,
+        "-m",
+        "speakup.integrations.droid",
+        integration._PAYLOAD_FILE_ARG,
+        str(tmp_path / "payload.json"),
+    ]
+    assert captured["kwargs"]["stdin"] is integration.subprocess.DEVNULL
+    assert captured["kwargs"]["stdout"] is integration.subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] is integration.subprocess.DEVNULL
+    assert captured["kwargs"]["start_new_session"] is True
     assert pid == 321
+
+
+def test_run_payload_file_invokes_worker_and_cleans_up(tmp_path, monkeypatch):
+    from speakup.integrations import droid as integration
+
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text(json.dumps({
+        "request": {
+            "message": "hello",
+            "event": "info",
+            "session_name": "Session Name",
+            "conversation_id": None,
+            "session_id": "sess-123",
+            "session_key": "sess-123",
+            "task_id": None,
+            "agent": "droid",
+            "precomputed_summary": None,
+            "skip_summarization": False,
+            "force_summarization": False,
+            "metadata": {},
+        },
+        "config_path": "/tmp/config.jsonc",
+    }))
+    captured = {}
+
+    def fake_notify_worker(request, config_path):
+        captured["request"] = request
+        captured["config_path"] = config_path
+
+    monkeypatch.setattr(integration, "_notify_worker", fake_notify_worker)
+
+    integration._run_payload_file(payload_path)
+
+    assert captured["request"].message == "hello"
+    assert captured["request"].event.value == "info"
+    assert captured["request"].session_key == "sess-123"
+    assert captured["config_path"] == "/tmp/config.jsonc"
+    assert not payload_path.exists()
 
 
 def test_extract_request_id_prefers_top_level_request_id():
