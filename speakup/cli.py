@@ -558,19 +558,35 @@ def replay(
         replay_sessions.append({"agent": entry.agent, "session_key": entry.session_key})
 
     for entry in reversed(entries):
-        audio_path = Path(entry.audio_path) if entry.audio_path else None
-        if audio_path and audio_path.exists():
+        metadata_audio_paths = entry.metadata.get("audio_paths", []) if isinstance(entry.metadata, dict) else []
+        replay_audio_paths = [Path(str(path)) for path in metadata_audio_paths if path]
+        expected_audio_paths = 2 if entry.session_name else 1
+        if (
+            len(replay_audio_paths) >= expected_audio_paths
+            and all(path.exists() for path in replay_audio_paths)
+        ):
             try:
-                service.registry.get_playback().play_files([audio_path])
+                service.registry.get_playback().play_files(replay_audio_paths)
                 replayed += 1
                 from_audio += 1
                 continue
             except AdapterError:
                 pass
+        elif not replay_audio_paths and not entry.session_name:
+            audio_path = Path(entry.audio_path) if entry.audio_path else None
+            if audio_path and audio_path.exists():
+                try:
+                    service.registry.get_playback().play_files([audio_path])
+                    replayed += 1
+                    from_audio += 1
+                    continue
+                except AdapterError:
+                    pass
 
         result = service.replay_summary(
             summary=entry.summary,
             event=MessageEvent(entry.event),
+            session_name=entry.session_name,
         )
         if result.played:
             replayed += 1

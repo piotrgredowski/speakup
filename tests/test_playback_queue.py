@@ -396,6 +396,37 @@ def test_replay_summary_given_prefixed_summary_then_does_not_duplicate_session_n
     assert fake_tts.calls == [("Nightly Run: Build failed", "provider-message", 1.0)]
 
 
+def test_replay_summary_given_session_name_and_prefixed_summary_then_replays_title_and_message_once(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config_data["providers"]["fake"] = {"title_voice": "provider-title", "message_voice": "provider-message"}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.replay_summary(
+        summary="Nightly Run: Build failed",
+        event=MessageEvent.ERROR,
+        session_name="Nightly Run",
+    )
+
+    assert result.status == "ok"
+    assert result.summary == "Nightly Run: Build failed"
+    assert result.audio_path == message_audio
+    assert result.audio_paths == [title_audio, message_audio]
+    assert playback.groups == [[title_audio, message_audio]]
+    assert fake_tts.calls == [("Nightly Run", "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
+
+
 def test_notify_service_given_split_speeds_then_uses_role_specific_speeds(tmp_path: Path) -> None:
     title_audio = tmp_path / "title.wav"
     message_audio = tmp_path / "message.wav"

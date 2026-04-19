@@ -107,7 +107,10 @@ class NotificationHistory:
     ) -> int:
         """Add a notification to history. Returns the inserted row ID."""
         ts = time.time() if timestamp is None else timestamp
-        metadata_json = json.dumps(request.metadata) if request.metadata else "{}"
+        metadata = self._metadata_to_dict(request.metadata)
+        if result.audio_paths:
+            metadata["audio_paths"] = [str(path) for path in result.audio_paths]
+        metadata_json = json.dumps(metadata) if metadata else "{}"
 
         with self._connect() as conn:
             cursor = conn.execute(
@@ -311,7 +314,7 @@ class NotificationHistory:
         metadata = {}
         if row["metadata"]:
             try:
-                metadata = json.loads(row["metadata"])
+                metadata = self._metadata_to_dict(json.loads(row["metadata"]))
             except json.JSONDecodeError:
                 pass
 
@@ -329,3 +332,11 @@ class NotificationHistory:
             session_key=row["session_key"],
             metadata=metadata,
         )
+
+    @staticmethod
+    def _metadata_to_dict(value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return dict(value)
+        return {"_raw": value}

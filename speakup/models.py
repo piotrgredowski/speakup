@@ -54,6 +54,7 @@ class NotifyResult:
     backend: str
     played: bool = False
     audio_path: Path | None = None
+    audio_paths: list[Path] = field(default_factory=list)
     dedup_skipped: bool = False
     error: str | None = None
 
@@ -65,6 +66,7 @@ class NotifyResult:
             "backend": self.backend,
             "played": self.played,
             "audio_path": str(self.audio_path) if self.audio_path else None,
+            "audio_paths": [str(path) for path in self.audio_paths],
             "dedup_skipped": self.dedup_skipped,
             "error": self.error,
         }

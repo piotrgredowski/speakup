@@ -1,6 +1,7 @@
 """Tests for notification history functionality."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -72,6 +73,73 @@ class TestNotificationHistory:
         assert entry.backend == "test_backend"
         assert entry.session_name == "test_session"
         assert entry.session_key == "session-key-1"
+
+    def test_add_persists_audio_paths_in_metadata(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+        title_audio = tmp_path / "title.wav"
+        message_audio = tmp_path / "message.wav"
+
+        history.add(
+            NotifyRequest(message="Test", event=MessageEvent.FINAL, agent="test_agent"),
+            NotifyResult(
+                status="ok",
+                summary="Test summary",
+                state=MessageEvent.FINAL,
+                backend="test_backend",
+                played=True,
+                audio_path=message_audio,
+                audio_paths=[title_audio, message_audio],
+            ),
+        )
+
+        entry = history.get_recent(limit=1)[0]
+        assert entry.audio_path == str(message_audio)
+        assert entry.metadata["audio_paths"] == [str(title_audio), str(message_audio)]
+
+    def test_add_given_non_mapping_metadata_then_wraps_raw_value_and_audio_paths(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+        title_audio = tmp_path / "title.wav"
+        message_audio = tmp_path / "message.wav"
+
+        history.add(
+            NotifyRequest(
+                message="Test",
+                event=MessageEvent.FINAL,
+                agent="test_agent",
+                metadata="oops",
+            ),
+            NotifyResult(
+                status="ok",
+                summary="Test summary",
+                state=MessageEvent.FINAL,
+                backend="test_backend",
+                played=True,
+                audio_path=message_audio,
+                audio_paths=[title_audio, message_audio],
+            ),
+        )
+
+        entry = history.get_recent(limit=1)[0]
+        assert entry.metadata["_raw"] == "oops"
+        assert entry.metadata["audio_paths"] == [str(title_audio), str(message_audio)]
+
+    def test_get_recent_given_legacy_scalar_metadata_then_wraps_raw_value(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+        with history._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO notifications
+                (timestamp, agent, event, message, summary, audio_path, status, backend, session_name, session_key, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (1.0, "pi", "final", "Test", "Summary", None, "ok", "test", None, None, json.dumps("oops")),
+            )
+
+        entry = history.get_recent(limit=1)[0]
+        assert entry.metadata == {"_raw": "oops"}
 
     def test_filter_by_agent(self, tmp_path: Path) -> None:
         """Test filtering by agent."""

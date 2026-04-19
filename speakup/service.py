@@ -206,6 +206,11 @@ class NotifyService:
     ) -> tuple[str | None, str, str]:
         spoken_session_name = sanitize_text_for_tts(str(session_name or "")) or None
         spoken_message = sanitize_text_for_tts(summary_text)
+        if spoken_session_name and spoken_message:
+            for prefix in (f"{spoken_session_name}: ", f"{spoken_session_name}:"):
+                if spoken_message.startswith(prefix):
+                    spoken_message = spoken_message[len(prefix):].strip()
+                    break
         if not spoken_message:
             spoken_message = _fallback_spoken_summary(event)
 
@@ -290,6 +295,7 @@ class NotifyService:
             backend=backend,
             played=played,
             audio_path=audio_path,
+            audio_paths=audio_paths,
             error=playback_error,
         )
 
@@ -381,11 +387,11 @@ class NotifyService:
         self._save_history(request, result, request_id=request_id)
         return result
 
-    def replay_summary(self, *, summary: str, event: MessageEvent) -> NotifyResult:
+    def replay_summary(self, *, summary: str, event: MessageEvent, session_name: str | None = None) -> NotifyResult:
         request_id = uuid4().hex[:12]
         spoken_session_name, spoken_message, spoken_summary = self._prepare_spoken_summary(
             event=event,
-            session_name=None,
+            session_name=session_name,
             summary_text=summary,
         )
         return self._play_synthesized_summary(

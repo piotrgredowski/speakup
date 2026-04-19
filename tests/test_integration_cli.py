@@ -190,9 +190,13 @@ def test_cli_replay_without_filters_defaults_to_latest_replayable_message(
     monkeypatch.setattr(tempfile, "tempdir", None)
 
     history = NotificationHistory(runtime_temp_dir() / "history.db")
+    older_title = tmp_path / "older-title.wav"
     older_audio = tmp_path / "older.wav"
+    older_title.write_text("OLDER TITLE")
     older_audio.write_text("OLDER")
+    latest_title = tmp_path / "latest-title.wav"
     latest_audio = tmp_path / "latest.wav"
+    latest_title.write_text("LATEST TITLE")
     latest_audio.write_text("LATEST")
     history.add(
         NotifyRequest(
@@ -209,6 +213,7 @@ def test_cli_replay_without_filters_defaults_to_latest_replayable_message(
             backend="macos",
             played=True,
             audio_path=older_audio,
+            audio_paths=[older_title, older_audio],
         ),
         timestamp=1.0,
     )
@@ -227,6 +232,7 @@ def test_cli_replay_without_filters_defaults_to_latest_replayable_message(
             backend="macos",
             played=True,
             audio_path=latest_audio,
+            audio_paths=[latest_title, latest_audio],
         ),
         timestamp=2.0,
     )
@@ -244,7 +250,7 @@ def test_cli_replay_without_filters_defaults_to_latest_replayable_message(
     assert payload["agent"] == "droid"
     assert payload["session_key"] == "sess-latest"
     play_log = Path(env_with_fake_audio["PLAY_LOG"])
-    assert str(latest_audio) in play_log.read_text()
+    assert play_log.read_text().splitlines() == [str(latest_title), str(latest_audio)]
 
 
 def test_cli_replay_without_filters_returns_sessions_for_mixed_results(
@@ -259,9 +265,13 @@ def test_cli_replay_without_filters_returns_sessions_for_mixed_results(
     monkeypatch.setattr(tempfile, "tempdir", None)
 
     history = NotificationHistory(runtime_temp_dir() / "history.db")
+    older_title = tmp_path / "older-title.wav"
     older_audio = tmp_path / "older.wav"
+    older_title.write_text("OLDER TITLE")
     older_audio.write_text("OLDER")
+    latest_title = tmp_path / "latest-title.wav"
     latest_audio = tmp_path / "latest.wav"
+    latest_title.write_text("LATEST TITLE")
     latest_audio.write_text("LATEST")
     history.add(
         NotifyRequest(
@@ -278,6 +288,7 @@ def test_cli_replay_without_filters_returns_sessions_for_mixed_results(
             backend="macos",
             played=True,
             audio_path=older_audio,
+            audio_paths=[older_title, older_audio],
         ),
         timestamp=1.0,
     )
@@ -296,6 +307,7 @@ def test_cli_replay_without_filters_returns_sessions_for_mixed_results(
             backend="macos",
             played=True,
             audio_path=latest_audio,
+            audio_paths=[latest_title, latest_audio],
         ),
         timestamp=2.0,
     )
@@ -317,9 +329,12 @@ def test_cli_replay_without_filters_returns_sessions_for_mixed_results(
         {"agent": "pi", "session_key": "sess-older"},
     ]
     play_log = Path(env_with_fake_audio["PLAY_LOG"])
-    log_text = play_log.read_text()
-    assert str(latest_audio) in log_text
-    assert str(older_audio) in log_text
+    assert play_log.read_text().splitlines() == [
+        str(older_title),
+        str(older_audio),
+        str(latest_title),
+        str(latest_audio),
+    ]
 
 
 def test_cli_replay_without_filters_keeps_distinct_entries_without_session_keys(
@@ -412,7 +427,9 @@ def test_cli_replay_given_saved_audio_then_replays_exact_session_entry(
     monkeypatch.setattr(tempfile, "tempdir", None)
 
     history = NotificationHistory(runtime_temp_dir() / "history.db")
+    title_audio = tmp_path / "title.wav"
     saved_audio = tmp_path / "saved.wav"
+    title_audio.write_text("FAKETITLE")
     saved_audio.write_text("FAKEAUDIO")
     history.add(
         NotifyRequest(
@@ -429,6 +446,7 @@ def test_cli_replay_given_saved_audio_then_replays_exact_session_entry(
             backend="macos",
             played=True,
             audio_path=saved_audio,
+            audio_paths=[title_audio, saved_audio],
         ),
         timestamp=1.0,
     )
@@ -443,7 +461,7 @@ def test_cli_replay_given_saved_audio_then_replays_exact_session_entry(
     assert payload["replayed"] == 1
     assert payload["from_audio"] == 1
     play_log = Path(env_with_fake_audio["PLAY_LOG"])
-    assert str(saved_audio) in play_log.read_text()
+    assert play_log.read_text().splitlines() == [str(title_audio), str(saved_audio)]
 
 
 def test_cli_replay_given_missing_audio_then_falls_back_to_summary_without_saving_history(
@@ -458,6 +476,8 @@ def test_cli_replay_given_missing_audio_then_falls_back_to_summary_without_savin
     monkeypatch.setattr(tempfile, "tempdir", None)
 
     history = NotificationHistory(runtime_temp_dir() / "history.db")
+    missing_title = tmp_path / "missing-title.wav"
+    missing_message = tmp_path / "missing-message.wav"
     history.add(
         NotifyRequest(
             message="Original",
@@ -472,7 +492,8 @@ def test_cli_replay_given_missing_audio_then_falls_back_to_summary_without_savin
             state=MessageEvent.NEEDS_INPUT,
             backend="macos",
             played=True,
-            audio_path=tmp_path / "missing.wav",
+            audio_path=missing_message,
+            audio_paths=[missing_title, missing_message],
         ),
         timestamp=1.0,
     )
@@ -489,7 +510,57 @@ def test_cli_replay_given_missing_audio_then_falls_back_to_summary_without_savin
     assert payload["from_summary"] == 1
     assert history.count() == 1
     play_log = Path(env_with_fake_audio["PLAY_LOG"])
-    assert "tts-" in play_log.read_text()
+    assert len(play_log.read_text().splitlines()) == 2
+
+
+def test_cli_replay_given_title_only_audio_then_falls_back_to_summary(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    title_audio = tmp_path / "title.wav"
+    title_audio.write_text("TITLE")
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.NEEDS_INPUT,
+            agent="pi",
+            session_name="Session Name",
+            session_key="sess-title-only",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Stored summary",
+            state=MessageEvent.NEEDS_INPUT,
+            backend="macos",
+            played=True,
+            audio_path=title_audio,
+            audio_paths=[title_audio],
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "pi", "--session-key", "sess-title-only"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["requested"] == 1
+    assert payload["replayed"] == 1
+    assert payload["from_audio"] == 0
+    assert payload["from_summary"] == 1
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert len(play_log.read_text().splitlines()) == 2
+    assert str(title_audio) not in play_log.read_text().splitlines()
 
 
 def test_cli_replay_skips_history_rows_that_were_never_spoken(
