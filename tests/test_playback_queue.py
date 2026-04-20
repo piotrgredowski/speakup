@@ -244,8 +244,8 @@ def test_notify_service_given_short_message_then_sanitizes_text_before_tts(tmp_p
     )
 
     assert result.status == "ok"
-    assert result.summary == "Release Update shipped commit d e a d"
-    assert fake_tts.calls == [("Release Update shipped commit d e a d", "default", 1.0)]
+    assert result.summary == "Release Update. shipped commit d e a d"
+    assert fake_tts.calls == [("Release Update. shipped commit d e a d", "default", 1.0)]
 
 
 def test_notify_service_given_precomputed_summary_then_sanitizes_before_tts(tmp_path: Path) -> None:
