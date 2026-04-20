@@ -120,10 +120,12 @@ _EMPTY_COLLECTION_PATTERN = re.compile(r"(?<!\w)(?:\[\s*\]|\{\s*\}|\(\s*\))(?!\w
 _STANDALONE_BRACKETS_PATTERN = re.compile(r"(?<!\w)[\[\]{}()<>]+(?!\w)")
 _MARKDOWN_DECORATION_PATTERN = re.compile(r"[*_~`|]+")
 _HEX_HASH_TOKEN_PATTERN = re.compile(r"\b(?P<hash>(?=[0-9a-fA-F]{7,40}\b)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]+)\b")
+_SENTENCE_ENDING_PATTERN = re.compile(r'[.!?]["\')\]}”’]*$')
+_TRAILING_CLAUSE_PUNCTUATION_PATTERN = re.compile(r'[,;:](["\')\]}”’]*)$')
 
 
 def transform_text_for_reading(text: str) -> str:
-    transformed = _replace_file_paths(text)
+    transformed = _replace_file_paths(_normalize_line_breaks(text))
 
     if re.fullmatch(r"\d{4}", transformed.strip()):
         return _year_to_words(int(transformed.strip()))
@@ -136,12 +138,13 @@ def transform_text_for_reading(text: str) -> str:
     transformed = _replace_ordinals(transformed)
     transformed = _replace_contextual_years(transformed)
     transformed = _replace_cardinals(transformed)
+    transformed = _replace_newlines_with_stops(transformed)
 
     return re.sub(r" {2,}", " ", transformed)
 
 
 def sanitize_text_for_tts(text: str) -> str:
-    cleaned = text.strip()
+    cleaned = _normalize_line_breaks(text).strip()
     if not cleaned:
         return ""
 
@@ -155,6 +158,7 @@ def sanitize_text_for_tts(text: str) -> str:
     cleaned = _STANDALONE_BRACKETS_PATTERN.sub(" ", cleaned)
     cleaned = _replace_commit_like_hashes(cleaned)
     cleaned = _HEX_HASH_TOKEN_PATTERN.sub(_hash_reference_replacement, cleaned)
+    cleaned = _replace_newlines_with_stops(cleaned)
     cleaned = re.sub(r"\s+([?!.,])", r"\1", cleaned)
     cleaned = re.sub(r"([,:;])(?=\S)", r"\1 ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
@@ -166,6 +170,29 @@ def _replace_file_paths(text: str) -> str:
         r"(?<!\w)(?:/(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+|(?:[A-Za-z0-9._-]+/)+[A-Za-z0-9._-]+)"
     )
     return path_pattern.sub(lambda match: _verbalize_path(match.group(0)), text)
+
+
+def _normalize_line_breaks(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _replace_newlines_with_stops(text: str) -> str:
+    if "\n" not in text and "\r" not in text:
+        return text
+
+    segments = [segment.strip() for segment in re.split(r"(?:\r\n|\r|\n)+", text)]
+    spoken_segments = [segment for segment in segments if segment]
+    if not spoken_segments:
+        return ""
+
+    combined = spoken_segments[0]
+    for segment in spoken_segments[1:]:
+        if _SENTENCE_ENDING_PATTERN.search(combined):
+            combined = f"{combined} {segment}"
+            continue
+        combined = _TRAILING_CLAUSE_PUNCTUATION_PATTERN.sub(r"\1", combined)
+        combined = f"{combined}. {segment}"
+    return combined
 
 
 def _verbalize_path(path: str) -> str:

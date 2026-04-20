@@ -33,6 +33,19 @@ def test_transform_text_for_reading_given_time_with_leading_zero_minutes_spells_
     assert transform_text_for_reading("3:05") == "three oh five"
 
 
+def test_transform_text_for_reading_given_multiline_text_inserts_spoken_stops() -> None:
+    assert transform_text_for_reading("Room 402\nOpens at 3:30\n\nIn 1980") == "Room four zero two. Opens at three thirty. In nineteen eighty"
+
+
+def test_transform_text_for_reading_given_existing_terminal_punctuation_before_closers_does_not_add_extra_stop() -> None:
+    assert transform_text_for_reading('He said "Done."\nNext step') == 'He said "Done." Next step'
+    assert transform_text_for_reading("Summary (done.)\nNext step") == "Summary (done.) Next step"
+
+
+def test_transform_text_for_reading_given_carriage_return_line_breaks_inserts_spoken_stops() -> None:
+    assert transform_text_for_reading("Room 402\rOpens at 3:30\r\rIn 1980") == "Room four zero two. Opens at three thirty. In nineteen eighty"
+
+
 @pytest.mark.parametrize(
     ("source_text", "expected_text"),
     [
@@ -94,7 +107,7 @@ def test_transform_text_for_reading_given_file_paths_verbalizes_path_structure(
     [
         (
             "# Release Update\n- shipped commit deadbeef\n- []\n",
-            "Release Update shipped commit d e a d",
+            "Release Update. shipped commit d e a d",
         ),
         (
             "See [build logs](https://example.com) and `done`",
@@ -122,3 +135,15 @@ def test_sanitize_text_for_tts_removes_non_spoken_markup_and_shortens_hashes(
 
 def test_sanitize_text_for_tts_given_only_empty_collections_returns_empty_string() -> None:
     assert sanitize_text_for_tts("[] {} ()") == ""
+
+
+def test_sanitize_text_for_tts_given_multiline_text_inserts_spoken_stops() -> None:
+    assert sanitize_text_for_tts("Status update\n\n- shipped commit deadbeef\n- ready") == "Status update. shipped commit d e a d. ready"
+
+
+def test_sanitize_text_for_tts_given_quoted_sentence_before_newline_preserves_existing_stop() -> None:
+    assert sanitize_text_for_tts('He said "Done."\nNext step') == 'He said "Done." Next step'
+
+
+def test_sanitize_text_for_tts_given_carriage_return_line_breaks_inserts_spoken_stops() -> None:
+    assert sanitize_text_for_tts("Status update\r\r- shipped commit deadbeef\r- ready") == "Status update. shipped commit d e a d. ready"

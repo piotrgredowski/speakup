@@ -27,3 +27,10 @@ def test_verbalize_command_given_stdin_returns_transformed_output() -> None:
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == "first prize in nineteen twenties\n"
+
+
+def test_verbalize_command_given_multiline_input_returns_transformed_output() -> None:
+    result = run_cli(["verbalize"], stdin="Room 402\nOpens at 3:30")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Room four zero two. Opens at three thirty\n"
