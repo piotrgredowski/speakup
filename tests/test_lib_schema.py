@@ -448,14 +448,30 @@ class TestAppConfigIntegration:
     def test_valid_overrides(self):
         from speakup.config import AppConfig
         raw = {
-            "tts": {"voice": "custom_voice", "speed": 1.5, "session_name_speed": 0.9, "message_speed": 1.1},
+            "tts": {
+                "voice": "custom_voice",
+                "speed": 1.5,
+                "project_overrides": {
+                    "/tmp/project": {"provider": "openai", "speed": 0.95},
+                },
+                "session_name_speed": 0.9,
+                "message_speed": 1.1,
+            },
+            "providers": {
+                "openai": {
+                    "available_voices": ["alloy", "verse"],
+                }
+            },
             "session_naming": {"enabled": False},
         }
         result = from_dict(AppConfig, raw)
         assert result.tts.voice == "custom_voice"
         assert result.tts.speed == 1.5
+        assert result.tts.project_overrides["/tmp/project"].provider == "openai"
+        assert result.tts.project_overrides["/tmp/project"].speed == 0.95
         assert result.tts.session_name_speed == 0.9
         assert result.tts.message_speed == 1.1
+        assert result.providers.openai.available_voices == ["alloy", "verse"]
         assert result.session_naming.enabled is False
         # other sections get defaults
         assert result.privacy.mode == "prefer_local"

@@ -135,11 +135,17 @@ class EventSoundsConfig:
 
 @dataclass
 class TTSConfig:
+    @dataclass
+    class ProjectOverride:
+        provider: Literal["macos", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"] | None = None
+        speed: float = 1.0
+
     provider_order: list[Literal["macos", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"]] = field(
         default_factory=lambda: ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
     )
     voice: str = "default"
     speed: float = 1.0
+    project_overrides: dict[str, ProjectOverride] = field(default_factory=dict)
     session_name_speed: float | None = None
     message_speed: float | None = None
     play_audio: bool = True
@@ -188,12 +194,21 @@ class ConfigViewerConfig:
 
 
 @dataclass
+class MacOSConfig:
+    voice: str = "default"
+    title_voice: str | None = None
+    message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
+
+
+@dataclass
 class LMStudioConfig:
     base_url: str = "http://localhost:1234/v1"
     model: str = "local-model"
     tts_model: str = "local-tts-model"
     title_voice: str | None = None
     message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -202,6 +217,7 @@ class ElevenLabsConfig:
     voice_id: str = ""
     title_voice: str | None = None
     message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -212,6 +228,7 @@ class OpenAIConfig:
     voice: str = "alloy"
     title_voice: str | None = None
     message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -228,6 +245,7 @@ class GeminiConfig:
     voice: str = "Kore"
     title_voice: str | None = None
     message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -238,6 +256,7 @@ class OMLXConfig:
     voice: str = "af_heart"
     title_voice: str | None = None
     message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
     timeout: float = 60.0
 
 
@@ -251,6 +270,7 @@ class CommandSummaryConfig:
 
 @dataclass
 class ProvidersConfig:
+    macos: MacOSConfig = field(default_factory=MacOSConfig)
     lmstudio: LMStudioConfig = field(default_factory=LMStudioConfig)
     elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
@@ -360,6 +380,10 @@ class Config:
 
     def set_tts_provider_order(self, providers: list[str]) -> None:
         self.raw.setdefault("tts", {})["provider_order"] = providers
+        validate_config(self.raw)
+
+    def set_tts_speed(self, speed: float) -> None:
+        self.raw.setdefault("tts", {})["speed"] = speed
         validate_config(self.raw)
 
     def set_summarizer_provider_order(self, providers: list[str]) -> None:

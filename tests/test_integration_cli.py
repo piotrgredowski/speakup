@@ -77,6 +77,25 @@ class _TTSModelEchoHandler(BaseHTTPRequestHandler):
         return
 
 
+class _TTSVoiceSpeedEchoHandler(BaseHTTPRequestHandler):
+    last_voice: str | None = None
+    last_speed: float | None = None
+
+    def do_POST(self):  # noqa: N802
+        payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode("utf-8"))
+        _TTSVoiceSpeedEchoHandler.last_voice = payload.get("voice")
+        _TTSVoiceSpeedEchoHandler.last_speed = payload.get("speed")
+        body = b"RIFFFAKEAUDIO"
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):  # noqa: A003
+        return
+
+
 def _start_summary_server() -> tuple[HTTPServer, int]:
     return _start_server(_SummaryHandler)
 
@@ -901,6 +920,59 @@ def test_cli_given_tts_model_override_then_lmstudio_uses_it(tmp_path: Path, base
         assert payload["status"] == "ok"
         assert payload["backend"] == "macos"
         assert _TTSModelEchoHandler.last_model == "override-tts-model"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cli_given_project_provider_then_persists_project_selected_voices(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+    _TTSVoiceSpeedEchoHandler.last_voice = None
+    _TTSVoiceSpeedEchoHandler.last_speed = None
+    server, port = _start_server(_TTSVoiceSpeedEchoHandler)
+    try:
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        config = json.loads(base_config.read_text())
+        config["tts"]["provider_order"] = ["macos"]
+        config["tts"]["project_overrides"] = {
+            str(project_path.resolve()): {"provider": "lmstudio", "speed": 0.85}
+        }
+        config["summarization"]["provider_order"] = ["rule_based"]
+        config.setdefault("providers", {})["lmstudio"] = {
+            "base_url": f"http://127.0.0.1:{port}",
+            "model": "base-summary-model",
+            "tts_model": "base-tts-model",
+            "available_voices": ["persisted-voice"],
+        }
+        cfg_path = tmp_path / "cfg_project_override.json"
+        cfg_path.write_text(json.dumps(config))
+
+        result = run_cli(
+            [
+                "--config",
+                str(cfg_path),
+                "--speed",
+                "1.3",
+                "--no-play",
+                "--message",
+                "Done",
+                "--session-name",
+                "release",
+                "--event",
+                "final",
+            ],
+            env=env_with_fake_audio,
+            cwd=project_path,
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "ok"
+        assert payload["backend"] == "lmstudio"
+        assert _TTSVoiceSpeedEchoHandler.last_voice == "persisted-voice"
+        assert _TTSVoiceSpeedEchoHandler.last_speed == 1.3
+        project_config = json.loads((project_path / ".speakup.jsonc").read_text())
+        assert project_config["providers"]["lmstudio"]["title_voice"] == "persisted-voice"
+        assert project_config["providers"]["lmstudio"]["message_voice"] == "persisted-voice"
     finally:
         server.shutdown()
         server.server_close()

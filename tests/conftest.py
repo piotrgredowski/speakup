@@ -74,9 +74,15 @@ def base_config(tmp_path: Path) -> Path:
     return path
 
 
-def run_cli(args: list[str], *, env: dict[str, str] | None = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    args: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    stdin: str | None = None,
+    cwd: str | Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, "-m", "speakup.cli", *args]
-    return subprocess.run(command, text=True, capture_output=True, env=env, input=stdin)
+    return subprocess.run(command, text=True, capture_output=True, env=env, input=stdin, cwd=cwd)
 
 
 def run_pi_cli(args: list[str], *, env: dict[str, str] | None = None, stdin: str | None = None) -> subprocess.CompletedProcess[str]:

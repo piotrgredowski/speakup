@@ -27,6 +27,7 @@ def build_droid_notify_request(
     session_name: str | None = None,
     session_id: str | None = None,
     session_key: str | None = None,
+    cwd: str | None = None,
 ) -> NotifyRequest:
     try:
         message_event = MessageEvent(event)
@@ -40,6 +41,7 @@ def build_droid_notify_request(
         session_id=session_id or (session_key if session_key else None),
         session_key=session_key,
         agent="droid",
+        metadata={"cwd": cwd} if cwd else {},
     )
 
 

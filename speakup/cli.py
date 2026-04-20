@@ -94,6 +94,7 @@ def _apply_cli_overrides(
     *,
     no_play: bool = False,
     fail_fast: bool = False,
+    speed: Optional[float] = None,
     summary_provider: Optional[str] = None,
     tts_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
@@ -109,6 +110,10 @@ def _apply_cli_overrides(
     if fail_fast:
         cfg.set_fail_fast(True)
         logger.info("fallback_fail_fast_enabled_via_cli")
+
+    if speed is not None:
+        cfg.set_tts_speed(speed)
+        logger.info("tts_speed_overridden", extra={"speed": speed})
 
     if summary_provider:
         cfg.set_summarizer_provider_order([summary_provider])
@@ -148,6 +153,7 @@ def _run_notify(
     no_play: bool,
     no_summarize: bool,
     fail_fast: bool,
+    speed: Optional[float],
     log_level: Optional[str],
     log_format: Optional[str],
     log_file: Optional[Path],
@@ -180,6 +186,7 @@ def _run_notify(
         cfg,
         no_play=no_play,
         fail_fast=fail_fast,
+        speed=speed,
         summary_provider=summary_provider.value if summary_provider else None,
         tts_provider=tts_provider.value if tts_provider else None,
         summary_model=summary_model,
@@ -198,6 +205,11 @@ def _run_notify(
         session_key=session_key,
         message_file=str(message_file) if message_file else None,
     )
+    if not isinstance(request.metadata, dict):
+        request.metadata = {}
+    request.metadata.setdefault("cwd", str(Path.cwd().resolve()))
+    if speed is not None:
+        request.metadata["cli_speed"] = speed
     request.skip_summarization = no_summarize
     logger.info(
         "request_loaded",
@@ -282,6 +294,9 @@ def main_callback(
     no_summarize: bool = typer.Option(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
+    speed: Optional[float] = typer.Option(
+        None, "--speed", help="Override TTS speed for this run"
+    ),
     summary_provider: Optional[SummarizerProvider] = typer.Option(
         None, "--summary-provider", help="Override summarization provider"
     ),
@@ -349,6 +364,7 @@ def main_callback(
             no_play=no_play,
             no_summarize=no_summarize,
             fail_fast=fail_fast,
+            speed=speed,
             log_level=log_level,
             log_format=log_format,
             log_file=log_file,

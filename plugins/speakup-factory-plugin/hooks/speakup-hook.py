@@ -667,6 +667,7 @@ def run_speakup(
     session_name: str | None = None,
     session_key: str | None = None,
     session_id: str | None = None,
+    cwd: str | None = None,
 ):
     """Launch speakup package internals in a background worker."""
     if build_droid_notify_request is None or notify_in_background is None:
@@ -683,6 +684,7 @@ def run_speakup(
         session_name=session_name,
         session_key=session_key,
         session_id=session_id,
+        cwd=cwd,
     )
 
     config_path = get_config_path()
@@ -773,6 +775,7 @@ def main():
         session_name,
         session_key=session_key,
         session_id=session_id or session_key,
+        cwd=cwd.strip() if isinstance(cwd, str) and cwd.strip() else None,
     ):
         output = build_hook_output(session_key)
         if output:

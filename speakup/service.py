@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
+import random
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
 from .classifier import infer_event
-from .config import Config, runtime_temp_dir
+from .config import Config, _strip_json_comments, runtime_temp_dir
 from .dedup import should_skip_progress
 from .errors import AdapterError
 from .history import NotificationHistory
@@ -41,6 +43,22 @@ def _provider_default_voice(provider: str, provider_cfg: dict[object, object]) -
     return _clean_voice(provider_cfg.get("voice")) or (
         _clean_voice(provider_cfg.get("voice_id")) if provider == "elevenlabs" else None
     )
+
+
+def _normalize_project_path(value: object) -> str | None:
+    if isinstance(value, Path):
+        path = value
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        path = Path(stripped).expanduser()
+    else:
+        return None
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
 
 
 def _fallback_spoken_summary(event: MessageEvent) -> str:
@@ -221,6 +239,129 @@ class NotifyService:
         )
         return spoken_session_name, spoken_message, spoken_summary
 
+    def _resolve_project_override(self, project_path: str | None) -> dict[object, object]:
+        normalized_project_path = _normalize_project_path(project_path)
+        if not normalized_project_path:
+            return {}
+
+        overrides = self.config.get("tts", "project_overrides", default={})
+        if not isinstance(overrides, dict):
+            return {}
+
+        for candidate_path, override in overrides.items():
+            if _normalize_project_path(candidate_path) == normalized_project_path and isinstance(override, dict):
+                return override
+        return {}
+
+    def _resolve_project_provider(self, project_path: str | None) -> str | None:
+        provider = self._resolve_project_override(project_path).get("provider")
+        return provider.strip() if isinstance(provider, str) and provider.strip() else None
+
+    def _project_config_path(self, project_path: str | None) -> Path | None:
+        normalized_project_path = _normalize_project_path(project_path)
+        if not normalized_project_path:
+            return None
+        return Path(normalized_project_path) / ".speakup.jsonc"
+
+    def _load_project_config(self, project_path: str | None) -> dict[str, object]:
+        config_path = self._project_config_path(project_path)
+        if config_path is None or not config_path.exists():
+            return {}
+        try:
+            payload = json.loads(_strip_json_comments(config_path.read_text()))
+        except Exception as exc:
+            self.logger.warning("project_config_load_failed", extra={"path": str(config_path), "error": str(exc)})
+            return {}
+        if not isinstance(payload, dict):
+            self.logger.warning("project_config_invalid_root", extra={"path": str(config_path), "root_type": type(payload).__name__})
+            return {}
+        return payload
+
+    def _save_project_provider_voices(
+        self,
+        project_path: str | None,
+        provider: str,
+        *,
+        title_voice: str | None = None,
+        message_voice: str | None = None,
+    ) -> None:
+        config_path = self._project_config_path(project_path)
+        if config_path is None:
+            return
+
+        payload = self._load_project_config(project_path)
+        providers = payload.setdefault("providers", {})
+        if not isinstance(providers, dict):
+            providers = {}
+            payload["providers"] = providers
+
+        provider_cfg = providers.setdefault(provider, {})
+        if not isinstance(provider_cfg, dict):
+            provider_cfg = {}
+            providers[provider] = provider_cfg
+
+        changed = False
+        if title_voice and not _clean_voice(provider_cfg.get("title_voice")):
+            provider_cfg["title_voice"] = title_voice
+            changed = True
+        if message_voice and not _clean_voice(provider_cfg.get("message_voice")):
+            provider_cfg["message_voice"] = message_voice
+            changed = True
+
+        if not changed:
+            return
+
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(payload, indent=2) + "\n")
+
+    def _project_provider_config(self, provider: str, project_path: str | None) -> dict[object, object]:
+        payload = self._load_project_config(project_path)
+        providers = payload.get("providers", {})
+        if not isinstance(providers, dict):
+            return {}
+        provider_cfg = providers.get(provider, {})
+        return provider_cfg if isinstance(provider_cfg, dict) else {}
+
+    def _available_voices(self, provider_cfg: dict[object, object]) -> list[str]:
+        voices = provider_cfg.get("available_voices", [])
+        if not isinstance(voices, list):
+            return []
+        return [voice.strip() for voice in voices if isinstance(voice, str) and voice.strip()]
+
+    def _choose_project_role_voice(self, provider: str, role: str, project_path: str | None) -> str | None:
+        project_provider_cfg = self._project_provider_config(provider, project_path)
+        persisted_voice = _clean_voice(project_provider_cfg.get(f"{role}_voice"))
+        if persisted_voice:
+            return persisted_voice
+
+        provider_cfg = self.config.get("providers", provider, default={})
+        available_voices = self._available_voices(provider_cfg)
+        if not available_voices:
+            return None
+
+        selected_voice = random.choice(available_voices)
+        if role == "title":
+            self._save_project_provider_voices(project_path, provider, title_voice=selected_voice)
+        else:
+            self._save_project_provider_voices(project_path, provider, message_voice=selected_voice)
+        return selected_voice
+
+    def _resolve_base_voice(self, provider: str, project_path: str | None) -> str:
+        provider_cfg = self.config.get("providers", provider, default={})
+        return (
+            _provider_default_voice(provider, provider_cfg)
+            or _clean_voice(self.config.get("tts", "voice", default="default"))
+            or "default"
+        )
+
+    def _resolve_base_speed(self, project_path: str | None, cli_speed: float | None = None) -> float:
+        if cli_speed is not None:
+            return float(cli_speed)
+        project_speed = self._resolve_project_override(project_path).get("speed")
+        if isinstance(project_speed, (int, float)):
+            return float(project_speed)
+        return float(self.config.get("tts", "speed", default=1.0))
+
     def _play_synthesized_summary(
         self,
         *,
@@ -231,12 +372,16 @@ class NotifyService:
         request_id: str,
         include_event_sound: bool,
         force_play_audio: bool | None = None,
+        project_path: str | None = None,
+        cli_speed: float | None = None,
     ) -> NotifyResult:
         with self._timed("tts", request_id):
             tts_results, backend = self._synthesize_segments(
                 session_name=spoken_session_name,
                 summary_text=spoken_message,
                 request_id=request_id,
+                project_path=project_path,
+                cli_speed=cli_speed,
             )
         if not tts_results:
             self.logger.warning("tts_failed_all_backends", extra={"request_id": request_id})
@@ -301,6 +446,9 @@ class NotifyService:
 
     def notify(self, request: NotifyRequest) -> NotifyResult:
         request_id = uuid4().hex[:12]
+        metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        project_path = _normalize_project_path(metadata.get("cwd"))
+        cli_speed = float(metadata["cli_speed"]) if isinstance(metadata.get("cli_speed"), (int, float)) else None
         include_message = bool(self.config.get("logging", "log_message_text", default=False))
         self.logger.info(
             "notify_received",
@@ -382,6 +530,8 @@ class NotifyService:
             spoken_summary=spoken_summary,
             request_id=request_id,
             include_event_sound=True,
+            project_path=project_path,
+            cli_speed=cli_speed,
         )
 
         self._save_history(request, result, request_id=request_id)
@@ -471,13 +621,13 @@ class NotifyService:
         self.logger.info("summarizer_fallback_rule_based", extra={"request_id": request_id})
         return self.registry.get_summarizer("rule_based").summarize(message, event, max_chars)
 
-    def _resolve_voice(self, provider: str, role: str) -> str:
+    def _resolve_voice(self, provider: str, role: str, project_path: str | None = None) -> str:
         provider_cfg = self.config.get("providers", provider, default={})
         return (
+            self._choose_project_role_voice(provider, role, project_path)
+            or
             _clean_voice(provider_cfg.get(f"{role}_voice"))
-            or _provider_default_voice(provider, provider_cfg)
-            or _clean_voice(self.config.get("tts", "voice", default="default"))
-            or "default"
+            or self._resolve_base_voice(provider, project_path)
         )
 
     def _should_skip_unconfigured_tts_provider(
@@ -512,11 +662,14 @@ class NotifyService:
         voice: str | None = None,
         speed: float | None = None,
         provider_override: str | None = None,
+        project_path: str | None = None,
+        cli_speed: float | None = None,
     ):
         provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
-        resolved_voice = voice or self.config.get("tts", "voice", default="default")
-        resolved_speed = float(speed if speed is not None else self.config.get("tts", "speed", default=1.0))
+        current_provider = provider_override or (provider_order[0] if provider_order else "macos")
+        resolved_voice = voice or self._resolve_base_voice(current_provider, project_path)
+        resolved_speed = float(speed if speed is not None else self._resolve_base_speed(project_path, cli_speed))
         audio_format = self.config.get("tts", "audio_format", default="wav")
         privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
@@ -557,11 +710,24 @@ class NotifyService:
 
         return None, "none"
 
-    def _synthesize_segments(self, *, session_name: str | None, summary_text: str, request_id: str):
-        provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
-        default_speed = float(self.config.get("tts", "speed", default=1.0))
-        session_speed = float(self.config.get("tts", "session_name_speed", default=default_speed))
-        message_speed = float(self.config.get("tts", "message_speed", default=default_speed))
+    def _synthesize_segments(
+        self,
+        *,
+        session_name: str | None,
+        summary_text: str,
+        request_id: str,
+        project_path: str | None = None,
+        cli_speed: float | None = None,
+    ):
+        project_provider = self._resolve_project_provider(project_path)
+        provider_order = [project_provider] if project_provider else self.config.get("tts", "provider_order", default=["macos", "omlx"])
+        default_speed = self._resolve_base_speed(project_path, cli_speed)
+        if cli_speed is not None:
+            session_speed = float(cli_speed)
+            message_speed = float(cli_speed)
+        else:
+            session_speed = float(self.config.get("tts", "session_name_speed", default=default_speed))
+            message_speed = float(self.config.get("tts", "message_speed", default=default_speed))
         partial_results = []
         partial_backend = "none"
         for provider in provider_order:
@@ -571,9 +737,11 @@ class NotifyService:
                 title_audio, _ = self._synthesize(
                     str(session_name),
                     request_id=request_id,
-                    voice=self._resolve_voice(provider, "title"),
+                    voice=self._resolve_voice(provider, "title", project_path),
                     speed=session_speed,
                     provider_override=provider,
+                    project_path=project_path,
+                    cli_speed=cli_speed,
                 )
                 if title_audio is None:
                     continue
@@ -585,9 +753,11 @@ class NotifyService:
                 message_audio, _ = self._synthesize(
                     summary_text,
                     request_id=request_id,
-                    voice=self._resolve_voice(provider, "message"),
+                    voice=self._resolve_voice(provider, "message", project_path),
                     speed=message_speed,
                     provider_override=provider,
+                    project_path=project_path,
+                    cli_speed=cli_speed,
                 )
                 if message_audio is None:
                     continue
