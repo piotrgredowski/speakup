@@ -399,6 +399,167 @@ def _extract_question_from_questionnaire(value: object) -> str | None:
     return None
 
 
+def _extract_questionnaire_sections(value: object) -> tuple[list[str], list[str]]:
+    if not isinstance(value, str):
+        return [], []
+
+    topics: list[str] = []
+    questions: list[str] = []
+    seen_topics: set[str] = set()
+    seen_questions: set[str] = set()
+
+    for line in value.splitlines():
+        stripped = line.strip()
+        for marker, values, seen in (
+            ("[topic]", topics, seen_topics),
+            ("[question]", questions, seen_questions),
+        ):
+            if marker not in stripped:
+                continue
+            section = stripped.split(marker, 1)[1].strip()
+            if not section or section in seen:
+                continue
+            values.append(section)
+            seen.add(section)
+
+    return topics, questions
+
+
+def _normalize_questionnaire_topic(value: str) -> str:
+    cleaned = value.strip().rstrip(".:;!?")
+    return cleaned
+
+
+def _join_questionnaire_topics(topics: list[str]) -> str:
+    if len(topics) == 1:
+        return topics[0]
+    if len(topics) == 2:
+        return f"{topics[0]} and {topics[1]}"
+    if len(topics) == 3:
+        return f"{topics[0]}, {topics[1]}, and {topics[2]}"
+    return f"{topics[0]}, {topics[1]}, and {len(topics) - 2} more topics"
+
+
+def _summarize_questionnaire(value: object) -> str | None:
+    topics, questions = _extract_questionnaire_sections(value)
+    normalized_topics = [
+        normalized
+        for topic in topics
+        if (normalized := _normalize_questionnaire_topic(topic))
+    ]
+    if normalized_topics:
+        return f"Droid needs input about {_join_questionnaire_topics(normalized_topics)}."
+    if questions:
+        return questions[0]
+    return None
+
+
+def _extract_plan_title(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    title = value.strip()
+    return title or None
+
+
+def _extract_plan_goal(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    def first_spoken_line(candidates: list[str]) -> str | None:
+        in_fence = False
+        for candidate in candidates:
+            cleaned = candidate.strip()
+            if cleaned.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            if cleaned and not cleaned.startswith("#"):
+                return cleaned
+        return None
+
+    lines = value.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip().lower() != "## goal":
+            continue
+        if spoken := first_spoken_line(lines[index + 1:]):
+            return spoken
+        break
+
+    return first_spoken_line(lines)
+
+
+def _summarize_exit_spec_mode(tool_input: dict[object, object]) -> str | None:
+    title = _extract_plan_title(tool_input.get("title"))
+    if title:
+        return f"Droid is waiting for plan approval: {title}."
+
+    goal = _extract_plan_goal(tool_input.get("plan"))
+    if goal:
+        return f"Droid is waiting for plan approval. {goal}"
+
+    return "Droid is waiting for plan approval."
+
+
+def _extract_message_from_notification_content(content: object) -> str | None:
+    if not isinstance(content, list):
+        return None
+
+    questionnaires: list[str] = []
+    text_parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            stripped = block.strip()
+            if stripped:
+                text_parts.append(stripped)
+            continue
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            text = block.get("text")
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text.strip())
+            continue
+        if block_type != "tool_use":
+            continue
+        tool_name = block.get("name")
+        tool_input = block.get("input")
+        if not isinstance(tool_input, dict):
+            continue
+        if tool_name == "ExitSpecMode":
+            result = _summarize_exit_spec_mode(tool_input)
+            if result:
+                return result
+        questionnaire = tool_input.get("questionnaire")
+        if isinstance(questionnaire, str) and questionnaire.strip():
+            questionnaires.append(questionnaire)
+
+    if not questionnaires:
+        return " ".join(text_parts).strip() or None
+
+    combined = "\n".join(questionnaires)
+    return _summarize_questionnaire(combined)
+
+
+def _extract_notification_message_from_envelope(source: dict | None) -> str | None:
+    if not isinstance(source, dict):
+        return None
+
+    message = source.get("message")
+    if isinstance(message, dict):
+        role = message.get("role")
+        if role == "assistant":
+            result = _extract_message_from_notification_content(message.get("content"))
+            if result:
+                return result
+
+    if source.get("role") == "assistant":
+        return _extract_message_from_notification_content(source.get("content"))
+
+    return None
+
+
 def extract_notification_message(input_data: dict) -> str | None:
     candidates = (
         input_data,
@@ -416,6 +577,11 @@ def extract_notification_message(input_data: dict) -> str | None:
             question = _extract_question_from_questionnaire(value)
             if question:
                 return question
+
+    for source in candidates:
+        result = _extract_notification_message_from_envelope(source)
+        if result:
+            return result
 
     return None
 

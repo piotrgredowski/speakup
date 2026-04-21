@@ -491,6 +491,171 @@ def test_extract_message_reads_questionnaire_question_for_notification():
     assert module.extract_message(payload, "Notification") == "Which region should we deploy to?"
 
 
+def test_extract_message_reads_plain_assistant_text_from_notification_envelope():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Need your sign-off"},
+            ],
+        },
+    }
+
+    assert module.extract_message(payload, "Notification") == "Need your sign-off"
+
+
+def test_extract_message_summarizes_nested_tool_use_questionnaire_topics():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "AskUser",
+                    "input": {
+                        "questionnaire": (
+                            "1. [question] How should the session name be shown?\n"
+                            "[topic] Output format\n"
+                            "[option] Separate line\n\n"
+                            "2. [question] Which library should we use?\n"
+                            "[topic] Library choice\n"
+                            "[option] Existing"
+                        )
+                    },
+                }
+            ],
+        },
+    }
+
+    assert module.extract_message(payload, "Notification") == "Droid needs input about Output format and Library choice."
+
+
+def test_extract_message_reads_questionnaire_from_any_tool_use_block():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "SomeFutureTool",
+                    "input": {
+                        "questionnaire": "1. [question] Which region should we deploy to?\n[topic] Region\n[option] us-east-1"
+                    },
+                }
+            ],
+        },
+    }
+
+    assert module.extract_message(payload, "Notification") == "Droid needs input about Region."
+
+
+def test_extract_message_preserves_mixed_case_questionnaire_topics():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "AskUser",
+                    "input": {
+                        "questionnaire": "1. [question] Which secret should we use?\n[topic] API key\n[option] Existing",
+                    },
+                }
+            ],
+        },
+    }
+
+    assert module.extract_message(payload, "Notification") == "Droid needs input about API key."
+
+
+def test_extract_message_summarizes_exit_spec_mode_title():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "ExitSpecMode",
+                    "input": {
+                        "title": "Add AskUser questionnaire support to Droid notifications",
+                        "plan": "## Goal\nMake notifications work.",
+                    },
+                }
+            ],
+        },
+    }
+
+    assert (
+        module.extract_message(payload, "Notification")
+        == "Droid is waiting for plan approval: Add AskUser questionnaire support to Droid notifications."
+    )
+
+
+def test_extract_message_summarizes_exit_spec_mode_goal_without_heading():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "ExitSpecMode",
+                    "input": {
+                        "plan": "## Goal\n\n## Steps\n- Make notifications work.",
+                    },
+                }
+            ],
+        },
+    }
+
+    assert (
+        module.extract_message(payload, "Notification")
+        == "Droid is waiting for plan approval. - Make notifications work."
+    )
+
+
+def test_extract_message_ignores_fenced_code_in_exit_spec_mode_goal():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "Notification",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "ExitSpecMode",
+                    "input": {
+                        "plan": "## Goal\n\n```py\nprint(1)\n```\n\nConfirm the implementation plan.",
+                    },
+                }
+            ],
+        },
+    }
+
+    assert (
+        module.extract_message(payload, "Notification")
+        == "Droid is waiting for plan approval. Confirm the implementation plan."
+    )
+
+
 def test_main_prints_notification_summary_to_stdout(monkeypatch):
     module = load_hook_module()
     stdout = io.StringIO()
@@ -543,6 +708,73 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     )
 
 
+def test_main_prints_notification_summary_from_exit_spec_mode(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    captured = {}
+    saved = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module, "extract_session_id", lambda _: "sess-123")
+    monkeypatch.setattr(module, "extract_session_key", lambda _: "sess-123")
+    monkeypatch.setattr(module, "save_current_session_pointer", lambda cwd, session_key, session_name=None: saved.update({"cwd": cwd, "session_key": session_key, "session_name": session_name}))
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "Notification",
+            "cwd": "/tmp/project",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "ExitSpecMode",
+                        "input": {
+                            "title": "Add AskUser questionnaire support to Droid notifications",
+                            "plan": "## Goal\nMake notifications work.",
+                        },
+                    }
+                ],
+            },
+        },
+    )
+
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+        captured["message"] = message
+        captured["event"] = event
+        captured["session_name"] = session_name
+        captured["session_key"] = session_key
+        captured["session_id"] = session_id
+        captured["cwd"] = cwd
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured == {
+        "message": "Droid is waiting for plan approval: Add AskUser questionnaire support to Droid notifications.",
+        "event": "needs_input",
+        "session_name": "Session Name",
+        "session_key": "sess-123",
+        "session_id": "sess-123",
+        "cwd": "/tmp/project",
+    }
+    assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
+    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
+
+
 def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
     module = load_hook_module()
     stdout = io.StringIO()
@@ -592,6 +824,139 @@ def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
         "source_tool": "Droid",
     }
     assert stdout.getvalue() == ""
+
+
+def test_main_prints_notification_summary_from_assistant_text_envelope(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    captured = {}
+    saved = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module, "extract_session_id", lambda _: "sess-123")
+    monkeypatch.setattr(module, "extract_session_key", lambda _: "sess-123")
+    monkeypatch.setattr(module, "save_current_session_pointer", lambda cwd, session_key, session_name=None: saved.update({"cwd": cwd, "session_key": session_key, "session_name": session_name}))
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "Notification",
+            "cwd": "/tmp/project",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Need your sign-off"},
+                ],
+            },
+        },
+    )
+
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+        captured["message"] = message
+        captured["event"] = event
+        captured["session_name"] = session_name
+        captured["session_key"] = session_key
+        captured["session_id"] = session_id
+        captured["cwd"] = cwd
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured == {
+        "message": "Need your sign-off",
+        "event": "needs_input",
+        "session_name": "Session Name",
+        "session_key": "sess-123",
+        "session_id": "sess-123",
+        "cwd": "/tmp/project",
+    }
+    assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
+    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
+
+
+def test_main_prints_notification_summary_from_nested_tool_use_questionnaire(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    captured = {}
+    saved = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module, "extract_session_id", lambda _: "sess-123")
+    monkeypatch.setattr(module, "extract_session_key", lambda _: "sess-123")
+    monkeypatch.setattr(module, "save_current_session_pointer", lambda cwd, session_key, session_name=None: saved.update({"cwd": cwd, "session_key": session_key, "session_name": session_name}))
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "Notification",
+            "cwd": "/tmp/project",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "AskUser",
+                        "input": {
+                            "questionnaire": (
+                                "1. [question] How should the session name be shown?\n"
+                                "[topic] Output format\n"
+                                "[option] Separate line\n\n"
+                                "2. [question] Which library should we use?\n"
+                                "[topic] Library choice\n"
+                                "[option] Existing"
+                            )
+                        },
+                    }
+                ],
+            },
+        },
+    )
+
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+        captured["message"] = message
+        captured["event"] = event
+        captured["session_name"] = session_name
+        captured["session_key"] = session_key
+        captured["session_id"] = session_id
+        captured["cwd"] = cwd
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured == {
+        "message": "Droid needs input about Output format and Library choice.",
+        "event": "needs_input",
+        "session_name": "Session Name",
+        "session_key": "sess-123",
+        "session_id": "sess-123",
+        "cwd": "/tmp/project",
+    }
+    assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
+    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
 
 
 def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
