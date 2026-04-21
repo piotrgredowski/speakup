@@ -645,10 +645,13 @@ def save_current_session_pointer(cwd: str, session_key: str, session_name: str |
     )
 
 
-def build_hook_output(session_key: str | None = None) -> str:
+def build_hook_output(session_key: str | None = None, session_name: str | None = None) -> str:
     if not session_key or build_replay_command is None:
         return ""
-    return build_replay_command(session_key)
+    replay_command = build_replay_command(session_key)
+    if not session_name:
+        return replay_command
+    return f"Session: {session_name}\n{replay_command}"
 
 
 def extract_session_id(input_data: dict) -> str | None:
@@ -777,7 +780,7 @@ def main():
         session_id=session_id or session_key,
         cwd=cwd.strip() if isinstance(cwd, str) and cwd.strip() else None,
     ):
-        output = build_hook_output(session_key)
+        output = build_hook_output(session_key, session_name)
         if output:
             print(output)
 

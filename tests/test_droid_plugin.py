@@ -436,7 +436,16 @@ def test_save_current_session_pointer_writes_cwd_scoped_pointer(tmp_path, monkey
     assert payload["session_name"] == "Session Name"
 
 
-def test_build_hook_output_includes_replay_command_when_session_key_present():
+def test_build_hook_output_includes_session_name_before_replay_command():
+    module = load_hook_module()
+
+    assert (
+        module.build_hook_output("sess-123", "Session Name")
+        == "Session: Session Name\nspeakup replay 1 --agent droid --session-key sess-123"
+    )
+
+
+def test_build_hook_output_without_session_name_returns_replay_command_only():
     module = load_hook_module()
 
     assert module.build_hook_output("sess-123") == "speakup replay 1 --agent droid --session-key sess-123"
@@ -497,7 +506,10 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
         "cwd": "/tmp/project",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
-    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
+    assert (
+        stdout.getvalue().strip()
+        == "Session: Session Name\nspeakup replay 1 --agent droid --session-key sess-123"
+    )
 
 
 def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
