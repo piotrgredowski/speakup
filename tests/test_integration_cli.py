@@ -508,6 +508,58 @@ def test_cli_replay_given_saved_audio_then_replays_exact_session_entry(
     assert play_log.read_text().splitlines() == [str(title_audio), str(saved_audio)]
 
 
+def test_cli_replay_given_saved_playback_audio_then_prefers_composed_asset(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    title_audio = tmp_path / "title.wav"
+    saved_audio = tmp_path / "saved.wav"
+    composed_audio = tmp_path / "composed.wav"
+    title_audio.write_text("FAKETITLE")
+    saved_audio.write_text("FAKEAUDIO")
+    composed_audio.write_text("COMPOSED")
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.FINAL,
+            agent="droid",
+            session_name="Session Name",
+            session_key="sess-composed",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Stored summary",
+            state=MessageEvent.FINAL,
+            backend="macos",
+            played=True,
+            audio_path=saved_audio,
+            audio_paths=[title_audio, saved_audio],
+            playback_audio_paths=[composed_audio],
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "1", "--config", str(base_config), "--agent", "droid", "--session-key", "sess-composed"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["replayed"] == 1
+    assert payload["from_audio"] == 1
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert play_log.read_text().splitlines() == [str(composed_audio)]
+
+
 def test_cli_replay_given_missing_audio_then_falls_back_to_summary_without_saving_history(
     tmp_path: Path,
     base_config: Path,

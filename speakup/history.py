@@ -112,6 +112,8 @@ class NotificationHistory:
             metadata["source_tool"] = request.source_tool
         if result.audio_paths:
             metadata["audio_paths"] = [str(path) for path in result.audio_paths]
+        if result.playback_audio_paths:
+            metadata["playback_audio_paths"] = [str(path) for path in result.playback_audio_paths]
         metadata_json = json.dumps(metadata) if metadata else "{}"
 
         with self._connect() as conn:

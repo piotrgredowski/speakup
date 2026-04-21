@@ -15,6 +15,7 @@ from .errors import AdapterError
 from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest, NotifyResult, SummaryResult
 from .playback.macos import MacOSPlaybackAdapter
+from .playback.composite import compose_audio_segments
 from .playback.queued import SQLiteQueuedPlayback
 from .registry import AdapterRegistry
 from .session_naming import resolve_session_name
@@ -521,6 +522,7 @@ class NotifyService:
 
         audio_paths = [Path(str(result.value)) for result in tts_results if result.kind == "file" and result.value]
         audio_path = audio_paths[-1] if audio_paths else None
+        playback_audio_paths: list[Path] = []
         played = False
         playback_error: str | None = None
         play_audio = force_play_audio if force_play_audio is not None else bool(self.config.get("tts", "play_audio", default=True))
@@ -532,6 +534,8 @@ class NotifyService:
                     if event_sound_path is not None:
                         playback_paths.append(event_sound_path)
                 playback_paths.extend(audio_paths)
+                playback_paths = self._prepare_playback_paths(playback_paths, request_id=request_id)
+                playback_audio_paths = list(playback_paths)
 
                 self.logger.info(
                     "playback_start",
@@ -566,8 +570,49 @@ class NotifyService:
             played=played,
             audio_path=audio_path,
             audio_paths=audio_paths,
+            playback_audio_paths=playback_audio_paths,
             error=playback_error,
         )
+
+    def _prepare_playback_paths(self, paths: list[Path], *, request_id: str) -> list[Path]:
+        normalized_paths = [Path(path) for path in paths]
+        if len(normalized_paths) < 2:
+            return normalized_paths
+
+        if not bool(self.config.get("playback", "compose_segments", default=True)):
+            return normalized_paths
+
+        lead_in_ms = int(self.config.get("playback", "compose_lead_in_ms", default=120))
+        gap_ms = int(self.config.get("playback", "compose_gap_ms", default=60))
+        try:
+            composed_path = compose_audio_segments(
+                normalized_paths,
+                output_dir=runtime_temp_dir() / "playback",
+                lead_in_ms=lead_in_ms,
+                gap_ms=gap_ms,
+            )
+        except AdapterError as exc:
+            self.logger.warning(
+                "playback_compose_failed",
+                extra={
+                    "request_id": request_id,
+                    "segment_count": len(normalized_paths),
+                    "error": str(exc),
+                },
+            )
+            return normalized_paths
+
+        self.logger.info(
+            "playback_composed",
+            extra={
+                "request_id": request_id,
+                "segment_count": len(normalized_paths),
+                "composed_path": str(composed_path),
+                "lead_in_ms": lead_in_ms,
+                "gap_ms": gap_ms,
+            },
+        )
+        return [composed_path]
 
     def notify(self, request: NotifyRequest) -> NotifyResult:
         request_id = uuid4().hex[:12]

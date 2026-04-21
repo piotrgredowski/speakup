@@ -622,8 +622,18 @@ def replay(
 
     for entry in reversed(entries):
         source_tool = entry.metadata.get("source_tool") if isinstance(entry.metadata, dict) else None
+        metadata_playback_audio_paths = entry.metadata.get("playback_audio_paths", []) if isinstance(entry.metadata, dict) else []
+        saved_playback_audio_paths = [Path(str(path)) for path in metadata_playback_audio_paths if path]
         metadata_audio_paths = entry.metadata.get("audio_paths", []) if isinstance(entry.metadata, dict) else []
         replay_audio_paths = [Path(str(path)) for path in metadata_audio_paths if path]
+        if saved_playback_audio_paths and all(path.exists() for path in saved_playback_audio_paths):
+            try:
+                service.registry.get_playback().play_files(saved_playback_audio_paths)
+                replayed += 1
+                from_audio += 1
+                continue
+            except AdapterError:
+                pass
         expected_audio_paths = _expected_replay_audio_paths(
             service,
             entry_summary=entry.summary,

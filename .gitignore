@@ -26,3 +26,6 @@ wheels/
 
 # Local scratch notes
 .scratchpad/
+
+# Project-local runtime config
+/.speakup.jsonc

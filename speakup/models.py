@@ -56,6 +56,7 @@ class NotifyResult:
     played: bool = False
     audio_path: Path | None = None
     audio_paths: list[Path] = field(default_factory=list)
+    playback_audio_paths: list[Path] = field(default_factory=list)
     dedup_skipped: bool = False
     error: str | None = None
 

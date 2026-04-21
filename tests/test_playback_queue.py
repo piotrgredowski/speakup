@@ -232,6 +232,91 @@ def test_notify_service_given_event_sound_then_plays_cue_and_speech_together(tmp
     assert playback.groups == [[beep, title_audio, speech]]
 
 
+def test_notify_service_given_multiple_segments_then_composes_before_playback(tmp_path: Path, monkeypatch) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+    composed_audio = tmp_path / "composed.wav"
+    composed_audio.write_text("composed")
+    compose_calls: dict[str, object] = {}
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    def fake_compose(paths, *, output_dir, lead_in_ms, gap_ms):
+        compose_calls["paths"] = [Path(path) for path in paths]
+        compose_calls["output_dir"] = Path(output_dir)
+        compose_calls["lead_in_ms"] = lead_in_ms
+        compose_calls["gap_ms"] = gap_ms
+        return composed_audio
+
+    monkeypatch.setattr("speakup.service.compose_audio_segments", fake_compose)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed",
+            event=MessageEvent.ERROR,
+            session_name="Nightly Run",
+            skip_summarization=True,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.audio_path == message_audio
+    assert result.audio_paths == [title_audio, message_audio]
+    assert result.playback_audio_paths == [composed_audio]
+    assert compose_calls["paths"] == [title_audio, message_audio]
+    assert compose_calls["lead_in_ms"] == 120
+    assert compose_calls["gap_ms"] == 60
+    assert playback.groups == [[composed_audio]]
+
+
+def test_notify_service_given_compose_failure_then_falls_back_to_segmented_playback(
+    tmp_path: Path, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    title_audio = tmp_path / "title.wav"
+    message_audio = tmp_path / "message.wav"
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+    monkeypatch.setattr(
+        "speakup.service.compose_audio_segments",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AdapterError("ffmpeg unavailable")),
+    )
+
+    service = NotifyService(config, registry=registry)
+    with caplog.at_level(logging.WARNING):
+        result = service.notify(
+            NotifyRequest(
+                message="Build failed",
+                event=MessageEvent.ERROR,
+                session_name="Nightly Run",
+                skip_summarization=True,
+            )
+        )
+
+    assert result.status == "ok"
+    assert result.playback_audio_paths == [title_audio, message_audio]
+    assert playback.groups == [[title_audio, message_audio]]
+    assert any(record.message == "playback_compose_failed" for record in caplog.records)
+
+
 def test_notify_service_given_short_message_then_sanitizes_text_before_tts(tmp_path: Path) -> None:
     title_audio = tmp_path / "title.wav"
     message_audio = tmp_path / "message.wav"

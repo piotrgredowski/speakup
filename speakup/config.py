@@ -93,6 +93,9 @@ SpeechTemplateField = Literal["source_tool", "agent", "session_name", "summary",
 @dataclass
 class PlaybackConfig:
     queue_enabled: bool = True
+    compose_segments: bool = True
+    compose_lead_in_ms: Annotated[int, Gt(0)] = 120
+    compose_gap_ms: Annotated[int, Gt(0)] = 60
 
 
 @dataclass

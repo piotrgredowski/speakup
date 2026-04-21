@@ -97,6 +97,30 @@ class TestNotificationHistory:
         assert entry.audio_path == str(message_audio)
         assert entry.metadata["audio_paths"] == [str(title_audio), str(message_audio)]
 
+    def test_add_persists_playback_audio_paths_in_metadata(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+        title_audio = tmp_path / "title.wav"
+        message_audio = tmp_path / "message.wav"
+        composed_audio = tmp_path / "playback.wav"
+
+        history.add(
+            NotifyRequest(message="Test", event=MessageEvent.FINAL, agent="test_agent"),
+            NotifyResult(
+                status="ok",
+                summary="Test summary",
+                state=MessageEvent.FINAL,
+                backend="test_backend",
+                played=True,
+                audio_path=message_audio,
+                audio_paths=[title_audio, message_audio],
+                playback_audio_paths=[composed_audio],
+            ),
+        )
+
+        entry = history.get_recent(limit=1)[0]
+        assert entry.metadata["playback_audio_paths"] == [str(composed_audio)]
+
     def test_add_given_non_mapping_metadata_then_wraps_raw_value_and_audio_paths(self, tmp_path: Path) -> None:
         db_path = tmp_path / "history.db"
         history = NotificationHistory(db_path)
