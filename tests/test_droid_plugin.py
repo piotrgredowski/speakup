@@ -441,14 +441,14 @@ def test_build_hook_output_includes_session_name_before_replay_command():
 
     assert (
         module.build_hook_output("sess-123", "Session Name")
-        == "Session: Session Name\nspeakup replay 1 --agent droid --session-key sess-123"
+        == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
     )
 
 
 def test_build_hook_output_without_session_name_returns_replay_command_only():
     module = load_hook_module()
 
-    assert module.build_hook_output("sess-123") == "speakup replay 1 --agent droid --session-key sess-123"
+    assert module.build_hook_output("sess-123") == "Replay cmd: speakup replay 1 --agent droid --session-key sess-123"
 
 
 def test_extract_message_reads_questionnaire_question_for_notification():
@@ -508,7 +508,7 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
     assert (
         stdout.getvalue().strip()
-        == "Session: Session Name\nspeakup replay 1 --agent droid --session-key sess-123"
+        == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
     )
 
 

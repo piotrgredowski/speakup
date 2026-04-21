@@ -648,7 +648,7 @@ def save_current_session_pointer(cwd: str, session_key: str, session_name: str |
 def build_hook_output(session_key: str | None = None, session_name: str | None = None) -> str:
     if not session_key or build_replay_command is None:
         return ""
-    replay_command = build_replay_command(session_key)
+    replay_command = f"Replay cmd: {build_replay_command(session_key)}"
     if not session_name:
         return replay_command
     return f"Session: {session_name}\n{replay_command}"
