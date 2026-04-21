@@ -344,6 +344,20 @@ def load_full_config() -> dict:
         return {}
 
 
+def merge_nested_defaults(defaults: dict, overrides: object) -> dict:
+    """Merge nested dict defaults with optional override values."""
+    if not isinstance(overrides, dict):
+        return dict(defaults)
+
+    merged = dict(defaults)
+    for key, value in overrides.items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = merge_nested_defaults(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_droid_config() -> dict:
     """Load droid-specific configuration from speakup config."""
     defaults = {
@@ -357,7 +371,7 @@ def load_droid_config() -> dict:
     }
 
     full_config = load_full_config()
-    return full_config.get("droid", defaults)
+    return merge_nested_defaults(defaults, full_config.get("droid"))
 
 
 def map_event_to_speakup(droid_event: str) -> str:

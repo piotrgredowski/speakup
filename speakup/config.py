@@ -284,8 +284,8 @@ class ProvidersConfig:
 class DroidEvents:
     notification: bool = True
     stop: bool = True
-    subagent_stop: bool = True
-    session_start: bool = True
+    subagent_stop: bool = False
+    session_start: bool = False
 
 
 @dataclass

@@ -366,6 +366,8 @@ class TestAppConfigIntegration:
         assert result.tts.voice == "default"
         assert result.providers.lmstudio.base_url == "http://localhost:1234/v1"
         assert result.droid.events.notification is True
+        assert result.droid.events.subagent_stop is False
+        assert result.droid.events.session_start is False
 
     def test_invalid_privacy_mode(self):
         from speakup.config import default_config, AppConfig

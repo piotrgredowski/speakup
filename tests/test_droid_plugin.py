@@ -111,7 +111,10 @@ def test_hook_prefers_jsonc_config(tmp_path, monkeypatch):
     (cfg_dir / "config.jsonc").write_text('{\n  // comment\n  "droid": {"enabled": false}\n}\n')
 
     assert module.get_config_path() == cfg_dir / "config.jsonc"
-    assert module.load_droid_config()["enabled"] is False
+    config = module.load_droid_config()
+    assert config["enabled"] is False
+    assert config["events"]["subagent_stop"] is False
+    assert config["events"]["session_start"] is False
 
 
 def test_hook_falls_back_to_legacy_json_config(tmp_path, monkeypatch):
@@ -123,7 +126,31 @@ def test_hook_falls_back_to_legacy_json_config(tmp_path, monkeypatch):
     (cfg_dir / "config.json").write_text(json.dumps({"droid": {"enabled": False}}))
 
     assert module.get_config_path() == cfg_dir / "config.json"
-    assert module.load_droid_config()["enabled"] is False
+    config = module.load_droid_config()
+    assert config["enabled"] is False
+    assert config["events"]["subagent_stop"] is False
+    assert config["events"]["session_start"] is False
+
+
+def test_hook_merges_partial_droid_event_overrides_with_defaults(tmp_path, monkeypatch):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+
+    cfg_dir = tmp_path / ".config" / "speakup"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.jsonc").write_text(
+        '{\n  "droid": {"events": {"notification": false}}\n}\n'
+    )
+
+    config = module.load_droid_config()
+
+    assert config["enabled"] is True
+    assert config["events"] == {
+        "notification": False,
+        "stop": True,
+        "subagent_stop": False,
+        "session_start": False,
+    }
 
 
 def test_hook_uses_default_request_id_fallback_when_shared_module_lacks_it(monkeypatch):
@@ -599,6 +626,44 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
     except SystemExit:
         pass
 
+    assert stdout.getvalue() == ""
+
+
+def test_main_ignores_subagent_stop_when_disabled(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"subagent done"}]}}\n'
+    )
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"subagent_stop": False}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {"hook_event_name": "SubagentStop", "transcript_path": str(transcript)},
+    )
+
+    called = {"run_speakup": False}
+
+    def fake_run_speakup(*args, **kwargs):
+        called["run_speakup"] = True
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert called["run_speakup"] is False
     assert stdout.getvalue() == ""
 
 
