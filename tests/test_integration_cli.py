@@ -12,6 +12,7 @@ from speakup.session_naming import generate_session_name
 
 from .conftest import run_cli
 from speakup.history import NotificationHistory
+from speakup.cli import _normalize_notify_payload
 from speakup.models import MessageEvent, NotifyRequest, NotifyResult
 from speakup.config import runtime_temp_dir
 
@@ -96,6 +97,17 @@ class _TTSVoiceSpeedEchoHandler(BaseHTTPRequestHandler):
         return
 
 
+def _spoken_title(session_name: str | None = None, *, agent: str = "speakup", source_tool: str | None = None) -> str:
+    speaker = source_tool or agent
+    if session_name:
+        return f"{speaker} from session {session_name} says"
+    return f"{speaker} says"
+
+
+def _spoken_summary(message: str, session_name: str | None = None, *, agent: str = "speakup", source_tool: str | None = None) -> str:
+    return f"{_spoken_title(session_name, agent=agent, source_tool=source_tool)} {message}"
+
+
 def _start_summary_server() -> tuple[HTTPServer, int]:
     return _start_server(_SummaryHandler)
 
@@ -115,7 +127,7 @@ def test_cli_given_needs_input_message_then_returns_spoken_summary(base_config: 
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
     assert payload["state"] == "needs_input"
-    assert payload["summary"] == "Could you confirm the deploy region?"
+    assert payload["summary"] == _spoken_summary("Could you confirm the deploy region?")
     assert payload["played"] is True
     assert payload["backend"] == "macos"
 
@@ -174,7 +186,7 @@ def test_cli_given_session_name_then_prefixes_spoken_summary(base_config: Path, 
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["summary"] == "nightly-fix: Done implementing the feature"
+    assert payload["summary"] == _spoken_summary("Done implementing the feature", "nightly-fix")
 
 
 def test_cli_given_conversation_id_without_session_name_then_generates_session_name(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -194,7 +206,20 @@ def test_cli_given_conversation_id_without_session_name_then_generates_session_n
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["summary"] == f"{generate_session_name('conv-123')}: Done implementing the feature"
+    assert payload["summary"] == _spoken_summary("Done implementing the feature", generate_session_name("conv-123"))
+
+
+def test_normalize_notify_payload_given_both_source_tool_keys_then_drops_legacy_key() -> None:
+    payload = _normalize_notify_payload(
+        {
+            "message": "Done implementing the feature",
+            "source_tool": "modern-tool",
+            "sourceTool": "legacy-tool",
+        }
+    )
+
+    assert payload["source_tool"] == "modern-tool"
+    assert "sourceTool" not in payload
 
 
 def test_cli_replay_without_filters_defaults_to_latest_replayable_message(
@@ -582,6 +607,111 @@ def test_cli_replay_given_title_only_audio_then_falls_back_to_summary(
     assert str(title_audio) not in play_log.read_text().splitlines()
 
 
+def test_cli_replay_given_session_audio_and_empty_title_template_then_uses_saved_audio(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    config = json.loads(base_config.read_text())
+    config["speech_template"] = {
+        "title": {"parts": []},
+        "message": {"parts": [{"field": "summary"}]},
+    }
+    base_config.write_text(json.dumps(config))
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    message_audio = tmp_path / "message.wav"
+    message_audio.write_text("MESSAGE")
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.NEEDS_INPUT,
+            agent="pi",
+            session_name="Session Name",
+            session_key="sess-no-title-template",
+        ),
+        NotifyResult(
+            status="ok",
+            summary="Stored summary",
+            state=MessageEvent.NEEDS_INPUT,
+            backend="macos",
+            played=True,
+            audio_path=message_audio,
+            audio_paths=[message_audio],
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "pi", "--session-key", "sess-no-title-template"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["requested"] == 1
+    assert payload["replayed"] == 1
+    assert payload["from_audio"] == 1
+    assert payload["from_summary"] == 0
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert play_log.read_text().splitlines() == [str(message_audio)]
+
+
+def test_cli_replay_given_title_only_audio_without_session_name_then_falls_back_to_summary(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory(runtime_temp_dir() / "history.db")
+    title_audio = tmp_path / "title.wav"
+    title_audio.write_text("TITLE")
+    history.add(
+        NotifyRequest(
+            message="Original",
+            event=MessageEvent.NEEDS_INPUT,
+            agent="pi",
+            session_key="sess-title-only-no-session",
+        ),
+        NotifyResult(
+            status="ok",
+            summary=_spoken_summary("Stored summary", agent="pi"),
+            state=MessageEvent.NEEDS_INPUT,
+            backend="macos",
+            played=True,
+            audio_path=title_audio,
+            audio_paths=[title_audio],
+        ),
+        timestamp=1.0,
+    )
+
+    result = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "pi", "--session-key", "sess-title-only-no-session"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["requested"] == 1
+    assert payload["replayed"] == 1
+    assert payload["from_audio"] == 0
+    assert payload["from_summary"] == 1
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    assert len(play_log.read_text().splitlines()) == 2
+    assert str(title_audio) not in play_log.read_text().splitlines()
+
+
 def test_cli_replay_skips_history_rows_that_were_never_spoken(
     tmp_path: Path,
     base_config: Path,
@@ -668,6 +798,8 @@ def test_cli_given_playback_failure_then_returns_partial_success(tmp_path: Path,
 
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    env["SPEAKUP_SAY_BIN"] = str(say_script)
+    env["SPEAKUP_AFPLAY_BIN"] = str(afplay_script)
 
     result = run_cli(["--config", str(base_config), "--message", "Done", "--event", "final"], env=env)
     assert result.returncode == 0
@@ -733,7 +865,7 @@ def test_cli_given_forced_summary_provider_then_uses_it_over_config_order(tmp_pa
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert payload["status"] == "ok"
-        assert payload["summary"] == "LM summary from forced provider"
+        assert payload["summary"] == _spoken_summary("LM summary from forced provider")
     finally:
         server.shutdown()
         server.server_close()
@@ -774,7 +906,7 @@ def test_cli_given_command_summary_provider_then_uses_pi_command_output(tmp_path
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["summary"] == "Pi summary from command"
+    assert payload["summary"] == _spoken_summary("Pi summary from command")
 
 
 def test_cli_given_failing_command_summary_then_falls_back_to_rule_based(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -812,7 +944,7 @@ def test_cli_given_failing_command_summary_then_falls_back_to_rule_based(tmp_pat
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["summary"] == "Original message"
+    assert payload["summary"] == _spoken_summary("Original message")
 
 
 def test_cli_given_summary_model_override_then_lmstudio_uses_it(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -845,7 +977,7 @@ def test_cli_given_summary_model_override_then_lmstudio_uses_it(tmp_path: Path, 
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert payload["status"] == "ok"
-        assert payload["summary"] == "summary-model=override-summary-model"
+        assert payload["summary"] == _spoken_summary("summary-model=override-summary-model")
         assert _SummaryModelEchoHandler.last_model == "override-summary-model"
     finally:
         server.shutdown()
@@ -880,7 +1012,7 @@ def test_cli_given_empty_lmstudio_summary_then_falls_back_to_rule_based_and_keep
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert payload["status"] == "ok"
-        assert payload["summary"] == "Pi, from session named speakup: Build is complete"
+        assert payload["summary"] == _spoken_summary("Build is complete", "Pi, from session named speakup")
     finally:
         server.shutdown()
         server.server_close()

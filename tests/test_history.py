@@ -125,6 +125,30 @@ class TestNotificationHistory:
         assert entry.metadata["_raw"] == "oops"
         assert entry.metadata["audio_paths"] == [str(title_audio), str(message_audio)]
 
+    def test_add_given_conflicting_source_tool_metadata_then_prefers_request_field(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "history.db"
+        history = NotificationHistory(db_path)
+
+        history.add(
+            NotifyRequest(
+                message="Test",
+                event=MessageEvent.FINAL,
+                agent="test_agent",
+                source_tool="Droid",
+                metadata={"source_tool": "stale-tool"},
+            ),
+            NotifyResult(
+                status="ok",
+                summary="Test summary",
+                state=MessageEvent.FINAL,
+                backend="test_backend",
+                played=True,
+            ),
+        )
+
+        entry = history.get_recent(limit=1)[0]
+        assert entry.metadata["source_tool"] == "Droid"
+
     def test_get_recent_given_legacy_scalar_metadata_then_wraps_raw_value(self, tmp_path: Path) -> None:
         db_path = tmp_path / "history.db"
         history = NotificationHistory(db_path)

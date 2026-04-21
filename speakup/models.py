@@ -18,6 +18,7 @@ class MessageEvent(str, Enum):
 class NotifyRequest:
     message: str
     event: MessageEvent = MessageEvent.FINAL
+    source_tool: str | None = None
     session_name: str | None = None
     conversation_id: str | None = None
     session_id: str | None = None

@@ -10,6 +10,17 @@ from .conftest import run_pi_cli
 from .conftest import run_cli
 
 
+def _spoken_title(session_name: str | None = None, *, agent: str = "pi", source_tool: str | None = None) -> str:
+    speaker = source_tool or agent
+    if session_name:
+        return f"{speaker} from session {session_name} says"
+    return f"{speaker} says"
+
+
+def _spoken_summary(message: str, session_name: str | None = None, *, agent: str = "pi", source_tool: str | None = None) -> str:
+    return f"{_spoken_title(session_name, agent=agent, source_tool=source_tool)} {message}"
+
+
 def test_pi_wrapper_given_payload_on_stdin_then_returns_notify_result(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     payload = {"message": "Could you provide API token?", "event": "needs_input", "agent": "pi"}
     result = run_pi_cli(["--config", str(base_config)], env=env_with_fake_audio, stdin=json.dumps(payload))
@@ -18,7 +29,7 @@ def test_pi_wrapper_given_payload_on_stdin_then_returns_notify_result(base_confi
     output = json.loads(result.stdout)
     assert output["status"] == "ok"
     assert output["state"] == "needs_input"
-    assert output["summary"] == "Could you provide API token?"
+    assert output["summary"] == _spoken_summary("Could you provide API token?")
 
 
 def test_pi_wrapper_given_invalid_config_then_exits_with_error(tmp_path: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -59,7 +70,7 @@ def test_pi_wrapper_given_session_name_then_prefixes_summary(base_config: Path, 
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == "release-42: Need your sign-off"
+    assert output["summary"] == _spoken_summary("Need your sign-off", "release-42")
 
 
 def test_pi_wrapper_given_no_session_name_then_generates_name_from_session_key(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -73,7 +84,7 @@ def test_pi_wrapper_given_no_session_name_then_generates_name_from_session_key(b
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == f"{generate_session_name('conv-123')}: Need your sign-off"
+    assert output["summary"] == _spoken_summary("Need your sign-off", generate_session_name("conv-123"))
 
 
 def test_pi_wrapper_given_session_title_then_prefers_it_over_session_id(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -88,7 +99,7 @@ def test_pi_wrapper_given_session_title_then_prefers_it_over_session_id(base_con
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == "Better Session Name: Need your sign-off"
+    assert output["summary"] == _spoken_summary("Need your sign-off", "Better Session Name")
 
 
 def test_pi_wrapper_given_both_title_variants_then_prefers_session_title(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -104,7 +115,7 @@ def test_pi_wrapper_given_both_title_variants_then_prefers_session_title(base_co
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == "Code Changes Review Findings: Need your sign-off"
+    assert output["summary"] == _spoken_summary("Need your sign-off", "Code Changes Review Findings")
 
 
 def test_pi_wrapper_given_explicit_empty_session_name_then_generates_name_from_session_key(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -119,7 +130,7 @@ def test_pi_wrapper_given_explicit_empty_session_name_then_generates_name_from_s
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == f"{generate_session_name('conv-123')}: Need your sign-off"
+    assert output["summary"] == _spoken_summary("Need your sign-off", generate_session_name("conv-123"))
 
 
 def test_pi_wrapper_given_precomputed_summary_then_uses_it(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -134,7 +145,7 @@ def test_pi_wrapper_given_precomputed_summary_then_uses_it(base_config: Path, en
     assert result.returncode == 0
     output = json.loads(result.stdout)
     assert output["status"] == "ok"
-    assert output["summary"] == "Custom summary from headless agent"
+    assert output["summary"] == _spoken_summary("Custom summary from headless agent")
 
 
 def test_pi_wrapper_given_session_key_then_replay_finds_saved_notification(

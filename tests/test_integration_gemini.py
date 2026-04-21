@@ -78,7 +78,11 @@ def config_with_gemini(tmp_path: Path) -> Path:
 
 
 @pytest.mark.integration_gemini
-def test_gemini_real_api_given_final_event_then_synthesizes_audio(config_with_gemini: Path, tmp_path: Path):
+def test_gemini_real_api_given_final_event_then_synthesizes_audio(
+    config_with_gemini: Path,
+    tmp_path: Path,
+    env_with_fake_audio: dict[str, str],
+):
     """Test real Gemini TTS API call with --tts-provider gemini flag."""
     result = run_cli(
         [
@@ -94,7 +98,7 @@ def test_gemini_real_api_given_final_event_then_synthesizes_audio(config_with_ge
             "--tts-provider",
             "gemini",
         ],
-        env=os.environ,
+        env=env_with_fake_audio,
     )
 
     # Print output for debugging
@@ -123,7 +127,7 @@ def test_gemini_real_api_given_final_event_then_synthesizes_audio(config_with_ge
 
 
 @pytest.mark.integration_gemini
-def test_gemini_real_api_given_custom_voice_then_synthesizes(tmp_path: Path):
+def test_gemini_real_api_given_custom_voice_then_synthesizes(tmp_path: Path, env_with_fake_audio: dict[str, str]):
     """Test Gemini TTS with custom voice (Charon)."""
     config_path = tmp_path / "config.json"
     config = {
@@ -161,7 +165,7 @@ def test_gemini_real_api_given_custom_voice_then_synthesizes(tmp_path: Path):
             "--tts-provider",
             "gemini",
         ],
-        env=os.environ,
+        env=env_with_fake_audio,
     )
 
     _skip_on_gemini_rate_limit(result)
@@ -173,7 +177,10 @@ def test_gemini_real_api_given_custom_voice_then_synthesizes(tmp_path: Path):
 
 
 @pytest.mark.integration_gemini
-def test_gemini_real_api_given_no_play_then_saves_audio_without_playback(tmp_path: Path):
+def test_gemini_real_api_given_no_play_then_saves_audio_without_playback(
+    tmp_path: Path,
+    env_with_fake_audio: dict[str, str],
+):
     """Test Gemini TTS with --no-play flag."""
     config_path = tmp_path / "config.json"
     config = {
@@ -213,7 +220,7 @@ def test_gemini_real_api_given_no_play_then_saves_audio_without_playback(tmp_pat
             "--no-play",
             "--fail-fast",
         ],
-        env=os.environ,
+        env=env_with_fake_audio,
     )
 
     # Print output for debugging

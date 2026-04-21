@@ -96,4 +96,6 @@ def env_with_fake_audio(fake_audio_bin: tuple[Path, Path]) -> dict[str, str]:
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     env["PLAY_LOG"] = str(play_log)
+    env["SPEAKUP_SAY_BIN"] = str(bin_dir / "say")
+    env["SPEAKUP_AFPLAY_BIN"] = str(bin_dir / "afplay")
     return env

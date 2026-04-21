@@ -72,6 +72,23 @@ def _fallback_spoken_summary(event: MessageEvent) -> str:
     return mapping.get(event, "Notification")
 
 
+_DEFAULT_SPEECH_TEMPLATE = {
+    "title": {
+        "separator": " ",
+        "parts": [
+            {"field": "source_tool", "fallback": "agent"},
+            {"text": "from session", "when": "session_name"},
+            {"field": "session_name", "when": "session_name"},
+            {"text": "says"},
+        ],
+    },
+    "message": {
+        "separator": " ",
+        "parts": [{"field": "summary"}],
+    },
+}
+
+
 def build_registry_from_config(config: Config) -> AdapterRegistry:
     """Build an adapter registry from configuration.
 
@@ -215,29 +232,137 @@ class NotifyService:
         except Exception as exc:
             self.logger.warning("history_save_failed", extra={"request_id": request_id, "error": str(exc)})
 
+    def _template_context(
+        self,
+        *,
+        event: MessageEvent,
+        summary_text: str,
+        raw_message: str,
+        session_name: str | None,
+        agent: str | None,
+        source_tool: str | None,
+    ) -> dict[str, str | None]:
+        return {
+            "source_tool": sanitize_text_for_tts(str(source_tool or "")) or None,
+            "agent": sanitize_text_for_tts(str(agent or "")) or None,
+            "session_name": sanitize_text_for_tts(str(session_name or "")) or None,
+            "summary": sanitize_text_for_tts(summary_text),
+            "raw_message": sanitize_text_for_tts(raw_message),
+            "event": event.value,
+        }
+
+    def _resolve_template_value(
+        self,
+        context: dict[str, str | None],
+        *,
+        field_name: object,
+        fallback_name: object = None,
+    ) -> str | None:
+        if not isinstance(field_name, str):
+            return None
+        value = context.get(field_name)
+        if value:
+            return value
+        if isinstance(fallback_name, str):
+            fallback_value = context.get(fallback_name)
+            if fallback_value:
+                return fallback_value
+        return None
+
+    def _render_speech_segment(self, segment_name: str, context: dict[str, str | None]) -> str | None:
+        segment = self.config.get("speech_template", segment_name, default=_DEFAULT_SPEECH_TEMPLATE.get(segment_name, {}))
+        if not isinstance(segment, dict):
+            return None
+
+        separator = segment.get("separator", " ")
+        if not isinstance(separator, str) or not separator:
+            separator = " "
+
+        parts = segment.get("parts", [])
+        if not isinstance(parts, list):
+            return None
+
+        rendered_parts: list[str] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            when_name = part.get("when")
+            if isinstance(when_name, str) and not context.get(when_name):
+                continue
+
+            text = part.get("text")
+            if isinstance(text, str):
+                rendered = sanitize_text_for_tts(text)
+            else:
+                rendered = self._resolve_template_value(
+                    context,
+                    field_name=part.get("field"),
+                    fallback_name=part.get("fallback"),
+                )
+
+            if rendered:
+                rendered_parts.append(rendered)
+
+        if not rendered_parts:
+            return None
+
+        return " ".join(separator.join(rendered_parts).split())
+
+    @staticmethod
+    def _strip_title_prefix(message: str, title: str | None, session_name: str | None) -> str:
+        if not message:
+            return message
+
+        prefixes = []
+        if title:
+            prefixes.extend([
+                f"{title}: ",
+                f"{title}:",
+                f"{title} - ",
+                f"{title} — ",
+                f"{title} ",
+            ])
+        if session_name:
+            prefixes.extend([
+                f"{session_name}: ",
+                f"{session_name}:",
+            ])
+
+        for prefix in prefixes:
+            if message.startswith(prefix):
+                return message[len(prefix):].strip()
+        return message
+
     def _prepare_spoken_summary(
         self,
         *,
         event: MessageEvent,
-        session_name: str | None,
         summary_text: str,
+        raw_message: str,
+        session_name: str | None,
+        agent: str | None,
+        source_tool: str | None,
     ) -> tuple[str | None, str, str]:
-        spoken_session_name = sanitize_text_for_tts(str(session_name or "")) or None
-        spoken_message = sanitize_text_for_tts(summary_text)
-        if spoken_session_name and spoken_message:
-            for prefix in (f"{spoken_session_name}: ", f"{spoken_session_name}:"):
-                if spoken_message.startswith(prefix):
-                    spoken_message = spoken_message[len(prefix):].strip()
-                    break
+        context = self._template_context(
+            event=event,
+            summary_text=summary_text,
+            raw_message=raw_message,
+            session_name=session_name,
+            agent=agent,
+            source_tool=source_tool,
+        )
+        spoken_title = self._render_speech_segment("title", context)
+        spoken_message = self._render_speech_segment("message", context) or ""
+        spoken_message = self._strip_title_prefix(spoken_message, spoken_title, context.get("session_name"))
         if not spoken_message:
             spoken_message = _fallback_spoken_summary(event)
 
         spoken_summary = (
-            f"{spoken_session_name}: {spoken_message}"
-            if spoken_session_name
+            f"{spoken_title} {spoken_message}".strip()
+            if spoken_title
             else spoken_message
         )
-        return spoken_session_name, spoken_message, spoken_summary
+        return spoken_title, spoken_message, spoken_summary
 
     def _resolve_project_override(self, project_path: str | None) -> dict[object, object]:
         normalized_project_path = _normalize_project_path(project_path)
@@ -366,7 +491,7 @@ class NotifyService:
         self,
         *,
         event: MessageEvent,
-        spoken_session_name: str | None,
+        spoken_title: str | None,
         spoken_message: str,
         spoken_summary: str,
         request_id: str,
@@ -377,7 +502,7 @@ class NotifyService:
     ) -> NotifyResult:
         with self._timed("tts", request_id):
             tts_results, backend = self._synthesize_segments(
-                session_name=spoken_session_name,
+                title_text=spoken_title,
                 summary_text=spoken_message,
                 request_id=request_id,
                 project_path=project_path,
@@ -506,10 +631,13 @@ class NotifyService:
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
 
-        spoken_session_name, spoken_message, spoken_summary = self._prepare_spoken_summary(
+        spoken_title, spoken_message, spoken_summary = self._prepare_spoken_summary(
             event=event,
-            session_name=request.session_name,
             summary_text=summary_text,
+            raw_message=request.message,
+            session_name=request.session_name,
+            agent=request.agent,
+            source_tool=request.source_tool,
         )
 
         self.logger.debug(
@@ -525,7 +653,7 @@ class NotifyService:
         )
         result = self._play_synthesized_summary(
             event=event,
-            spoken_session_name=spoken_session_name,
+            spoken_title=spoken_title,
             spoken_message=spoken_message,
             spoken_summary=spoken_summary,
             request_id=request_id,
@@ -537,16 +665,27 @@ class NotifyService:
         self._save_history(request, result, request_id=request_id)
         return result
 
-    def replay_summary(self, *, summary: str, event: MessageEvent, session_name: str | None = None) -> NotifyResult:
+    def replay_summary(
+        self,
+        *,
+        summary: str,
+        event: MessageEvent,
+        session_name: str | None = None,
+        agent: str = "speakup",
+        source_tool: str | None = None,
+    ) -> NotifyResult:
         request_id = uuid4().hex[:12]
-        spoken_session_name, spoken_message, spoken_summary = self._prepare_spoken_summary(
+        spoken_title, spoken_message, spoken_summary = self._prepare_spoken_summary(
             event=event,
-            session_name=session_name,
             summary_text=summary,
+            raw_message=summary,
+            session_name=session_name,
+            agent=agent,
+            source_tool=source_tool,
         )
         return self._play_synthesized_summary(
             event=event,
-            spoken_session_name=spoken_session_name,
+            spoken_title=spoken_title,
             spoken_message=spoken_message,
             spoken_summary=spoken_summary,
             request_id=request_id,
@@ -713,7 +852,7 @@ class NotifyService:
     def _synthesize_segments(
         self,
         *,
-        session_name: str | None,
+        title_text: str | None,
         summary_text: str,
         request_id: str,
         project_path: str | None = None,
@@ -733,9 +872,9 @@ class NotifyService:
         for provider in provider_order:
             results = []
 
-            if session_name:
+            if title_text:
                 title_audio, _ = self._synthesize(
-                    str(session_name),
+                    str(title_text),
                     request_id=request_id,
                     voice=self._resolve_voice(provider, "title", project_path),
                     speed=session_speed,

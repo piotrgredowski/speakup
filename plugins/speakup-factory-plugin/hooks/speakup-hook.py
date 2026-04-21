@@ -685,6 +685,7 @@ def run_speakup(
     session_key: str | None = None,
     session_id: str | None = None,
     cwd: str | None = None,
+    source_tool: str | None = None,
 ):
     """Launch speakup package internals in a background worker."""
     if build_droid_notify_request is None or notify_in_background is None:
@@ -695,14 +696,18 @@ def run_speakup(
         f"Launching speakup internals: event={event}, session={session_name}, session_key={session_key}, session_id={session_id}, message_len={len(message)}"
     )
 
-    request = build_droid_notify_request(
-        message=message,
-        event=event,
-        session_name=session_name,
-        session_key=session_key,
-        session_id=session_id,
-        cwd=cwd,
-    )
+    request_kwargs = {
+        "message": message,
+        "event": event,
+        "session_name": session_name,
+        "session_key": session_key,
+        "session_id": session_id,
+        "cwd": cwd,
+    }
+    if source_tool is not None:
+        request_kwargs["source_tool"] = source_tool
+
+    request = build_droid_notify_request(**request_kwargs)
 
     config_path = get_config_path()
     if not config_path.exists():
@@ -793,6 +798,7 @@ def main():
         session_key=session_key,
         session_id=session_id or session_key,
         cwd=cwd.strip() if isinstance(cwd, str) and cwd.strip() else None,
+        source_tool="Droid",
     ):
         output = build_hook_output(session_key, session_name)
         if output:

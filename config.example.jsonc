@@ -83,6 +83,36 @@
   "config_viewer": {
     "command": null
   },
+  "speech_template": {
+    "title": {
+      "separator": " ",
+      "parts": [
+        {
+          "field": "source_tool",
+          "fallback": "agent"
+        },
+        {
+          "text": "from session",
+          "when": "session_name"
+        },
+        {
+          "field": "session_name",
+          "when": "session_name"
+        },
+        {
+          "text": "says"
+        }
+      ]
+    },
+    "message": {
+      "separator": " ",
+      "parts": [
+        {
+          "field": "summary"
+        }
+      ]
+    }
+  },
   "providers": {
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",

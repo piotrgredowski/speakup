@@ -87,6 +87,9 @@ def get_default_log_file_path() -> Path:
     return get_default_log_dir() / "speakup.log"
 
 
+SpeechTemplateField = Literal["source_tool", "agent", "session_name", "summary", "raw_message", "event"]
+
+
 @dataclass
 class PlaybackConfig:
     queue_enabled: bool = True
@@ -202,6 +205,39 @@ class MacOSConfig:
 
 
 @dataclass
+class SpeechTemplatePartConfig:
+    text: str | None = None
+    field: SpeechTemplateField | None = None
+    when: SpeechTemplateField | None = None
+    fallback: SpeechTemplateField | None = None
+
+
+@dataclass
+class SpeechSegmentTemplateConfig:
+    separator: str = " "
+    parts: list[SpeechTemplatePartConfig] = field(default_factory=list)
+
+
+@dataclass
+class SpeechTemplateConfig:
+    title: SpeechSegmentTemplateConfig = field(
+        default_factory=lambda: SpeechSegmentTemplateConfig(
+            parts=[
+                SpeechTemplatePartConfig(field="source_tool", fallback="agent"),
+                SpeechTemplatePartConfig(text="from session", when="session_name"),
+                SpeechTemplatePartConfig(field="session_name", when="session_name"),
+                SpeechTemplatePartConfig(text="says"),
+            ]
+        )
+    )
+    message: SpeechSegmentTemplateConfig = field(
+        default_factory=lambda: SpeechSegmentTemplateConfig(
+            parts=[SpeechTemplatePartConfig(field="summary")]
+        )
+    )
+
+
+@dataclass
 class LMStudioConfig:
     base_url: str = "http://localhost:1234/v1"
     model: str = "local-model"
@@ -308,6 +344,7 @@ class AppConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)
     config_viewer: ConfigViewerConfig = field(default_factory=ConfigViewerConfig)
+    speech_template: SpeechTemplateConfig = field(default_factory=SpeechTemplateConfig)
     providers: ProvidersConfig = field(default_factory=ProvidersConfig)
     droid: DroidConfig = field(default_factory=DroidConfig)
 

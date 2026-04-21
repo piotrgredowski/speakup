@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import ClassVar
@@ -19,7 +20,7 @@ class MacOSTTSAdapter(TTSAdapter):
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"tts-{uuid4().hex}.aiff"
 
-        command = ["say", "-o", str(out_path)]
+        command = [os.environ.get("SPEAKUP_SAY_BIN", "say"), "-o", str(out_path)]
         if voice != "default":
             command += ["-v", voice]
         # macOS say does not directly support precise speed in same way as providers.

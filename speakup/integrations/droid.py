@@ -18,6 +18,7 @@ from ..service import NotifyService
 logger = logging.getLogger(__name__)
 
 _PAYLOAD_FILE_ARG = "--payload-file"
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_droid_notify_request(
@@ -28,6 +29,7 @@ def build_droid_notify_request(
     session_id: str | None = None,
     session_key: str | None = None,
     cwd: str | None = None,
+    source_tool: str | None = None,
 ) -> NotifyRequest:
     try:
         message_event = MessageEvent(event)
@@ -38,6 +40,7 @@ def build_droid_notify_request(
         message=message,
         event=message_event,
         session_name=session_name,
+        source_tool=source_tool,
         session_id=session_id or (session_key if session_key else None),
         session_key=session_key,
         agent="droid",
@@ -114,6 +117,12 @@ def _run_payload_file(payload_path: str | Path) -> None:
 
 def notify_in_background(request: NotifyRequest, *, config_path: str | Path | None = None) -> int:
     payload_path = _write_payload_file(request, config_path)
+    env = dict(os.environ)
+    pythonpath_parts = [str(_PACKAGE_ROOT)]
+    existing_pythonpath = env.get("PYTHONPATH")
+    if existing_pythonpath:
+        pythonpath_parts.append(existing_pythonpath)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
     cmd = [
         sys.executable,
         "-m",
@@ -128,6 +137,7 @@ def notify_in_background(request: NotifyRequest, *, config_path: str | Path | No
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
+            env=env,
         )
     except Exception:
         payload_path.unlink(missing_ok=True)

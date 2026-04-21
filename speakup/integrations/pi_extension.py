@@ -29,6 +29,7 @@ def request_from_pi_payload(payload: dict) -> NotifyRequest:
         session_id=session_id,
         session_key=session_key,
         task_id=payload.get("taskId"),
+        source_tool=payload.get("source_tool") or payload.get("sourceTool") or payload.get("source-tool"),
         agent=payload.get("agent", "pi"),
         precomputed_summary=payload.get("summary"),
         metadata=payload.get("metadata", {}),

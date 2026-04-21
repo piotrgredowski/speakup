@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import ClassVar
@@ -17,6 +18,10 @@ class MacOSPlaybackAdapter(PlaybackAdapter):
         if not path.exists():
             raise AdapterError(f"Audio file does not exist: {path}")
         try:
-            subprocess.run(["afplay", str(path)], check=True, capture_output=True)
+            subprocess.run(
+                [os.environ.get("SPEAKUP_AFPLAY_BIN", "afplay"), str(path)],
+                check=True,
+                capture_output=True,
+            )
         except Exception as exc:
             raise AdapterError(f"Playback failed: {exc}") from exc

@@ -143,6 +143,7 @@ def _run_notify(
     message: Optional[str],
     event: str,
     session_name: Optional[str],
+    source_tool: Optional[str],
     conversation_id: Optional[str],
     session_id: Optional[str],
     agent: Optional[str],
@@ -197,6 +198,7 @@ def _run_notify(
         message=message,
         event=event,
         session_name=session_name,
+        source_tool=source_tool,
         conversation_id=conversation_id,
         session_id=session_id,
         agent=agent,
@@ -279,6 +281,9 @@ def main_callback(
     session_name: Optional[str] = typer.Option(
         None, "--session-name", "-s", help="Optional session label spoken at the start"
     ),
+    source_tool: Optional[str] = typer.Option(
+        None, "--source-tool", help="Optional source tool name used in speech title rendering"
+    ),
     conversation_id: Optional[str] = typer.Option(
         None, "--conversation-id", help="Optional stable conversation identifier for session-name generation"
     ),
@@ -354,6 +359,7 @@ def main_callback(
             message=message,
             event=event,
             session_name=session_name,
+            source_tool=source_tool,
             conversation_id=conversation_id,
             session_id=session_id,
             agent=agent,
@@ -426,6 +432,7 @@ def _apply_request_cli_overrides(
     request: NotifyRequest,
     *,
     session_name: Optional[str],
+    source_tool: Optional[str],
     conversation_id: Optional[str],
     session_id: Optional[str],
     agent: Optional[str],
@@ -435,6 +442,8 @@ def _apply_request_cli_overrides(
         request.agent = agent
     if session_key:
         request.session_key = session_key
+    if source_tool is not None:
+        request.source_tool = source_tool
     if conversation_id is not None:
         request.conversation_id = conversation_id
     if session_id is not None:
@@ -446,10 +455,45 @@ def _apply_request_cli_overrides(
     return request
 
 
+def _normalize_notify_payload(payload: dict[str, object]) -> dict[str, object]:
+    normalized = dict(payload)
+    legacy_source_tool = normalized.pop("sourceTool", None)
+    if "source_tool" not in normalized and legacy_source_tool is not None:
+        normalized["source_tool"] = legacy_source_tool
+    return normalized
+
+
+def _expected_replay_audio_paths(
+    service: NotifyService,
+    *,
+    entry_summary: str,
+    event: MessageEvent,
+    session_name: str | None,
+    agent: str,
+    source_tool: str | None,
+) -> int:
+    spoken_title, _, spoken_summary = service._prepare_spoken_summary(
+        event=event,
+        summary_text=entry_summary,
+        raw_message=entry_summary,
+        session_name=session_name,
+        agent=agent,
+        source_tool=source_tool,
+    )
+    if not spoken_title:
+        return 1
+    if session_name:
+        return 2
+    if spoken_title and entry_summary == spoken_summary:
+        return 2
+    return 1
+
+
 def _load_payload(
     message: Optional[str],
     event: str,
     session_name: Optional[str],
+    source_tool: Optional[str],
     conversation_id: Optional[str],
     session_id: Optional[str],
     agent: Optional[str],
@@ -459,11 +503,12 @@ def _load_payload(
     message_file: Optional[str] = None,
 ) -> NotifyRequest:
     if input_json:
-        payload = json.loads(input_json)
+        payload = _normalize_notify_payload(json.loads(input_json))
         request = NotifyRequest(**payload)
         return _apply_request_cli_overrides(
             request,
             session_name=session_name,
+            source_tool=source_tool,
             conversation_id=conversation_id,
             session_id=session_id,
             agent=agent,
@@ -471,11 +516,12 @@ def _load_payload(
         )
 
     if input_file:
-        payload = json.loads(open(input_file).read())
+        payload = _normalize_notify_payload(json.loads(open(input_file).read()))
         request = NotifyRequest(**payload)
         return _apply_request_cli_overrides(
             request,
             session_name=session_name,
+            source_tool=source_tool,
             conversation_id=conversation_id,
             session_id=session_id,
             agent=agent,
@@ -500,6 +546,7 @@ def _load_payload(
         message=message,
         event=msg_event,
         session_name=session_name,
+        source_tool=source_tool,
         conversation_id=conversation_id,
         session_id=session_id or (session_key if session_key and not conversation_id else None),
         session_key=session_key,
@@ -574,9 +621,17 @@ def replay(
         replay_sessions.append({"agent": entry.agent, "session_key": entry.session_key})
 
     for entry in reversed(entries):
+        source_tool = entry.metadata.get("source_tool") if isinstance(entry.metadata, dict) else None
         metadata_audio_paths = entry.metadata.get("audio_paths", []) if isinstance(entry.metadata, dict) else []
         replay_audio_paths = [Path(str(path)) for path in metadata_audio_paths if path]
-        expected_audio_paths = 2 if entry.session_name else 1
+        expected_audio_paths = _expected_replay_audio_paths(
+            service,
+            entry_summary=entry.summary,
+            event=MessageEvent(entry.event),
+            session_name=entry.session_name,
+            agent=entry.agent,
+            source_tool=source_tool,
+        )
         if (
             len(replay_audio_paths) >= expected_audio_paths
             and all(path.exists() for path in replay_audio_paths)
@@ -603,6 +658,8 @@ def replay(
             summary=entry.summary,
             event=MessageEvent(entry.event),
             session_name=entry.session_name,
+            agent=entry.agent,
+            source_tool=source_tool,
         )
         if result.played:
             replayed += 1

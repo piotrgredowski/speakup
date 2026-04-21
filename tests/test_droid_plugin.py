@@ -393,6 +393,8 @@ def test_notify_in_background_uses_detached_python_process(monkeypatch, tmp_path
     assert captured["kwargs"]["stdout"] is integration.subprocess.DEVNULL
     assert captured["kwargs"]["stderr"] is integration.subprocess.DEVNULL
     assert captured["kwargs"]["start_new_session"] is True
+    pythonpath = captured["kwargs"]["env"]["PYTHONPATH"]
+    assert pythonpath.split(integration.os.pathsep)[0] == str(integration._PACKAGE_ROOT)
     assert pid == 321
 
 
@@ -508,13 +510,14 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
     monkeypatch.setattr(module.logger, "debug", lambda message: None)
     monkeypatch.setattr(module.json, "load", lambda _: {"hook_event_name": "Notification", "message": "hello", "cwd": "/tmp/project"})
 
-    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
         captured["session_key"] = session_key
         captured["session_id"] = session_id
         captured["cwd"] = cwd
+        captured["source_tool"] = source_tool
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -531,6 +534,7 @@ def test_main_prints_notification_summary_to_stdout(monkeypatch):
         "session_key": "sess-123",
         "session_id": "sess-123",
         "cwd": "/tmp/project",
+        "source_tool": "Droid",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
     assert (
@@ -561,13 +565,14 @@ def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
         },
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
         captured["session_key"] = session_key
         captured["session_id"] = session_id
         captured["cwd"] = cwd
+        captured["source_tool"] = source_tool
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -584,6 +589,7 @@ def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
         "session_key": None,
         "session_id": None,
         "cwd": None,
+        "source_tool": "Droid",
     }
     assert stdout.getvalue() == ""
 
@@ -610,13 +616,14 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
         lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
         assert message == "# Final summary text"
         assert event == "final"
         assert session_name == "Session Name"
         assert session_key is None
         assert session_id is None
         assert cwd is None
+        assert source_tool == "Droid"
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)

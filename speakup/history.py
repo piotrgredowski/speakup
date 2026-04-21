@@ -108,6 +108,8 @@ class NotificationHistory:
         """Add a notification to history. Returns the inserted row ID."""
         ts = time.time() if timestamp is None else timestamp
         metadata = self._metadata_to_dict(request.metadata)
+        if request.source_tool:
+            metadata["source_tool"] = request.source_tool
         if result.audio_paths:
             metadata["audio_paths"] = [str(path) for path in result.audio_paths]
         metadata_json = json.dumps(metadata) if metadata else "{}"
