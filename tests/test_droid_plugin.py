@@ -747,13 +747,14 @@ def test_main_prints_notification_summary_from_exit_spec_mode(monkeypatch):
         },
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
         captured["session_key"] = session_key
         captured["session_id"] = session_id
         captured["cwd"] = cwd
+        captured["source_tool"] = source_tool
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -770,9 +771,13 @@ def test_main_prints_notification_summary_from_exit_spec_mode(monkeypatch):
         "session_key": "sess-123",
         "session_id": "sess-123",
         "cwd": "/tmp/project",
+        "source_tool": "Droid",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
-    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
+    assert (
+        stdout.getvalue().strip()
+        == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
+    )
 
 
 def test_main_prints_notification_summary_from_questionnaire(monkeypatch):
@@ -858,13 +863,14 @@ def test_main_prints_notification_summary_from_assistant_text_envelope(monkeypat
         },
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
         captured["session_key"] = session_key
         captured["session_id"] = session_id
         captured["cwd"] = cwd
+        captured["source_tool"] = source_tool
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -881,9 +887,13 @@ def test_main_prints_notification_summary_from_assistant_text_envelope(monkeypat
         "session_key": "sess-123",
         "session_id": "sess-123",
         "cwd": "/tmp/project",
+        "source_tool": "Droid",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
-    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
+    assert (
+        stdout.getvalue().strip()
+        == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
+    )
 
 
 def test_main_prints_notification_summary_from_nested_tool_use_questionnaire(monkeypatch):
@@ -931,13 +941,14 @@ def test_main_prints_notification_summary_from_nested_tool_use_questionnaire(mon
         },
     )
 
-    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None):
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
         captured["message"] = message
         captured["event"] = event
         captured["session_name"] = session_name
         captured["session_key"] = session_key
         captured["session_id"] = session_id
         captured["cwd"] = cwd
+        captured["source_tool"] = source_tool
         return True
 
     monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
@@ -954,9 +965,13 @@ def test_main_prints_notification_summary_from_nested_tool_use_questionnaire(mon
         "session_key": "sess-123",
         "session_id": "sess-123",
         "cwd": "/tmp/project",
+        "source_tool": "Droid",
     }
     assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
-    assert stdout.getvalue().strip() == "speakup replay 1 --agent droid --session-key sess-123"
+    assert (
+        stdout.getvalue().strip()
+        == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
+    )
 
 
 def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):

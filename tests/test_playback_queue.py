@@ -257,8 +257,8 @@ def test_notify_service_given_short_message_then_sanitizes_text_before_tts(tmp_p
     )
 
     assert result.status == "ok"
-    assert result.summary == _spoken_summary("Release Update shipped commit d e a d")
-    assert fake_tts.calls == [(_spoken_title(), "default", 1.0), ("Release Update shipped commit d e a d", "default", 1.0)]
+    assert result.summary == _spoken_summary("Release Update. shipped commit d e a d")
+    assert fake_tts.calls == [(_spoken_title(), "default", 1.0), ("Release Update. shipped commit d e a d", "default", 1.0)]
 
 
 def test_notify_service_given_precomputed_summary_then_sanitizes_before_tts(tmp_path: Path) -> None:
@@ -543,7 +543,7 @@ def test_notify_service_given_project_provider_then_picks_and_persists_project_v
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Release 42", "provider-title", 1.25), ("Ship it", "provider-message", 1.25)]
+    assert fake_tts.calls == [(_spoken_title("Release 42"), "provider-title", 1.25), ("Ship it", "provider-message", 1.25)]
     project_config = json.loads((project_path / ".speakup.jsonc").read_text())
     assert project_config["providers"]["fake"]["title_voice"] == "provider-title"
     assert project_config["providers"]["fake"]["message_voice"] == "provider-message"
@@ -592,7 +592,7 @@ def test_notify_service_given_persisted_project_voices_then_reuses_them(tmp_path
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Release 42", "saved-title", 1.25), ("Ship it", "saved-message", 1.25)]
+    assert fake_tts.calls == [(_spoken_title("Release 42"), "saved-title", 1.25), ("Ship it", "saved-message", 1.25)]
 
 
 def test_notify_service_given_non_object_project_config_then_recovers_and_persists_voices(tmp_path: Path, monkeypatch) -> None:
@@ -631,13 +631,14 @@ def test_notify_service_given_non_object_project_config_then_recovers_and_persis
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Release 42", "provider-title", 1.1), ("Ship it", "provider-message", 1.1)]
+    assert fake_tts.calls == [(_spoken_title("Release 42"), "provider-title", 1.1), ("Ship it", "provider-message", 1.1)]
     project_config = json.loads((project_path / ".speakup.jsonc").read_text())
     assert project_config["providers"]["fake"]["title_voice"] == "provider-title"
     assert project_config["providers"]["fake"]["message_voice"] == "provider-message"
 
 
 def test_notify_service_given_empty_available_voices_then_falls_back_to_provider_default(tmp_path: Path) -> None:
+    title_audio = tmp_path / "title.wav"
     message_audio = tmp_path / "message.wav"
     project_path = (tmp_path / "project").resolve()
     project_path.mkdir()
@@ -653,7 +654,7 @@ def test_notify_service_given_empty_available_voices_then_falls_back_to_provider
 
     registry = AdapterRegistry()
     playback = _RecordingPlayback()
-    fake_tts = _FakeTTS([message_audio])
+    fake_tts = _FakeTTS([title_audio, message_audio])
     registry.set_playback(playback)
     registry.register_tts("fake", lambda: fake_tts)
 
@@ -668,7 +669,7 @@ def test_notify_service_given_empty_available_voices_then_falls_back_to_provider
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Ship it", "provider-default", 0.9)]
+    assert fake_tts.calls == [(_spoken_title(), "provider-default", 0.9), ("Ship it", "provider-default", 0.9)]
 
 
 def test_notify_service_given_cli_speed_then_overrides_split_speeds(tmp_path: Path) -> None:
@@ -702,7 +703,7 @@ def test_notify_service_given_cli_speed_then_overrides_split_speeds(tmp_path: Pa
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [("Nightly Run", "provider-title", 2.0), ("Build failed", "provider-message", 2.0)]
+    assert fake_tts.calls == [(_spoken_title("Nightly Run"), "provider-title", 2.0), ("Build failed", "provider-message", 2.0)]
 
 
 def test_notify_service_given_first_provider_failure_then_uses_next_provider_specific_voices(tmp_path: Path) -> None:
