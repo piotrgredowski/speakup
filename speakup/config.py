@@ -115,8 +115,8 @@ class EventsConfig:
 @dataclass
 class SummarizationConfig:
     max_chars: Annotated[int, Gt(0)] = 220
-    provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras", "omlx"]] = field(
-        default_factory=lambda: ["cerebras", "omlx", "openai", "command", "rule_based", "lmstudio"]
+    provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras", "gemini", "omlx"]] = field(
+        default_factory=lambda: ["cerebras", "omlx", "openai", "gemini", "command", "rule_based", "lmstudio"]
     )
 
 
@@ -281,6 +281,7 @@ class CerebrasConfig:
 class GeminiConfig:
     api_key_env: str = "GOOGLE_API_KEY"
     model: str = "gemini-2.5-flash-preview-tts"
+    summary_model: str = "gemini-2.5-flash"
     voice: str = "Kore"
     title_voice: str | None = None
     message_voice: str | None = None

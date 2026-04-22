@@ -37,6 +37,24 @@ class SummarizerProvider(str, Enum):
     openai = "openai"
     command = "command"
     cerebras = "cerebras"
+    gemini = "gemini"
+
+
+def _resolve_summary_model_target(
+    cfg: Config, summary_provider: Optional[str]
+) -> tuple[str, str]:
+    provider = summary_provider
+    if not provider:
+        provider_order = cfg.get("summarization", "provider_order", default=["lmstudio"])
+        provider = provider_order[0] if provider_order else "lmstudio"
+
+    if provider == "openai":
+        return "openai", "summary_model"
+    if provider == "cerebras":
+        return "cerebras", "model"
+    if provider == "gemini":
+        return "gemini", "summary_model"
+    return "lmstudio", "model"
 
 
 def _open_with_default_app(path: Path) -> None:
@@ -124,10 +142,11 @@ def _apply_cli_overrides(
         logger.info("tts_provider_overridden", extra={"provider": tts_provider})
 
     if summary_model:
-        cfg.set_provider_config("lmstudio", "model", summary_model)
+        provider_name, key_name = _resolve_summary_model_target(cfg, summary_provider)
+        cfg.set_provider_config(provider_name, key_name, summary_model)
         logger.info(
             "summary_model_overridden",
-            extra={"provider": "lmstudio", "model": summary_model},
+            extra={"provider": provider_name, "model": summary_model},
         )
 
     if tts_model:
@@ -306,7 +325,7 @@ def main_callback(
         None, "--summary-provider", help="Override summarization provider"
     ),
     summary_model: Optional[str] = typer.Option(
-        None, "--summary-model", help="Override LM Studio summary model for this run"
+        None, "--summary-model", help="Override summary model for this run"
     ),
     tts_provider: Optional[TTSProvider] = typer.Option(
         None, "--tts-provider", "-t", help="Override TTS provider"

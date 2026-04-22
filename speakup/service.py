@@ -21,6 +21,7 @@ from .registry import AdapterRegistry
 from .session_naming import resolve_session_name
 from .summarizers.cerebras import CerebrasSummarizer
 from .summarizers.command import CommandSummarizer
+from .summarizers.gemini import GeminiSummarizer
 from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
@@ -120,7 +121,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
         return GeminiTTSAdapter(
             gem.get("api_key_env", "GOOGLE_API_KEY"),
             model=gem.get("model", "gemini-2.5-flash-preview-tts"),
-            voice=gem.get("voice", "en-US-Neural2-C"),
+            voice=gem.get("voice", "Kore"),
         )
 
     def make_elevenlabs() -> ElevenLabsTTSAdapter:
@@ -191,11 +192,19 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             base_url=cb.get("base_url", "https://api.cerebras.ai/v1"),
         )
 
+    def make_gemini_summarizer() -> GeminiSummarizer:
+        gem = config.get("providers", "gemini", default={})
+        return GeminiSummarizer(
+            api_key_env=gem.get("api_key_env", "GOOGLE_API_KEY"),
+            model=gem.get("summary_model", "gemini-2.5-flash"),
+        )
+
     registry.register_summarizer("rule_based", make_rule_based)
     registry.register_summarizer("command", make_command_summarizer)
     registry.register_summarizer("lmstudio", make_lmstudio_summarizer)
     registry.register_summarizer("openai", make_openai_summarizer)
     registry.register_summarizer("cerebras", make_cerebras_summarizer)
+    registry.register_summarizer("gemini", make_gemini_summarizer)
 
     return registry
 
@@ -775,7 +784,7 @@ class NotifyService:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
 
             # Skip remote providers based on privacy settings
-            if provider in {"openai", "cerebras"}:
+            if provider in {"openai", "cerebras", "gemini"}:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("summarizer_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue
