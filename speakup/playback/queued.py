@@ -140,8 +140,12 @@ class SQLiteQueuedPlayback(PlaybackAdapter):
                 ).fetchone()
                 owner_pid = row[1] if row is not None else None
                 if row is not None and row[0] and self._pid_is_alive(owner_pid):
-                    conn.rollback()
-                    return False
+                    has_processing_job = conn.execute(
+                        "SELECT 1 FROM jobs WHERE state = 'processing' LIMIT 1"
+                    ).fetchone()
+                    if has_processing_job is not None:
+                        conn.rollback()
+                        return False
 
                 conn.execute(
                     "UPDATE worker_lock SET owner_id = ?, owner_pid = ?, claimed_at = ? WHERE name = ?",

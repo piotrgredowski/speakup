@@ -200,6 +200,29 @@ def test_sqlite_queue_given_stale_processing_job_then_recovers_it(tmp_path: Path
     assert inner.calls == [stale_audio, fresh_audio]
 
 
+def test_sqlite_queue_given_stale_lock_with_live_pid_and_no_processing_job_then_reclaims_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "queue.db"
+    audio = tmp_path / "fresh.wav"
+    audio.write_text("fresh")
+
+    inner = _RecordingPlayback()
+    queue = SQLiteQueuedPlayback(inner, db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE worker_lock SET owner_id = ?, owner_pid = ?, claimed_at = ? WHERE name = ?",
+            ("stale-owner", 12345, time.time() - 10, "playback"),
+        )
+
+    monkeypatch.setattr(SQLiteQueuedPlayback, "_pid_is_alive", staticmethod(lambda pid: True))
+
+    queue.play_file(audio)
+
+    assert inner.calls == [audio]
+
+
 def test_notify_service_given_event_sound_then_plays_cue_and_speech_together(tmp_path: Path) -> None:
     beep = tmp_path / "beep.aiff"
     title_audio = tmp_path / "title.wav"

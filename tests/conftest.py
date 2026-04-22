@@ -50,6 +50,7 @@ def fake_audio_bin(tmp_path: Path) -> tuple[Path, Path]:
 @pytest.fixture
 def base_config(tmp_path: Path) -> Path:
     config = {
+        "playback": {"queue_enabled": False},
         "privacy": {"mode": "prefer_local", "allow_remote_fallback": False},
         "events": {
             "speak_on_final": True,

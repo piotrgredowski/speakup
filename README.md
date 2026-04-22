@@ -6,49 +6,181 @@
 [![GitHub release](https://img.shields.io/github/release/piotrgredowski/speakup.svg)](https://github.com/piotrgredowski/speakup/releases)
 [![CI](https://github.com/piotrgredowski/speakup/workflows/CI/badge.svg)](https://github.com/piotrgredowski/speakup/actions)
 
-Turn agent responses into short spoken updates.
+Turn agent output into short spoken updates.
+
+This project is being developed on macOS right now, and `speakup` should be considered supported on macOS for now. Support for other platforms is planned in the future, but there is no timeline yet.
+
+## What it is
+
+`speakup` is a Python CLI for:
+
+- speaking concise agent status updates
+- summarizing long messages before playback
+- routing through local or remote TTS backends with fallback
+- replaying recent notifications from history
+- integrating with tools like Droid and Pi
+
+Supported event types are `final`, `error`, `needs_input`, `progress`, and `info`.
 
 ## Install
+
+Install the CLI:
 
 ```bash
 uv tool install speakup
 ```
 
-For local development, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-For one-off runs without installing:
+Run it once without installing:
 
 ```bash
 uvx --from speakup speakup --message "Done implementing the feature." --event final
 ```
 
-## What it does
-
-- Speaks short updates for events like `final`, `error`, `needs_input`, and `progress`
-- Can summarize text before speech
-- Supports local and remote TTS backends with fallback order
-- Adds optional event sounds before playback
-- Works as a standalone CLI and through integrations like Pi and the Droid plugin
+For local development, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start
+
+The easiest way to get `speakup` working end-to-end is to use Gemini for both summarization and TTS:
+
+```bash
+export GOOGLE_API_KEY=your_api_key_here
+speakup init-config
+```
+
+Then set your config to a Gemini-only setup like this:
+
+```jsonc
+{
+  "summarization": {
+    "provider_order": ["gemini", "rule_based"]
+  },
+  "tts": {
+    "provider_order": ["gemini"],
+    "audio_format": "wav"
+  },
+  "providers": {
+    "gemini": {
+      "api_key_env": "GOOGLE_API_KEY",
+      "summary_model": "gemini-2.5-flash",
+      "model": "gemini-2.5-flash-preview-tts",
+      "voice": "Kore"
+    }
+  }
+}
+```
+
+After that, this should work immediately:
 
 ```bash
 speakup --message "Done implementing the feature." --event final
 ```
 
-```bash
-speakup --input-json '{"message":"Could you confirm deployment region?","event":"needs_input"}'
-```
+If you want to run locally, use OMLX for TTS and keep summarization local too:
 
 ```bash
-speakup --no-play --message "Done implementing the feature." --event final
+speakup init-config
 ```
+
+Then point `speakup` at your local OMLX server:
+
+```jsonc
+{
+  "privacy": {
+    "mode": "local_only",
+    "allow_remote_fallback": false
+  },
+  "summarization": {
+    "provider_order": ["rule_based"]
+  },
+  "tts": {
+    "provider_order": ["omlx"],
+    "audio_format": "wav"
+  },
+  "providers": {
+    "omlx": {
+      "base_url": "http://127.0.0.1:8000/v1",
+      "api_key_env": "OMLX_API_KEY",
+      "model": "Kokoro-82M-bf16",
+      "voice": "af_heart"
+    }
+  }
+}
+```
+
+If your local OMLX server expects an API key, set it before running `speakup`:
+
+```bash
+export OMLX_API_KEY=1234
+```
+
+Speak a simple completion update:
+
+```bash
+speakup --message "Done implementing the feature." --event final
+```
+
+Speak an input request:
+
+```bash
+speakup --message "Could you confirm the deployment region?" --event needs_input
+```
+
+Send a JSON payload instead of individual flags:
+
+```bash
+speakup --input-json '{"message":"Build failed in CI","event":"error","agent":"droid"}'
+```
+
+Generate audio without playing it locally:
+
+```bash
+speakup --no-play --message "Background task finished." --event final
+```
+
+Preview how text will sound after normalization:
 
 ```bash
 speakup verbalize --text "Room 402 opens at 3:30 in 1980."
 ```
 
-## Config in 60 seconds
+## Use with the Droid plugin
+
+If you want spoken updates inside Droid, the fastest path is:
+
+```bash
+uv tool install speakup
+droid plugin marketplace add https://github.com/piotrgredowski/speakup
+droid plugin install speakup@speakup
+```
+
+What the current plugin wires up automatically:
+
+- `Notification` events are spoken as `needs_input`
+- `Stop` events are spoken as `final`
+
+Useful Droid commands after install:
+
+- `/speakup status`
+- `/speakup on`
+- `/speakup off`
+- `/speakup replay 1`
+
+If you want to verify the CLI itself first:
+
+```bash
+speakup --message "Speakup is installed." --event final
+```
+
+For deeper plugin details, see [plugins/speakup-factory-plugin/README.md](plugins/speakup-factory-plugin/README.md).
+
+## Minimal config
+
+You only need config when you want to change provider order, privacy rules, plugin behavior, logging, or playback settings.
+
+For the fewest moving parts:
+
+- use **Gemini-only** if you want the fastest hosted setup
+- use **OMLX + rule_based** if you want a local-first setup
 
 Create a starter config:
 
@@ -56,47 +188,94 @@ Create a starter config:
 speakup init-config
 ```
 
-Open the config file in your configured viewer:
+Open it:
 
 ```bash
 speakup show-config
 ```
 
-Show which config path is being used:
+Show the path in use:
 
 ```bash
 speakup show-config-path
 ```
 
-Main sections:
+Default config path:
 
-- `privacy`
-- `events`
-- `event_sounds`
-- `summarization`
-- `fallback`
-- `tts`
-- `dedup`
-- `providers`
+```text
+~/.config/speakup/config.jsonc
+```
 
-Tiny example:
+Minimal example:
 
-```json
+```jsonc
 {
-  "privacy": { "mode": "prefer_local" },
+  "privacy": {
+    "mode": "prefer_local",
+    "allow_remote_fallback": true
+  },
   "summarization": {
-    "provider_order": ["command", "rule_based", "lmstudio", "openai"]
+    "max_chars": 220,
+    "provider_order": ["gemini", "rule_based"]
   },
   "tts": {
-    "provider_order": ["kokoro_cli", "macos", "lmstudio", "openai"],
+    "provider_order": ["gemini"],
     "voice": "default",
-    "speed": 1.0
+    "speed": 1.0,
+    "audio_format": "wav"
+  },
+  "providers": {
+    "gemini": {
+      "api_key_env": "GOOGLE_API_KEY",
+      "summary_model": "gemini-2.5-flash",
+      "model": "gemini-2.5-flash-preview-tts",
+      "voice": "Kore"
+    }
+  },
+  "droid": {
+    "enabled": true,
+    "events": {
+      "notification": true,
+      "stop": true,
+      "subagent_stop": false,
+      "session_start": false
+    }
   }
 }
 ```
 
-If you do not pass `--config`, speakup uses the default config path when present and falls back to built-in defaults.
-The default config path is `~/.config/speakup/config.jsonc`.
+## Providers
+
+Current TTS providers:
+
+- `macos`
+- `lmstudio`
+- `elevenlabs`
+- `openai`
+- `gemini`
+- `omlx`
+
+Current summarization providers:
+
+- `rule_based`
+- `lmstudio`
+- `openai`
+- `command`
+- `cerebras`
+- `gemini`
+
+## Common commands
+
+```bash
+speakup self-test
+speakup doctor
+speakup replay 3
+speakup show-config
+speakup show-config-path
+speakup show-logs
+speakup show-logs-path
+speakup desktop
+```
 
 ## Integrations
 
@@ -106,28 +285,15 @@ The default config path is `~/.config/speakup/config.jsonc`.
 pi install https://github.com/piotrgredowski/speakup
 ```
 
-After install, run `/reload` in Pi.
+Then run `/reload` in Pi.
 
-For Pi integration details, see `plugins/pi` and the package metadata in `package.json`.
+### Droid
 
-### Droid plugin
+Use the GitHub plugin install flow shown above.
 
-The Droid plugin adds spoken notifications for Droid lifecycle events.
+## Where to go next
 
-See [plugins/speakup-factory-plugin/README.md](plugins/speakup-factory-plugin/README.md) for install, config, and usage.
-
-## Common commands
-
-```bash
-speakup self-test
-speakup init-config
-speakup show-config
-speakup show-config-path
-```
-
-## More docs
-
-- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and release process
-- [plugins/speakup-factory-plugin/README.md](plugins/speakup-factory-plugin/README.md) — Droid plugin
+- [plugins/speakup-factory-plugin/README.md](plugins/speakup-factory-plugin/README.md) — Droid plugin details
+- [CONTRIBUTING.md](CONTRIBUTING.md) — local development and release flow
 - [docs/speakup-spec.md](docs/speakup-spec.md) — project spec
 - [CHANGELOG.md](CHANGELOG.md) — version history
