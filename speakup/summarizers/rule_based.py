@@ -5,6 +5,7 @@ from typing import ClassVar
 
 from .base import Summarizer
 from ..models import MessageEvent, SummaryResult
+from ..text_transform import sanitize_text_for_tts
 
 
 class RuleBasedSummarizer(Summarizer):
@@ -38,8 +39,7 @@ class RuleBasedSummarizer(Summarizer):
 def _clean(message: str) -> str:
     text = re.sub(r"```.*?```", "", message, flags=re.DOTALL)
     text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return sanitize_text_for_tts(text)
 
 
 def _truncate(text: str, max_chars: int) -> str:

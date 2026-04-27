@@ -13,7 +13,7 @@ from .config import Config, _strip_json_comments, runtime_temp_dir
 from .dedup import should_skip_progress
 from .errors import AdapterError
 from .history import NotificationHistory
-from .models import MessageEvent, NotifyRequest, NotifyResult, SummaryResult
+from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
 from .playback.composite import compose_audio_segments
 from .playback.queued import SQLiteQueuedPlayback
@@ -772,14 +772,6 @@ class NotifyService:
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
-        # Skip summarization for short messages
-        if len(message) <= max_chars:
-            self.logger.info(
-                "summarization_skipped_short_message",
-                extra={"request_id": request_id, "message_length": len(message), "max_chars": max_chars},
-            )
-            return SummaryResult(summary=message, state=event)
-
         for provider in provider_order:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
 
@@ -812,7 +804,10 @@ class NotifyService:
             raise AdapterError("No summarizer backend succeeded")
 
         self.logger.info("summarizer_fallback_rule_based", extra={"request_id": request_id})
-        return self.registry.get_summarizer("rule_based").summarize(message, event, max_chars)
+        try:
+            return self.registry.get_summarizer("rule_based").summarize(message, event, max_chars)
+        except AdapterError:
+            return RuleBasedSummarizer().summarize(message, event, max_chars)
 
     def _resolve_voice(self, provider: str, role: str, project_path: str | None = None) -> str:
         provider_cfg = self.config.get("providers", provider, default={})
