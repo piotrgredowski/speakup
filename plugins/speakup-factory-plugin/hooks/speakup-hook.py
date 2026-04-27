@@ -378,6 +378,7 @@ def map_event_to_speakup(droid_event: str) -> str:
     """Map Droid events to speakup events."""
     mapping = {
         "Notification": "needs_input",
+        "PreToolUse": "needs_input",
         "Stop": "final",
         "SubagentStop": "progress",
         "SessionStart": "info",
@@ -693,6 +694,19 @@ def extract_message(input_data: dict, droid_event: str) -> str | None:
             logger.debug(f"Extracted notification message ({len(msg)} chars)")
         return msg
 
+    if droid_event == "PreToolUse":
+        if input_data.get("tool_name") != "AskUser":
+            logger.debug("Ignoring PreToolUse event for non-AskUser tool")
+            return None
+        tool_input = input_data.get("tool_input")
+        if not isinstance(tool_input, dict):
+            logger.debug("No tool_input for AskUser PreToolUse")
+            return None
+        result = _summarize_questionnaire(tool_input.get("questionnaire"))
+        if result:
+            logger.debug(f"Extracted AskUser questionnaire summary ({len(result)} chars)")
+        return result
+
     elif droid_event in ("Stop", "SubagentStop"):
         # Extract from transcript
         transcript_path = input_data.get("transcript_path")
@@ -930,6 +944,7 @@ def main():
     # Map event names to config keys (Notification -> notification, etc.)
     event_key = {
         "Notification": "notification",
+        "PreToolUse": "notification",
         "Stop": "stop",
         "SubagentStop": "subagent_stop",
         "SessionStart": "session_start",

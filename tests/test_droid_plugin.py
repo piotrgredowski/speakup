@@ -46,6 +46,7 @@ def test_hooks_configuration():
     
     # Check that all expected events are configured
     assert "Notification" in hooks["hooks"]
+    assert "PreToolUse" in hooks["hooks"]
     assert "Stop" in hooks["hooks"]
     expected_commands = {
         'uv run --script "${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py"',
@@ -54,6 +55,9 @@ def test_hooks_configuration():
     for event_name in ("Notification", "Stop"):
         command = hooks["hooks"][event_name][0]["hooks"][0]["command"]
         assert command in expected_commands
+    pre_tool_use = hooks["hooks"]["PreToolUse"][0]
+    assert pre_tool_use["matcher"] == "AskUser"
+    assert pre_tool_use["hooks"][0]["command"] in expected_commands
 
 
 def test_hook_script_exists():
@@ -489,6 +493,36 @@ def test_extract_message_reads_questionnaire_question_for_notification():
     }
 
     assert module.extract_message(payload, "Notification") == "Which region should we deploy to?"
+
+
+def test_extract_message_summarizes_askuser_pre_tool_use_questionnaire():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "AskUser",
+        "tool_input": {
+            "questionnaire": (
+                "1. [question] What would you like to talk about?\n"
+                "[topic] Topic\n"
+                "[option] Coding"
+            ),
+        },
+    }
+
+    assert module.extract_message(payload, "PreToolUse") == "Droid needs input about Topic."
+
+
+def test_extract_message_ignores_non_askuser_pre_tool_use():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Execute",
+        "tool_input": {"command": "echo hi"},
+    }
+
+    assert module.extract_message(payload, "PreToolUse") is None
 
 
 def test_extract_message_reads_plain_assistant_text_from_notification_envelope():
@@ -972,6 +1006,111 @@ def test_main_prints_notification_summary_from_nested_tool_use_questionnaire(mon
         stdout.getvalue().strip()
         == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
     )
+
+
+def test_main_speaks_askuser_pre_tool_use_questionnaire(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    captured = {}
+    saved = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module, "extract_session_id", lambda _: "sess-123")
+    monkeypatch.setattr(module, "extract_session_key", lambda _: "sess-123")
+    monkeypatch.setattr(module, "save_current_session_pointer", lambda cwd, session_key, session_name=None: saved.update({"cwd": cwd, "session_key": session_key, "session_name": session_name}))
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "AskUser",
+            "cwd": "/tmp/project",
+            "tool_input": {
+                "questionnaire": (
+                    "1. [question] What would you like to talk about?\n"
+                    "[topic] Topic\n"
+                    "[option] Coding"
+                ),
+            },
+        },
+    )
+
+    def fake_run_speakup(message, event, session_name=None, session_key=None, session_id=None, cwd=None, source_tool=None):
+        captured["message"] = message
+        captured["event"] = event
+        captured["session_name"] = session_name
+        captured["session_key"] = session_key
+        captured["session_id"] = session_id
+        captured["cwd"] = cwd
+        captured["source_tool"] = source_tool
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured == {
+        "message": "Droid needs input about Topic.",
+        "event": "needs_input",
+        "session_name": "Session Name",
+        "session_key": "sess-123",
+        "session_id": "sess-123",
+        "cwd": "/tmp/project",
+        "source_tool": "Droid",
+    }
+    assert saved == {"cwd": "/tmp/project", "session_key": "sess-123", "session_name": "Session Name"}
+    assert (
+        stdout.getvalue().strip()
+        == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
+    )
+
+
+def test_main_ignores_non_askuser_pre_tool_use(monkeypatch):
+    module = load_hook_module()
+    stdout = io.StringIO()
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Execute",
+            "tool_input": {"command": "echo hi"},
+        },
+    )
+
+    called = {"run_speakup": False}
+
+    def fake_run_speakup(*args, **kwargs):
+        called["run_speakup"] = True
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert called["run_speakup"] is False
+    assert stdout.getvalue() == ""
 
 
 def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):

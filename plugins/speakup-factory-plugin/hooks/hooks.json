@@ -12,6 +12,18 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUser",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run \"${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
