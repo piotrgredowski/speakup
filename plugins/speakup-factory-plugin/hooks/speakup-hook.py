@@ -7,7 +7,7 @@
 # ]
 #
 # [tool.uv.sources]
-# speakup = { path = "/Users/pg/Coding/_bucket/speakup/", editable = true }
+# speakup = { git = "https://github.com/piotrgredowski/speakup" }
 # ///
 
 import json

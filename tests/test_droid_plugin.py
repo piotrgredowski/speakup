@@ -67,7 +67,7 @@ def test_hook_script_exists():
         content = f.read()
         assert content.startswith("#!/usr/bin/env -S uv run --script\n")
         assert '# /// script' in content
-        assert 'editable = true' in content
+        assert 'git = "https://github.com/piotrgredowski/speakup"' in content
         assert '"structlog>=25.5.0"' in content
         assert "import json" in content
         assert "from speakup.integrations.droid import" in content
