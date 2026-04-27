@@ -23,6 +23,8 @@ Return preferably 1 sentence, but not more than 3 sentences.
 Your goal: Tell the user what happened and what to expect when they return to their computer.
 
 Rules:
+- If there is no meaningful user-facing update, return exactly NO_SPEAKUP_SUMMARY
+- Never say meta-summaries like "nothing to summarize" or "no summary available"
 - If the message asks for a decision, say what the user needs to choose or provide
 - If there was an error, describe what went wrong in plain terms without commands
 - Otherwise, summarize the status or outcome

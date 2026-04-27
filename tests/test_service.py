@@ -15,16 +15,18 @@ from speakup.tts.base import TTSAdapter
 class _RecordingSummarizer(Summarizer):
     name: ClassVar[str] = "command"
 
-    def __init__(self) -> None:
+    def __init__(self, summary: str = "Task is ready for review.") -> None:
+        self.summary = summary
         self.messages: list[str] = []
 
     def summarize(self, message: str, event: MessageEvent, max_chars: int) -> SummaryResult:
         self.messages.append(message)
-        return SummaryResult(summary="Task is ready for review.", state=event)
+        return SummaryResult(summary=self.summary, state=event)
 
 
 class _FileTTS(TTSAdapter):
     name: ClassVar[str] = "macos"
+    texts: ClassVar[list[str]] = []
 
     def synthesize(
         self,
@@ -35,6 +37,7 @@ class _FileTTS(TTSAdapter):
         speed: float = 1.0,
         audio_format: str = "mp3",
     ) -> AudioResult:
+        self.texts.append(text)
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / f"{len(list(output_dir.iterdir()))}.{audio_format}"
         path.write_text(text)
@@ -49,6 +52,7 @@ class _NoopPlayback(PlaybackAdapter):
 
 
 def _service_with_summarizer(summarizer: _RecordingSummarizer) -> NotifyService:
+    _FileTTS.texts = []
     raw = default_config()
     raw["summarization"]["provider_order"] = ["command"]
     raw["summarization"]["max_chars"] = 160
@@ -96,3 +100,48 @@ def test_notify_given_precomputed_summary_then_bypasses_configured_summarizer() 
 
     assert summarizer.messages == []
     assert "Already rewritten for speech." in result.summary
+
+
+def test_notify_given_noop_summarizer_output_then_skips_tts() -> None:
+    summarizer = _RecordingSummarizer("NO_SPEAKUP_SUMMARY")
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    assert summarizer.messages == ["done"]
+    assert result.status == "skipped"
+    assert result.summary == ""
+    assert result.played is False
+    assert _FileTTS.texts == []
+
+
+def test_notify_given_meta_noop_summarizer_output_then_skips_tts() -> None:
+    summarizer = _RecordingSummarizer("There is nothing to summarize.")
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    assert summarizer.messages == ["done"]
+    assert result.status == "skipped"
+    assert result.summary == ""
+    assert result.played is False
+    assert _FileTTS.texts == []
+
+
+def test_notify_given_noop_precomputed_summary_then_skips_tts() -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(
+        NotifyRequest(
+            message="done",
+            event=MessageEvent.FINAL,
+            precomputed_summary="No summary available.",
+        )
+    )
+
+    assert summarizer.messages == []
+    assert result.status == "skipped"
+    assert result.summary == ""
+    assert result.played is False
+    assert _FileTTS.texts == []

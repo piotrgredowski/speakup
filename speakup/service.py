@@ -74,6 +74,30 @@ def _fallback_spoken_summary(event: MessageEvent) -> str:
     return mapping.get(event, "Notification")
 
 
+_NON_SPEAKABLE_SUMMARY_PATTERNS = (
+    "no speakup summary",
+    "no_speakup_summary",
+    "nothing to summarize",
+    "nothing for me to summarize",
+    "there is nothing to summarize",
+    "there's nothing to summarize",
+    "no summary",
+    "no summary available",
+    "no meaningful update",
+    "no meaningful updates",
+    "no user-facing update",
+    "no user facing update",
+)
+
+
+def _is_blocked_summary(summary: str) -> bool:
+    normalized = sanitize_text_for_tts(summary).lower().strip()
+    if not normalized:
+        return False
+    normalized = normalized.rstrip(".! ")
+    return normalized in _NON_SPEAKABLE_SUMMARY_PATTERNS
+
+
 _DEFAULT_SPEECH_TEMPLATE = {
     "title": {
         "separator": " ",
@@ -684,6 +708,18 @@ class NotifyService:
                 summary = self._summarize(request.message, event, request_id=request_id)
             summary_text = summary.summary
             self.logger.info("summary_ready", extra={"request_id": request_id, "summary_length": len(summary_text)})
+
+        if _is_blocked_summary(summary_text):
+            self.logger.info("notify_skipped_non_speakable_summary", extra={"request_id": request_id, "event": event.value})
+            result = NotifyResult(
+                status="skipped",
+                summary="",
+                state=event,
+                backend="none",
+                played=False,
+            )
+            self._save_history(request, result, request_id=request_id)
+            return result
 
         spoken_title, spoken_message, spoken_summary = self._prepare_spoken_summary(
             event=event,
