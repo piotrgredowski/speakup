@@ -25,7 +25,28 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
 
 def test_default_config_prefers_omlx_then_elevenlabs_then_openai_for_tts() -> None:
     cfg = default_config()
-    assert cfg["tts"]["provider_order"] == ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
+    assert cfg["tts"]["provider_order"] == ["omlx", "edge", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
+
+
+def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_override(tmp_path: Path) -> None:
+    config = default_config()
+    config["tts"]["provider_order"] = ["edge", "macos"]
+    config["tts"]["project_overrides"] = {
+        str(tmp_path): {"provider": "edge", "speed": 1.1}
+    }
+    config["providers"]["edge"] = {
+        "voice": "en-US-AriaNeural",
+        "title_voice": "en-US-GuyNeural",
+        "message_voice": "en-US-JennyNeural",
+        "available_voices": ["en-US-AriaNeural"],
+    }
+    config_path = tmp_path / "config_edge.json"
+    config_path.write_text(json.dumps(config))
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("tts", "provider_order") == ["edge", "macos"]
+    assert loaded.get("providers", "edge", "voice") == "en-US-AriaNeural"
 
 
 def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization() -> None:

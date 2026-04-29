@@ -26,6 +26,7 @@ from .summarizers.lmstudio import LMStudioSummarizer
 from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .text_transform import sanitize_text_for_tts
+from .tts.edge import EdgeTTSAdapter
 from .tts.elevenlabs import ElevenLabsTTSAdapter
 from .tts.gemini import GeminiTTSAdapter
 from .tts.omlx import OmlxTTSAdapter
@@ -156,6 +157,12 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             model=el.get("model", "eleven_multilingual_v2"),
         )
 
+    def make_edge_tts() -> EdgeTTSAdapter:
+        ed = config.get("providers", "edge", default={})
+        return EdgeTTSAdapter(
+            voice=ed.get("voice", "en-US-AriaNeural"),
+        )
+
     def make_openai_tts() -> OpenAITTSAdapter:
         op = config.get("providers", "openai", default={})
         return OpenAITTSAdapter(
@@ -176,6 +183,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
 
     registry.register_tts("macos", make_macos)
     registry.register_tts("lmstudio", make_lmstudio_tts)
+    registry.register_tts("edge", make_edge_tts)
     registry.register_tts("elevenlabs", make_elevenlabs)
     registry.register_tts("openai", make_openai_tts)
     registry.register_tts("gemini", make_gemini_tts)
@@ -903,7 +911,7 @@ class NotifyService:
 
         for provider in providers:
             # Skip remote providers based on privacy settings
-            if provider in {"elevenlabs", "openai", "gemini"}:
+            if provider in {"elevenlabs", "openai", "gemini", "edge"}:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("tts_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue

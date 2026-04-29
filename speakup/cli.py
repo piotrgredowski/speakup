@@ -101,6 +101,7 @@ class TTSProvider(str, Enum):
 
     macos = "macos"
     lmstudio = "lmstudio"
+    edge = "edge"
     elevenlabs = "elevenlabs"
     openai = "openai"
     gemini = "gemini"

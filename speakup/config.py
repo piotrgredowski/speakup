@@ -143,11 +143,11 @@ class EventSoundsConfig:
 class TTSConfig:
     @dataclass
     class ProjectOverride:
-        provider: Literal["macos", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"] | None = None
+        provider: Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx"] | None = None
         speed: float = 1.0
 
-    provider_order: list[Literal["macos", "lmstudio", "elevenlabs", "openai", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["omlx", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
+    provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx"]] = field(
+        default_factory=lambda: ["omlx", "edge", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
     )
     voice: str = "default"
     speed: float = 1.0
@@ -260,6 +260,14 @@ class ElevenLabsConfig:
 
 
 @dataclass
+class EdgeConfig:
+    voice: str = "en-US-AriaNeural"
+    title_voice: str | None = None
+    message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
+
+
+@dataclass
 class OpenAIConfig:
     api_key_env: str = "OPENAI_API_KEY"
     model: str = "gpt-4o-mini-tts"
@@ -312,6 +320,7 @@ class CommandSummaryConfig:
 class ProvidersConfig:
     macos: MacOSConfig = field(default_factory=MacOSConfig)
     lmstudio: LMStudioConfig = field(default_factory=LMStudioConfig)
+    edge: EdgeConfig = field(default_factory=EdgeConfig)
     elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     cerebras: CerebrasConfig = field(default_factory=CerebrasConfig)
