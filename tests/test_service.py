@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar
 
+import pytest
+
 from speakup.config import Config, default_config
 from speakup.models import AudioResult, MessageEvent, NotifyRequest, SummaryResult
 from speakup.playback.base import PlaybackAdapter
@@ -128,6 +130,27 @@ def test_notify_given_meta_noop_summarizer_output_then_skips_tts() -> None:
     assert _FileTTS.texts == []
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        '"no speakup summary"',
+        "`NO_SPEAKUP_SUMMARY`",
+        "[No summary available.]",
+    ],
+)
+def test_notify_given_wrapped_noop_summarizer_output_then_skips_tts(summary: str) -> None:
+    summarizer = _RecordingSummarizer(summary)
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    assert summarizer.messages == ["done"]
+    assert result.status == "skipped"
+    assert result.summary == ""
+    assert result.played is False
+    assert _FileTTS.texts == []
+
+
 def test_notify_given_noop_precomputed_summary_then_skips_tts() -> None:
     summarizer = _RecordingSummarizer()
     service = _service_with_summarizer(summarizer)
@@ -141,6 +164,37 @@ def test_notify_given_noop_precomputed_summary_then_skips_tts() -> None:
     )
 
     assert summarizer.messages == []
+    assert result.status == "skipped"
+    assert result.summary == ""
+    assert result.played is False
+    assert _FileTTS.texts == []
+
+
+def test_notify_given_wrapped_noop_precomputed_summary_then_skips_tts() -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(
+        NotifyRequest(
+            message="done",
+            event=MessageEvent.FINAL,
+            precomputed_summary='"no speakup summary"',
+        )
+    )
+
+    assert summarizer.messages == []
+    assert result.status == "skipped"
+    assert result.summary == ""
+    assert result.played is False
+    assert _FileTTS.texts == []
+
+
+def test_replay_summary_given_noop_summary_then_skips_tts() -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.replay_summary(summary='"no speakup summary"', event=MessageEvent.FINAL)
+
     assert result.status == "skipped"
     assert result.summary == ""
     assert result.played is False

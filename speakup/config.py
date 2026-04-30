@@ -169,6 +169,8 @@ class DedupConfig:
     enabled: bool = True
     window_seconds: Annotated[int, Gt(0)] = 30
     cache_file: str = field(default_factory=lambda: str(runtime_temp_dir() / "last_progress.json"))
+    mode: Literal["duplicate", "window", "duplicate_or_window"] = "duplicate"
+    on_skip: Literal["skip", "sound_only"] = "skip"
 
 
 @dataclass
@@ -442,6 +444,14 @@ class Config:
 
     def set_fail_fast(self, enabled: bool) -> None:
         self.raw.setdefault("fallback", {})["fail_fast"] = enabled
+
+    def set_dedup_mode(self, mode: str) -> None:
+        self.raw.setdefault("dedup", {})["mode"] = mode
+        validate_config(self.raw)
+
+    def set_dedup_on_skip(self, on_skip: str) -> None:
+        self.raw.setdefault("dedup", {})["on_skip"] = on_skip
+        validate_config(self.raw)
 
     def set_provider_config(self, provider: str, key: str, value: Any) -> None:
         self.raw.setdefault("providers", {}).setdefault(provider, {})[key] = value

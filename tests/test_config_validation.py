@@ -54,6 +54,12 @@ def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization
     assert cfg["summarization"]["provider_order"][:3] == ["cerebras", "omlx", "openai"]
 
 
+def test_default_config_preserves_existing_dedup_behavior() -> None:
+    cfg = default_config()
+    assert cfg["dedup"]["mode"] == "duplicate"
+    assert cfg["dedup"]["on_skip"] == "skip"
+
+
 @pytest.mark.parametrize(
     "mutator,expected",
     [
@@ -64,6 +70,8 @@ def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization
         (lambda c: c["summarization"].update({"provider_order": ["rule_based", "x"]}), "summarization.provider_order"),
         (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files key 'unknown' must be one of"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
+        (lambda c: c["dedup"].update({"mode": "always"}), "dedup.mode"),
+        (lambda c: c["dedup"].update({"on_skip": "tts"}), "dedup.on_skip"),
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
         (lambda c: c.setdefault("logging", {}).update({"destination": ["console"]}), "logging.destination[0]"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),

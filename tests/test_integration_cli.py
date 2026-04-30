@@ -148,6 +148,42 @@ def test_cli_given_progress_duplicate_then_skips_second_time(base_config: Path, 
     assert second_payload["dedup_skipped"] is True
 
 
+def test_cli_given_progress_duplicate_with_sound_only_then_plays_event_sound(
+    tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]
+) -> None:
+    beep = tmp_path / "beep.aiff"
+    beep.write_text("beep")
+    config = json.loads(base_config.read_text())
+    config["event_sounds"]["files"] = {"progress": str(beep)}
+    base_config.write_text(json.dumps(config))
+
+    args = [
+        "--config",
+        str(base_config),
+        "--message",
+        "Still indexing files",
+        "--event",
+        "progress",
+        "--dedup-on-skip",
+        "sound_only",
+    ]
+    first = run_cli(args, env=env_with_fake_audio)
+    second = run_cli(args, env=env_with_fake_audio)
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+
+    second_payload = json.loads(second.stdout)
+    assert second_payload["status"] == "ok"
+    assert second_payload["summary"] == ""
+    assert second_payload["played"] is True
+    assert second_payload["dedup_skipped"] is True
+
+    play_log = Path(env_with_fake_audio["PLAY_LOG"])
+    lines = [ln.strip() for ln in play_log.read_text().splitlines() if ln.strip()]
+    assert lines[-1] == str(beep)
+
+
 def test_cli_given_event_sound_mapping_then_plays_sound_and_tts(tmp_path: Path, base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     beep = tmp_path / "beep.aiff"
     beep.write_text("beep")

@@ -108,6 +108,21 @@ class TTSProvider(str, Enum):
     omlx = "omlx"
 
 
+class DedupMode(str, Enum):
+    """Available deduplication modes."""
+
+    duplicate = "duplicate"
+    window = "window"
+    duplicate_or_window = "duplicate_or_window"
+
+
+class DedupOnSkip(str, Enum):
+    """Behavior when dedup suppresses speech."""
+
+    skip = "skip"
+    sound_only = "sound_only"
+
+
 def _apply_cli_overrides(
     cfg: Config,
     *,
@@ -118,6 +133,8 @@ def _apply_cli_overrides(
     tts_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
     tts_model: Optional[str] = None,
+    dedup_mode: Optional[str] = None,
+    dedup_on_skip: Optional[str] = None,
 ) -> None:
     """Apply CLI overrides to config using proper Config methods."""
     logger = logging.getLogger(__name__)
@@ -156,6 +173,14 @@ def _apply_cli_overrides(
             "tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model}
         )
 
+    if dedup_mode:
+        cfg.set_dedup_mode(dedup_mode)
+        logger.info("dedup_mode_overridden", extra={"mode": dedup_mode})
+
+    if dedup_on_skip:
+        cfg.set_dedup_on_skip(dedup_on_skip)
+        logger.info("dedup_on_skip_overridden", extra={"on_skip": dedup_on_skip})
+
 
 def _run_notify(
     *,
@@ -183,6 +208,8 @@ def _run_notify(
     tts_provider: Optional[TTSProvider],
     summary_model: Optional[str],
     tts_model: Optional[str],
+    dedup_mode: Optional[DedupMode],
+    dedup_on_skip: Optional[DedupOnSkip],
 ) -> None:
     _setup_logging_from_options(
         None, debug, log_level, log_format, str(log_file) if log_file else None
@@ -212,6 +239,8 @@ def _run_notify(
         tts_provider=tts_provider.value if tts_provider else None,
         summary_model=summary_model,
         tts_model=tts_model,
+        dedup_mode=dedup_mode.value if dedup_mode else None,
+        dedup_on_skip=dedup_on_skip.value if dedup_on_skip else None,
     )
 
     request = _load_payload(
@@ -334,6 +363,16 @@ def main_callback(
     tts_model: Optional[str] = typer.Option(
         None, "--tts-model", help="Override LM Studio TTS model for this run"
     ),
+    dedup_mode: Optional[DedupMode] = typer.Option(
+        None,
+        "--dedup-mode",
+        help="Override dedup mode: duplicate|window|duplicate_or_window",
+    ),
+    dedup_on_skip: Optional[DedupOnSkip] = typer.Option(
+        None,
+        "--dedup-on-skip",
+        help="Override dedup skip behavior: skip|sound_only",
+    ),
     fail_fast: bool = typer.Option(
         False,
         "--fail-fast",
@@ -399,6 +438,8 @@ def main_callback(
             tts_provider=tts_provider,
             summary_model=summary_model,
             tts_model=tts_model,
+            dedup_mode=dedup_mode,
+            dedup_on_skip=dedup_on_skip,
         )
         raise typer.Exit()
 
@@ -694,6 +735,8 @@ def replay(
         if result.played:
             replayed += 1
             from_summary += 1
+        elif result.status == "skipped":
+            continue
         else:
             failed += 1
 

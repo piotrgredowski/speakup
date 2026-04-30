@@ -255,6 +255,56 @@ def test_notify_service_given_event_sound_then_plays_cue_and_speech_together(tmp
     assert playback.groups == [[beep, title_audio, speech]]
 
 
+def test_notify_service_given_dedup_sound_only_then_plays_cue_without_speech(tmp_path: Path) -> None:
+    beep = tmp_path / "beep.aiff"
+    title = tmp_path / "title.wav"
+    speech = tmp_path / "speech.wav"
+    beep.write_text("beep")
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["fake"]
+    config_data["tts"]["save_audio_dir"] = str(tmp_path / "audio")
+    config_data["dedup"] = {
+        "enabled": True,
+        "window_seconds": 30,
+        "cache_file": str(tmp_path / "dedup.json"),
+        "mode": "duplicate",
+        "on_skip": "sound_only",
+    }
+    config_data["event_sounds"]["files"] = {"progress": str(beep)}
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title, speech])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    first = service.notify(
+        NotifyRequest(
+            message="Still indexing",
+            event=MessageEvent.PROGRESS,
+            skip_summarization=True,
+        )
+    )
+    second = service.notify(
+        NotifyRequest(
+            message="Still indexing",
+            event=MessageEvent.PROGRESS,
+            skip_summarization=True,
+        )
+    )
+
+    assert first.status == "ok"
+    assert second.status == "ok"
+    assert second.summary == ""
+    assert second.played is True
+    assert second.dedup_skipped is True
+    assert fake_tts.calls == [("speakup says", "default", 1.0), ("Still indexing", "default", 1.0)]
+    assert playback.groups == [[beep, title, speech], [beep]]
+
+
 def test_notify_service_given_multiple_segments_then_composes_before_playback(tmp_path: Path, monkeypatch) -> None:
     title_audio = tmp_path / "title.wav"
     message_audio = tmp_path / "message.wav"

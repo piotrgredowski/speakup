@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import tempfile
 
+from speakup.history import NotificationHistory
+from speakup.models import MessageEvent, NotifyRequest, NotifyResult
 from speakup.session_naming import generate_session_name
 
 from .conftest import run_pi_cli
@@ -181,3 +183,38 @@ def test_pi_wrapper_given_session_key_then_replay_finds_saved_notification(
     output = json.loads(replay.stdout)
     assert output["status"] == "ok"
     assert output["replayed"] == 1
+
+
+def test_replay_given_legacy_noop_summary_then_does_not_fail(
+    tmp_path: Path,
+    base_config: Path,
+    env_with_fake_audio: dict[str, str],
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tmp-runtime"
+    runtime_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(runtime_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    history = NotificationHistory()
+    history.add(
+        NotifyRequest(message="done", event=MessageEvent.FINAL, agent="pi", session_key="conv-789"),
+        NotifyResult(
+            status="ok",
+            summary='"no speakup summary"',
+            state=MessageEvent.FINAL,
+            backend="macos",
+            played=True,
+        ),
+    )
+
+    replay = run_cli(
+        ["replay", "--config", str(base_config), "--agent", "pi", "--session-key", "conv-789"],
+        env=env_with_fake_audio | {"TMPDIR": str(runtime_root)},
+    )
+
+    assert replay.returncode == 0, replay.stderr
+    output = json.loads(replay.stdout)
+    assert output["status"] == "ok"
+    assert output["failed"] == 0
+    assert output["replayed"] == 0

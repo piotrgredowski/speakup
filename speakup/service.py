@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from .classifier import infer_event
 from .config import Config, _strip_json_comments, runtime_temp_dir
-from .dedup import should_skip_progress
+from .dedup import DedupDecision, should_skip_progress
 from .errors import AdapterError
 from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest, NotifyResult
@@ -95,7 +95,9 @@ def _is_blocked_summary(summary: str) -> bool:
     normalized = sanitize_text_for_tts(summary).lower().strip()
     if not normalized:
         return False
+    normalized = normalized.strip(" \t\r\n\"'`“”‘’[]{}()<>")
     normalized = normalized.rstrip(".! ")
+    normalized = normalized.strip(" \t\r\n\"'`“”‘’[]{}()<>")
     return normalized in _NON_SPEAKABLE_SUMMARY_PATTERNS
 
 
@@ -692,16 +694,24 @@ class NotifyService:
             self._save_history(request, result, request_id=request_id)
             return result
 
-        if self._dedup_progress(event, request.message):
-            self.logger.info("notify_skipped_dedup", extra={"request_id": request_id, "event": event.value})
-            result = NotifyResult(
-                status="skipped",
-                summary="",
-                state=event,
-                backend="none",
-                played=False,
-                dedup_skipped=True,
+        dedup_decision = self._dedup_progress(event, request.message)
+        if dedup_decision.skipped:
+            self.logger.info(
+                "notify_skipped_dedup",
+                extra={"request_id": request_id, "event": event.value, "reason": dedup_decision.reason},
             )
+            if self.config.get("dedup", "on_skip", default="skip") == "sound_only":
+                result = self._play_event_sound_only(event, request_id=request_id)
+                result.dedup_skipped = True
+            else:
+                result = NotifyResult(
+                    status="skipped",
+                    summary="",
+                    state=event,
+                    backend="none",
+                    played=False,
+                    dedup_skipped=True,
+                )
             self._save_history(request, result, request_id=request_id)
             return result
 
@@ -773,6 +783,16 @@ class NotifyService:
         source_tool: str | None = None,
     ) -> NotifyResult:
         request_id = uuid4().hex[:12]
+        if _is_blocked_summary(summary):
+            self.logger.info("replay_skipped_non_speakable_summary", extra={"request_id": request_id, "event": event.value})
+            return NotifyResult(
+                status="skipped",
+                summary="",
+                state=event,
+                backend="none",
+                played=False,
+            )
+
         spoken_title, spoken_message, spoken_summary = self._prepare_spoken_summary(
             event=event,
             summary_text=summary,
@@ -791,6 +811,41 @@ class NotifyService:
             force_play_audio=True,
         )
 
+    def _play_event_sound_only(self, event: MessageEvent, *, request_id: str) -> NotifyResult:
+        event_sound_path = self._event_sound_path(event, request_id=request_id)
+        play_audio = bool(self.config.get("tts", "play_audio", default=True))
+        if event_sound_path is None or not play_audio:
+            return NotifyResult(
+                status="skipped",
+                summary="",
+                state=event,
+                backend="none",
+                played=False,
+            )
+
+        try:
+            playback_paths = self._prepare_playback_paths([event_sound_path], request_id=request_id)
+            self.registry.get_playback().play_files(playback_paths)
+        except AdapterError as exc:
+            self.logger.warning("event_sound_playback_failed", extra={"request_id": request_id, "error": str(exc)})
+            return NotifyResult(
+                status="skipped",
+                summary="",
+                state=event,
+                backend="none",
+                played=False,
+                error=str(exc),
+            )
+
+        return NotifyResult(
+            status="ok",
+            summary="",
+            state=event,
+            backend="none",
+            played=True,
+            playback_audio_paths=playback_paths,
+        )
+
     def _should_speak(self, event: MessageEvent) -> bool:
         mapping = {
             MessageEvent.FINAL: self.config.get("events", "speak_on_final", default=True),
@@ -801,13 +856,14 @@ class NotifyService:
         }
         return bool(mapping.get(event, True))
 
-    def _dedup_progress(self, event: MessageEvent, message: str) -> bool:
+    def _dedup_progress(self, event: MessageEvent, message: str) -> DedupDecision:
         enabled = self.config.get("dedup", "enabled", default=True)
         if not enabled or event != MessageEvent.PROGRESS:
-            return False
+            return DedupDecision(skipped=False)
         cache_file = Path(self.config.get("dedup", "cache_file", default=str(runtime_temp_dir() / "last_progress.json")))
         window = int(self.config.get("dedup", "window_seconds", default=30))
-        return should_skip_progress(message, cache_file, window)
+        mode = str(self.config.get("dedup", "mode", default="duplicate"))
+        return should_skip_progress(message, cache_file, window, mode=mode)
 
     def _summarize(self, message: str, event: MessageEvent, *, request_id: str):
         provider_order = self.config.get("summarization", "provider_order", default=["rule_based"])
