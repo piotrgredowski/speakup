@@ -12,7 +12,7 @@ from speakup.config import Config, ConfigValidationError, default_config, get_de
 def test_config_load_given_valid_default_then_succeeds(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = Config.load(None)
-    assert cfg.get("privacy", "mode") == "prefer_local"
+    assert cfg.get("privacy", "mode") == "local_only"
 
 
 def test_default_config_runtime_paths_use_system_temp_dir() -> None:
@@ -23,9 +23,9 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     assert Path(cfg["logging"]["file_path"]) == get_default_log_file_path()
 
 
-def test_default_config_prefers_omlx_then_elevenlabs_then_openai_for_tts() -> None:
+def test_default_config_uses_local_macos_tts_only() -> None:
     cfg = default_config()
-    assert cfg["tts"]["provider_order"] == ["omlx", "edge", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
+    assert cfg["tts"]["provider_order"] == ["macos"]
 
 
 def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_override(tmp_path: Path) -> None:
@@ -49,9 +49,10 @@ def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_ove
     assert loaded.get("providers", "edge", "voice") == "en-US-AriaNeural"
 
 
-def test_default_config_prefers_cerebras_then_omlx_then_openai_for_summarization() -> None:
+def test_default_config_uses_rule_based_summarization_only() -> None:
     cfg = default_config()
-    assert cfg["summarization"]["provider_order"][:3] == ["cerebras", "omlx", "openai"]
+    assert cfg["summarization"]["provider_order"] == ["rule_based"]
+    assert cfg["privacy"]["allow_remote_fallback"] is False
 
 
 def test_default_config_preserves_existing_dedup_behavior() -> None:
@@ -110,3 +111,25 @@ def test_config_load_given_jsonc_comments_then_parses_successfully(tmp_path: Pat
     loaded = Config.load(config_path)
 
     assert loaded.get("privacy", "mode") == "local_only"
+
+
+def test_config_load_given_partial_config_then_materializes_safe_defaults(tmp_path: Path) -> None:
+    config_path = tmp_path / "partial.jsonc"
+    config_path.write_text('{"tts": {"provider_order": ["openai"]}}')
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("privacy", "mode") == "local_only"
+    assert loaded.get("privacy", "allow_remote_fallback") is False
+    assert loaded.get("tts", "provider_order") == ["openai"]
+
+
+def test_config_load_given_legacy_omlx_summarizer_then_remains_loadable(tmp_path: Path) -> None:
+    config = default_config()
+    config["summarization"]["provider_order"] = ["omlx", "rule_based"]
+    config_path = tmp_path / "legacy.jsonc"
+    config_path.write_text(json.dumps(config))
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("summarization", "provider_order") == ["omlx", "rule_based"]

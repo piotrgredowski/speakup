@@ -440,6 +440,7 @@ class TestNotifyServiceWithHistory:
         config = Config({
             "events": {"speak_on_final": False},  # Disable audio
             "tts": {"play_audio": False},
+            "history": {"store_messages": True},
         })
         
         # Create history
@@ -477,6 +478,27 @@ class TestNotifyServiceWithHistory:
                 break
         
         assert found, "History entry not found"
+
+    def test_service_history_default_does_not_store_raw_message(self, tmp_path: Path) -> None:
+        config = Config({
+            "events": {"speak_on_final": False},
+            "tts": {"play_audio": False},
+        })
+        history = NotificationHistory(tmp_path / "history.db")
+        registry = AdapterRegistry()
+        registry.set_playback(MockAudioPlayback())
+        service = NotifyService(config, registry=registry, history=history)
+
+        service.notify(
+            NotifyRequest(
+                message="Secret token sk-abcdefghijklmnop",
+                event=MessageEvent.FINAL,
+                agent="test_agent",
+            )
+        )
+
+        entries = history.get_recent(limit=1)
+        assert entries[0].message == ""
 
 
 if __name__ == "__main__":

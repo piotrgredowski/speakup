@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 from typing import Any
@@ -40,6 +41,18 @@ _RESERVED_RECORD_KEYS = {
     "message",
 }
 
+_SENSITIVE_KEY_TOKENS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "password",
+    "secret",
+    "token",
+)
+_SECRET_VALUE_PATTERN = re.compile(
+    r"(?i)(sk-[A-Za-z0-9_-]{12,}|xox[baprs]-[A-Za-z0-9-]{12,}|Bearer\s+[A-Za-z0-9._~+/-]{12,})"
+)
+
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     return structlog.get_logger(name)
@@ -54,6 +67,27 @@ def _copy_extra_record_fields(_: logging.Logger, __: str, event_dict: dict[str, 
             continue
         event_dict.setdefault(key, value)
     return event_dict
+
+
+def redact_payload(value: Any, *, enabled: bool = True) -> Any:
+    if not enabled:
+        return value
+    if isinstance(value, dict):
+        redacted: dict[Any, Any] = {}
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if any(token in lowered for token in _SENSITIVE_KEY_TOKENS):
+                redacted[key] = "***"
+            else:
+                redacted[key] = redact_payload(item, enabled=enabled)
+        return redacted
+    if isinstance(value, list):
+        return [redact_payload(item, enabled=enabled) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_payload(item, enabled=enabled) for item in value)
+    if isinstance(value, str):
+        return _SECRET_VALUE_PATTERN.sub("***", value)
+    return value
 
 
 def _ensure_request_id(_: logging.Logger, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
@@ -194,6 +228,7 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
         file_path = file_override or cfg.get("file_path")
         if not file_path:
             file_path = str(get_default_log_file_path())
+        file_path = os.path.expanduser(str(file_path))
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         file_handler = RotatingFileHandler(
             file_path,
@@ -203,7 +238,7 @@ def setup_logging(config: dict[str, Any] | None = None, *, level_override: str |
         file_handler.setFormatter(make_formatter(effective_cfg, colors=False))
         handlers.append(file_handler)
 
-        color_file_path = cfg.get("file_path_color") or f"{file_path}.color"
+        color_file_path = os.path.expanduser(str(cfg.get("file_path_color") or f"{file_path}.color"))
         os.makedirs(os.path.dirname(color_file_path), exist_ok=True)
         color_file_handler = RotatingFileHandler(
             color_file_path,

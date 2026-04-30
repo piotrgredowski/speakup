@@ -1,7 +1,7 @@
 """Integration tests for Gemini TTS using real API.
 
-These tests require the GOOGLE_API_KEY environment variable to be set.
-They can be run with: pytest -m integration_gemini
+These tests require GOOGLE_API_KEY and SPEAKUP_RUN_GEMINI_INTEGRATION=1.
+They can be run with: SPEAKUP_RUN_GEMINI_INTEGRATION=1 pytest -m integration_gemini
 
 To run only integration tests:
     pytest tests/test_integration_gemini.py -v
@@ -20,10 +20,10 @@ import pytest
 from .conftest import run_cli
 
 
-# Skip all tests in this module if GOOGLE_API_KEY is not set
+# Skip real API tests unless explicitly enabled.
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("GOOGLE_API_KEY"),
-    reason="GOOGLE_API_KEY environment variable not set",
+    not os.environ.get("GOOGLE_API_KEY") or os.environ.get("SPEAKUP_RUN_GEMINI_INTEGRATION") != "1",
+    reason="Gemini integration tests require GOOGLE_API_KEY and SPEAKUP_RUN_GEMINI_INTEGRATION=1",
 )
 
 

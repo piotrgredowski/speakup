@@ -116,7 +116,7 @@ if command -v gh &> /dev/null; then
 else
     print_warning "GitHub CLI not found. Manual steps required:"
     echo
-    echo "  1. Update pyproject.toml version to $NEW_VERSION"
+    echo "  1. Update synchronized versions in pyproject.toml, package.json, plugin.json, Cargo.toml, and tauri.conf.json"
     echo "  2. Commit: git commit -am 'chore: bump version to $NEW_VERSION'"
     echo "  3. Tag: git tag -a v$NEW_VERSION -m 'Release v$NEW_VERSION'"
     echo "  4. Push: git push origin main --tags"

@@ -5,9 +5,11 @@ import logging
 import random
 import time
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
+from .app_logging import redact_payload
 from .classifier import infer_event
 from .config import Config, _strip_json_comments, runtime_temp_dir
 from .dedup import DedupDecision, should_skip_progress
@@ -17,6 +19,7 @@ from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
 from .playback.composite import compose_audio_segments
 from .playback.queued import SQLiteQueuedPlayback
+from .provider_catalog import REMOTE_SUMMARIZERS, REMOTE_TTS_PROVIDERS
 from .registry import AdapterRegistry
 from .session_naming import resolve_session_name
 from .summarizers.cerebras import CerebrasSummarizer
@@ -270,9 +273,14 @@ class NotifyService:
     def _save_history(self, request: NotifyRequest, result: NotifyResult, *, request_id: str) -> None:
         if not self.history:
             return
+        if not bool(self.config.get("history", "enabled", default=True)):
+            return
 
         try:
-            self.history.add(request, result)
+            history_request = request
+            if not bool(self.config.get("history", "store_messages", default=False)):
+                history_request = replace(request, message="")
+            self.history.add(history_request, result)
         except Exception as exc:
             self.logger.warning("history_save_failed", extra={"request_id": request_id, "error": str(exc)})
 
@@ -669,7 +677,10 @@ class NotifyService:
                 "request_id": request_id,
                 "event": request.event.value,
                 "message_length": len(request.message),
-                "message_text": request.message if include_message else None,
+                "message_text": redact_payload(
+                    request.message,
+                    enabled=bool(self.config.get("logging", "redact_sensitive", default=True)),
+                ) if include_message else None,
             },
         )
 
@@ -748,17 +759,28 @@ class NotifyService:
             source_tool=request.source_tool,
         )
 
-        self.logger.debug(
-            "summary_and_input",
-            extra={
-                "request_id": request_id,
-                "event": event.value,
-                "message_text": request.message,
-                "summary_text": spoken_summary,
-                "message_length": len(request.message),
-                "summary_length": len(spoken_summary),
-            },
-        )
+        include_payloads = bool(self.config.get("logging", "log_provider_payloads", default=False))
+        debug_extra = {
+            "request_id": request_id,
+            "event": event.value,
+            "message_length": len(request.message),
+            "summary_length": len(spoken_summary),
+        }
+        if include_message:
+            debug_extra["message_text"] = redact_payload(
+                request.message,
+                enabled=bool(self.config.get("logging", "redact_sensitive", default=True)),
+            )
+            debug_extra["summary_text"] = redact_payload(
+                spoken_summary,
+                enabled=bool(self.config.get("logging", "redact_sensitive", default=True)),
+            )
+        elif include_payloads:
+            debug_extra["summary_text"] = redact_payload(
+                spoken_summary,
+                enabled=bool(self.config.get("logging", "redact_sensitive", default=True)),
+            )
+        self.logger.debug("summary_and_input", extra=debug_extra)
         result = self._play_synthesized_summary(
             event=event,
             spoken_title=spoken_title,
@@ -868,15 +890,15 @@ class NotifyService:
     def _summarize(self, message: str, event: MessageEvent, *, request_id: str):
         provider_order = self.config.get("summarization", "provider_order", default=["rule_based"])
         max_chars = int(self.config.get("summarization", "max_chars", default=220))
-        privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
-        allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
+        privacy_mode = self.config.get("privacy", "mode", default="local_only")
+        allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=False))
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
         for provider in provider_order:
             self.logger.debug("summarizer_try", extra={"request_id": request_id, "provider": provider})
 
             # Skip remote providers based on privacy settings
-            if provider in {"openai", "cerebras", "gemini"}:
+            if provider in REMOTE_SUMMARIZERS:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("summarizer_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue
@@ -959,15 +981,15 @@ class NotifyService:
         resolved_voice = voice or self._resolve_base_voice(current_provider, project_path)
         resolved_speed = float(speed if speed is not None else self._resolve_base_speed(project_path, cli_speed))
         audio_format = self.config.get("tts", "audio_format", default="wav")
-        privacy_mode = self.config.get("privacy", "mode", default="prefer_local")
-        allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=True))
+        privacy_mode = self.config.get("privacy", "mode", default="local_only")
+        allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=False))
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
 
         providers = [provider_override] if provider_override else provider_order
 
         for provider in providers:
             # Skip remote providers based on privacy settings
-            if provider in {"elevenlabs", "openai", "gemini", "edge"}:
+            if provider in REMOTE_TTS_PROVIDERS:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
                     self.logger.info("tts_skipped_privacy", extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode})
                     continue

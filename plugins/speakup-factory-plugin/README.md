@@ -4,10 +4,10 @@ Spoken notifications for Droid events using the [speakup](https://github.com/pio
 
 ## Features
 
-- 🔊 **Spoken notifications** when Droid needs attention or completes tasks
-- 🎯 **Event filtering** - choose which events trigger notifications
-- ⚙️ **Configurable** - control via config file or slash command
-- 🔄 **Session tracking** - announces session starts and subagent completions
+- **Spoken notifications** when Droid needs attention or completes tasks
+- **Event filtering** - choose which events trigger notifications
+- **Configurable** - control via config file or slash command
+- **Session tracking** - stores replay pointers for the current Droid session
 
 ## Installation
 
@@ -22,7 +22,7 @@ Spoken notifications for Droid events using the [speakup](https://github.com/pio
 
 2. Initialize speakup config (optional):
    ```bash
-   speakup --init-config
+   speakup init-config
    ```
 
 ### Install Plugin
@@ -35,8 +35,9 @@ droid plugin install speakup@speakup-factory-plugin
 
 From Git repository:
 ```bash
-droid plugin marketplace add https://github.com/piotrgredowski/speakup
-droid plugin install speakup@speakup
+git clone https://github.com/piotrgredowski/speakup.git
+droid plugin marketplace add ./speakup/plugins/speakup-factory-plugin
+droid plugin install speakup@speakup-factory-plugin
 ```
 
 ## Usage
@@ -48,9 +49,10 @@ Once installed, the plugin automatically speaks notifications for:
 | Droid Event | Speakup Event | Description |
 |-------------|---------------|-------------|
 | `Notification` | `needs_input` | When Droid needs permission or is waiting for input |
+| `PreToolUse` (`AskUser`) | `needs_input` | When Droid presents a structured question |
 | `Stop` | `final` | When Droid finishes responding |
-| `SubagentStop` | `progress` | When a subagent task completes |
-| `SessionStart` | `info` | When a Droid session starts |
+
+The hook implementation can handle `SubagentStop` and `SessionStart`, but the packaged `hooks.json` does not enable them by default.
 
 ### Slash Command
 
@@ -62,7 +64,7 @@ Control speakup with the `/speakup` command:
 
 ## Configuration
 
-Add droid-specific settings to your speakup config at `~/.config/speakup/config.json`:
+Add droid-specific settings to your speakup config at `~/.config/speakup/config.jsonc`:
 
 ```json
 {
@@ -85,8 +87,8 @@ Add droid-specific settings to your speakup config at `~/.config/speakup/config.
 | `enabled` | boolean | `true` | Enable/disable all speakup notifications |
 | `events.notification` | boolean | `true` | Speak when Droid needs attention |
 | `events.stop` | boolean | `true` | Speak when Droid finishes |
-| `events.subagent_stop` | boolean | `true` | Speak when subagent completes |
-| `events.session_start` | boolean | `true` | Speak when session starts |
+| `events.subagent_stop` | boolean | `false` | Speak when subagent completes, if the hook is enabled |
+| `events.session_start` | boolean | `false` | Speak when session starts, if the hook is enabled |
 
 ## How It Works
 
@@ -109,12 +111,12 @@ Add droid-specific settings to your speakup config at `~/.config/speakup/config.
 
 2. Check speakup config:
    ```bash
-   cat ~/.config/speakup/config.json
+   cat ~/.config/speakup/config.jsonc
    ```
 
 3. Run speakup diagnostics:
    ```bash
-   speakup --self-test
+   speakup self-test
    ```
 
 ### Plugin not loading

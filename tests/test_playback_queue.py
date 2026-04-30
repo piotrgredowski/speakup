@@ -902,6 +902,7 @@ def test_notify_service_given_elevenlabs_split_voices_then_uses_role_specific_vo
     message_audio = tmp_path / "message.wav"
 
     config_data = default_config()
+    config_data["privacy"] = {"mode": "prefer_local", "allow_remote_fallback": True}
     config_data["tts"]["provider_order"] = ["elevenlabs"]
     config_data["event_sounds"]["enabled"] = False
     config_data["providers"]["elevenlabs"] = {
@@ -936,6 +937,7 @@ def test_notify_service_given_elevenlabs_voice_id_without_split_voices_then_uses
     message_audio = tmp_path / "message.wav"
 
     config_data = default_config()
+    config_data["privacy"] = {"mode": "prefer_local", "allow_remote_fallback": True}
     config_data["tts"]["provider_order"] = ["elevenlabs"]
     config_data["event_sounds"]["enabled"] = False
     config_data["providers"]["elevenlabs"] = {"voice_id": "fallback-voice"}
@@ -965,6 +967,7 @@ def test_notify_service_given_unconfigured_elevenlabs_then_skips_without_warning
     message_audio = tmp_path / "message.wav"
 
     config_data = default_config()
+    config_data["privacy"] = {"mode": "prefer_local", "allow_remote_fallback": True}
     config_data["tts"]["provider_order"] = ["elevenlabs", "fake"]
     config_data["tts"]["voice"] = "default"
     config_data["event_sounds"]["enabled"] = False
@@ -996,6 +999,7 @@ def test_notify_service_given_unconfigured_elevenlabs_then_skips_without_warning
 
 def test_notify_service_given_unconfigured_elevenlabs_and_fail_fast_then_raises(tmp_path: Path) -> None:
     config_data = default_config()
+    config_data["privacy"] = {"mode": "prefer_local", "allow_remote_fallback": True}
     config_data["tts"]["provider_order"] = ["elevenlabs", "fake"]
     config_data["tts"]["voice"] = "default"
     config_data["event_sounds"]["enabled"] = False

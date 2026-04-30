@@ -1,9 +1,9 @@
 [project]
 name = "speakup"
-version = "0.1.0"
+version = "0.3.0"
 description = "Speak concise agent status updates with pluggable local/remote backends"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Piotr Gredowski", email = "piotrgredowski@gmail.com"}
 ]
@@ -14,7 +14,6 @@ keywords = ["tts", "agent", "notifications", "voice", "speech", "ai", "automatio
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -56,6 +55,14 @@ markers = [
     "integration_cerebras: marks tests as Cerebras API integration tests (deselect with '-m \"not integration_cerebras\"')",
     "integration_gemini: marks tests as Gemini API integration tests (deselect with '-m \"not integration_gemini\"')",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
 
 [dependency-groups]
 dev = [

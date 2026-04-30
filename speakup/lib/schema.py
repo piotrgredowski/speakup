@@ -143,6 +143,12 @@ def from_dict(cls: type[T], data: dict[str, Any], _prefix: str = "") -> T:
     # Resolve string annotations to real types via get_type_hints.
     # This is necessary when modules use `from __future__ import annotations`.
     resolved_hints = get_type_hints(cls, include_extras=True)
+    field_names = {field.name for field in dataclasses.fields(cls)}
+    extra_keys = set(data) - field_names
+    if extra_keys:
+        path_label = _prefix.rstrip(".") or "root"
+        first = sorted(extra_keys)[0]
+        raise SchemaValidationError(f"Unknown field: {path_label}.{first}" if path_label != "root" else f"Unknown field: {first}")
 
     init_kwargs: dict[str, Any] = {}
     for field in dataclasses.fields(cls):

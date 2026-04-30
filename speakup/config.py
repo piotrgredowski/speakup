@@ -100,8 +100,8 @@ class PlaybackConfig:
 
 @dataclass
 class PrivacyConfig:
-    mode: Literal["prefer_local", "local_only"] = "prefer_local"
-    allow_remote_fallback: bool = True
+    mode: Literal["prefer_local", "local_only"] = "local_only"
+    allow_remote_fallback: bool = False
 
 
 @dataclass
@@ -116,7 +116,7 @@ class EventsConfig:
 class SummarizationConfig:
     max_chars: Annotated[int, Gt(0)] = 220
     provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["cerebras", "omlx", "openai", "gemini", "command", "rule_based", "lmstudio"]
+        default_factory=lambda: ["rule_based"]
     )
 
 
@@ -147,7 +147,7 @@ class TTSConfig:
         speed: float = 1.0
 
     provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["omlx", "edge", "elevenlabs", "openai", "gemini", "lmstudio", "macos"]
+        default_factory=lambda: ["macos"]
     )
     voice: str = "default"
     speed: float = 1.0
@@ -189,6 +189,13 @@ class LoggingConfig:
     log_message_text: bool = False
     log_provider_payloads: bool = False
     redact_sensitive: bool = True
+
+
+@dataclass
+class HistoryConfig:
+    enabled: bool = True
+    store_messages: bool = False
+    retention_days: Annotated[int, Gt(0)] = 30
 
 
 @dataclass
@@ -357,6 +364,7 @@ class AppConfig:
     session_naming: SessionNamingConfig = field(default_factory=SessionNamingConfig)
     dedup: DedupConfig = field(default_factory=DedupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    history: HistoryConfig = field(default_factory=HistoryConfig)
     log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)
     config_viewer: ConfigViewerConfig = field(default_factory=ConfigViewerConfig)
     speech_template: SpeechTemplateConfig = field(default_factory=SpeechTemplateConfig)
@@ -371,6 +379,13 @@ def default_config() -> dict[str, Any]:
 def validate_config(raw: dict[str, Any]) -> None:
     try:
         from_dict(AppConfig, raw)
+    except SchemaValidationError as e:
+        raise ConfigValidationError(str(e))
+
+
+def normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return asdict(from_dict(AppConfig, raw))
     except SchemaValidationError as e:
         raise ConfigValidationError(str(e))
 
@@ -398,7 +413,7 @@ class Config:
             default_path = default_config_path()
             if default_path.exists():
                 base = _load_jsonc(default_path)
-                validate_config(base)
+                base = normalize_config(base)
                 logger.info("config_loaded", extra={"source": "default_path", "path": str(default_path)})
                 return cls(base)
 
@@ -413,7 +428,7 @@ class Config:
             base = deep_merge(base, local)
             logger.info("config_local_merged", extra={"path": str(local_path)})
 
-        validate_config(base)
+        base = normalize_config(base)
         logger.info("config_loaded", extra={"source": "explicit_path", "path": str(path)})
         return cls(base)
 

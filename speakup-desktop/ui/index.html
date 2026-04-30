@@ -535,7 +535,7 @@
                         <div class="detail-section">
                             <div class="detail-label">Audio</div>
                             <div class="detail-value">${escapeHtml(notification.audio_path)}</div>
-                            <button class="play-button" onclick="playAudio('${escapeHtml(notification.audio_path)}')">
+                            <button class="play-button" onclick="playAudio(${JSON.stringify(notification.audio_path).replace(/"/g, '&quot;')})">
                                 ▶ Play Audio
                             </button>
                         </div>
@@ -555,10 +555,16 @@
             }
         }
 
-        function playAudio(path) {
-            // For now, just open the file in the system default player
-            // In a real app, you'd use Tauri's shell plugin or an audio element
-            alert(`Audio playback not implemented yet.\nPath: ${path}`);
+        async function playAudio(path) {
+            try {
+                if (window.__TAURI__?.shell?.open) {
+                    await window.__TAURI__.shell.open(path);
+                    return;
+                }
+                alert(`Audio playback is unavailable in this build.\nPath: ${path}`);
+            } catch (error) {
+                alert(`Failed to open audio file: ${error}`);
+            }
         }
 
         function setupEventListeners() {

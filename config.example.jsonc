@@ -1,16 +1,28 @@
 {
   "playback": {
-    "queue_enabled": true
+    "queue_enabled": true,
+    "compose_segments": true,
+    "compose_lead_in_ms": 120,
+    "compose_gap_ms": 60
   },
   "privacy": {
-    "mode": "prefer_local",
-    "allow_remote_fallback": true
+    "mode": "local_only",
+    "allow_remote_fallback": false
   },
   "events": {
     "speak_on_final": true,
     "speak_on_error": true,
     "speak_on_needs_input": true,
     "speak_on_progress": true
+  },
+  "summarization": {
+    "max_chars": 220,
+    "provider_order": [
+      "rule_based"
+    ]
+  },
+  "fallback": {
+    "fail_fast": false
   },
   "event_sounds": {
     "enabled": true,
@@ -22,30 +34,13 @@
       "info": "/System/Library/Sounds/Ping.aiff"
     }
   },
-  "summarization": {
-    "max_chars": 500,
-    "provider_order": [
-      "cerebras",
-      "openai",
-      "lmstudio",
-      "command",
-      "rule_based"
-    ]
-  },
-  "fallback": {
-    "fail_fast": false
-  },
   "tts": {
     "provider_order": [
-      "omlx",
-      "edge",
-      "macos",
-      "lmstudio",
-      "elevenlabs",
-      "openai"
+      "macos"
     ],
     "voice": "default",
     "speed": 1.0,
+    "project_overrides": {},
     "session_name_speed": null,
     "message_speed": null,
     "play_audio": true,
@@ -58,7 +53,9 @@
   "dedup": {
     "enabled": true,
     "window_seconds": 30,
-    "cache_file": "/tmp/speakup/last_progress.json"
+    "cache_file": "/tmp/speakup/last_progress.json",
+    "mode": "duplicate",
+    "on_skip": "skip"
   },
   "logging": {
     "enabled": true,
@@ -68,7 +65,7 @@
       "stderr"
     ],
     "file_path": "~/Library/Logs/speakup/speakup.log",
-    "file_path_color": "~/Library/Logs/speakup/speakup.color.log",
+    "file_path_color": null,
     "rotate_max_bytes": 1048576,
     "rotate_backup_count": 3,
     "include_timestamps": true,
@@ -77,6 +74,11 @@
     "log_message_text": false,
     "log_provider_payloads": false,
     "redact_sensitive": true
+  },
+  "history": {
+    "enabled": true,
+    "store_messages": false,
+    "retention_days": 30
   },
   "log_viewer": {
     "command": "tail -n 25 -f"
@@ -89,19 +91,28 @@
       "separator": " ",
       "parts": [
         {
+          "text": null,
           "field": "source_tool",
+          "when": null,
           "fallback": "agent"
         },
         {
           "text": "from session",
-          "when": "session_name"
+          "field": null,
+          "when": "session_name",
+          "fallback": null
         },
         {
+          "text": null,
           "field": "session_name",
-          "when": "session_name"
+          "when": "session_name",
+          "fallback": null
         },
         {
-          "text": "says"
+          "text": "says",
+          "field": null,
+          "when": null,
+          "fallback": null
         }
       ]
     },
@@ -109,29 +120,41 @@
       "separator": " ",
       "parts": [
         {
-          "field": "summary"
+          "text": null,
+          "field": "summary",
+          "when": null,
+          "fallback": null
         }
       ]
     }
   },
   "providers": {
+    "macos": {
+      "voice": "default",
+      "title_voice": null,
+      "message_voice": null,
+      "available_voices": []
+    },
     "lmstudio": {
       "base_url": "http://localhost:1234/v1",
       "model": "local-model",
       "tts_model": "local-tts-model",
       "title_voice": null,
-      "message_voice": null
+      "message_voice": null,
+      "available_voices": []
     },
     "edge": {
       "voice": "en-US-AriaNeural",
       "title_voice": null,
-      "message_voice": null
+      "message_voice": null,
+      "available_voices": []
     },
     "elevenlabs": {
       "api_key_env": "ELEVENLABS_API_KEY",
       "voice_id": "",
       "title_voice": null,
-      "message_voice": null
+      "message_voice": null,
+      "available_voices": []
     },
     "openai": {
       "api_key_env": "OPENAI_API_KEY",
@@ -139,7 +162,8 @@
       "summary_model": "gpt-4o-mini",
       "voice": "alloy",
       "title_voice": null,
-      "message_voice": null
+      "message_voice": null,
+      "available_voices": []
     },
     "cerebras": {
       "api_key_env": "CEREBRAS_API_KEY",
@@ -149,9 +173,11 @@
     "gemini": {
       "api_key_env": "GOOGLE_API_KEY",
       "model": "gemini-2.5-flash-preview-tts",
+      "summary_model": "gemini-2.5-flash",
       "voice": "Kore",
       "title_voice": null,
-      "message_voice": null
+      "message_voice": null,
+      "available_voices": []
     },
     "omlx": {
       "base_url": "http://127.0.0.1:8000/v1",
@@ -160,6 +186,7 @@
       "voice": "af_heart",
       "title_voice": null,
       "message_voice": null,
+      "available_voices": [],
       "timeout": 60.0
     },
     "command_summary": {
@@ -170,6 +197,15 @@
       ],
       "timeout_seconds": 30,
       "trim_output": true
+    }
+  },
+  "droid": {
+    "enabled": true,
+    "events": {
+      "notification": true,
+      "stop": true,
+      "subagent_stop": false,
+      "session_start": false
     }
   }
 }

@@ -342,13 +342,13 @@ class TestRootValidation:
 
 
 # ---------------------------------------------------------------------------
-# Extra keys (should be silently ignored)
+# Extra keys
 # ---------------------------------------------------------------------------
 
 class TestExtraKeys:
-    def test_extra_keys_ignored(self):
-        result = from_dict(WithDefaults, {"label": "custom", "unknown_field": 42})
-        assert result.label == "custom"
+    def test_extra_keys_rejected(self):
+        with pytest.raises(SchemaValidationError, match="Unknown field: unknown_field"):
+            from_dict(WithDefaults, {"label": "custom", "unknown_field": 42})
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +362,7 @@ class TestAppConfigIntegration:
         from speakup.config import default_config, AppConfig
         raw = default_config()
         result = from_dict(AppConfig, raw)
-        assert result.privacy.mode == "prefer_local"
+        assert result.privacy.mode == "local_only"
         assert result.tts.voice == "default"
         assert result.providers.lmstudio.base_url == "http://localhost:1234/v1"
         assert result.droid.events.notification is True
@@ -476,7 +476,7 @@ class TestAppConfigIntegration:
         assert result.providers.openai.available_voices == ["alloy", "verse"]
         assert result.session_naming.enabled is False
         # other sections get defaults
-        assert result.privacy.mode == "prefer_local"
+        assert result.privacy.mode == "local_only"
 
     def test_elevenlabs_split_voices_parse(self):
         from speakup.config import AppConfig

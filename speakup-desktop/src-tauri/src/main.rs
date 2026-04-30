@@ -38,14 +38,13 @@ struct AppState {
 }
 
 fn get_db_path() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
+    std::env::temp_dir()
         .join("speakup")
         .join("history.db")
 }
 
 fn get_connection(db_path: &PathBuf) -> Result<Connection, String> {
-    Connection::connect(db_path).map_err(|e| format!("Failed to connect to database: {}", e))
+    Connection::open(db_path).map_err(|e| format!("Failed to connect to database: {}", e))
 }
 
 fn row_to_entry(row: &Row) -> Result<NotificationEntry, rusqlite::Error> {
@@ -162,9 +161,11 @@ fn get_stats(state: State<AppState>) -> Result<Stats, String> {
         .unwrap_or(0);
 
     let mut by_agent = std::collections::HashMap::new();
-    let agent_rows = conn
+    let mut agent_stmt = conn
         .prepare("SELECT agent, COUNT(*) as count FROM notifications GROUP BY agent ORDER BY count DESC")
-        .and_then(|mut stmt| stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))))
+        .map_err(|e| format!("Failed to query by agent: {}", e))?;
+    let agent_rows = agent_stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
         .map_err(|e| format!("Failed to query by agent: {}", e))?;
 
     for row in agent_rows {
@@ -173,9 +174,11 @@ fn get_stats(state: State<AppState>) -> Result<Stats, String> {
     }
 
     let mut by_event = std::collections::HashMap::new();
-    let event_rows = conn
+    let mut event_stmt = conn
         .prepare("SELECT event, COUNT(*) as count FROM notifications GROUP BY event ORDER BY count DESC")
-        .and_then(|mut stmt| stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))))
+        .map_err(|e| format!("Failed to query by event: {}", e))?;
+    let event_rows = event_stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
         .map_err(|e| format!("Failed to query by event: {}", e))?;
 
     for row in event_rows {

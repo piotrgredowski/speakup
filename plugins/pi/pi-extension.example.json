@@ -1,6 +1,6 @@
 {
   "enabled": true,
   "command": "uvx",
-  "args": ["--from", "git+https://github.com/piotrgredowski/speakup", "speakup-pi", "--config", "/Users/you/.config/speakup/config.json"],
+  "args": ["--from", "git+https://github.com/piotrgredowski/speakup", "speakup", "pi", "--config", "/Users/you/.config/speakup/config.jsonc"],
   "onlyAssistant": true
 }

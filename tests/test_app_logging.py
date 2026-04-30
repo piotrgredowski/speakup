@@ -1,6 +1,6 @@
 import logging
 
-from speakup.app_logging import make_formatter
+from speakup.app_logging import make_formatter, redact_payload
 
 
 def _make_record(*, message: str, extra: dict) -> logging.LogRecord:
@@ -64,3 +64,18 @@ def test_make_formatter_color_target_ignores_json_format():
     assert "hello" in output
     assert "req-123" in output
     assert not output.lstrip().startswith("{")
+
+
+def test_redact_payload_masks_sensitive_keys_and_token_values():
+    payload = {
+        "message": "Bearer abcdefghijklmnop",
+        "api_key": "secret",
+        "nested": [{"token": "value"}, {"ok": "safe"}],
+    }
+
+    redacted = redact_payload(payload)
+
+    assert redacted["message"] == "***"
+    assert redacted["api_key"] == "***"
+    assert redacted["nested"][0]["token"] == "***"
+    assert redacted["nested"][1]["ok"] == "safe"

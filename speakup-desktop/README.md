@@ -1,54 +1,59 @@
 # Speakup Desktop
 
-A native desktop application for viewing notification history from the Speakup agent notification system.
+A Tauri-based development viewer for local `speakup` notification history.
+
+## Status
+
+This app is currently source-checkout/development-only. It is not packaged as part of the PyPI `speakup` CLI distribution.
 
 ## Features
 
-- View notification history with filtering and search
-- Filter by agent, event type, or search text
-- Detailed view for each notification
-- Audio playback support
-- Dark mode interface
+- View notification history from the local SQLite database.
+- Filter by agent, event type, or search text.
+- Inspect notification metadata.
+- Open saved audio files with the system player when available.
+
+## Database path
+
+The desktop app reads the same runtime history path as Python `speakup`:
+
+```text
+<system temp dir>/speakup/history.db
+```
+
+On macOS this is usually under `/var/folders/.../T/speakup/history.db`, not necessarily `/tmp/speakup/history.db`.
 
 ## Development
 
-### Prerequisites
+Prerequisites:
 
-- Rust (https://rustup.rs)
+- Rust: https://rustup.rs
 - Tauri CLI v2: `cargo install tauri-cli --version "^2.0.0"`
 
-### Run in Development Mode
+Run:
 
 ```bash
 cd speakup-desktop
 cargo tauri dev
 ```
 
-### Build for Production
+Build:
 
 ```bash
 cd speakup-desktop
 cargo tauri build
 ```
 
-The built application will be in `src-tauri/target/release/bundle/`.
+## Launching from the Python CLI
 
-## Architecture
-
-- **Backend**: Rust with Tauri v2, reads from SQLite database
-- **Frontend**: Vanilla HTML/CSS/JavaScript
-- **Database**: Shared SQLite with the Python speakup library (`/tmp/speakup/history.db`)
-
-## Integration
-
-This desktop app reads from the same SQLite database that the main `speakup` Python library writes to. Make sure notifications are being saved to history by using the `NotifyService` with the `NotificationHistory` enabled.
-
-## Launching from CLI
-
-You can also launch the desktop app using the speakup CLI:
+From a source checkout with the desktop app built:
 
 ```bash
 speakup desktop
 ```
 
-This command is available after installing the main speakup package.
+For development mode:
+
+```bash
+speakup desktop --dev
+```

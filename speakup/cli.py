@@ -12,7 +12,7 @@ from typing import Optional
 
 import typer
 
-from .app_logging import setup_logging
+from .app_logging import redact_payload, setup_logging
 from .config import Config, get_default_log_file_path, write_default_config
 from .errors import AdapterError
 from .history import NotificationHistory
@@ -271,7 +271,10 @@ def _run_notify(
         },
     )
 
-    result = NotifyService(cfg, history=NotificationHistory()).notify(request)
+    result = NotifyService(
+        cfg,
+        history=NotificationHistory(retention_days=int(cfg.get("history", "retention_days", default=30))),
+    ).notify(request)
     logger.info(
         "notify_completed",
         extra={
@@ -601,8 +604,9 @@ def _load_payload(
 
     try:
         msg_event = MessageEvent(event)
-    except Exception:
-        msg_event = MessageEvent.FINAL
+    except Exception as exc:
+        allowed = "|".join(item.value for item in MessageEvent)
+        raise typer.BadParameter(f"event must be one of: {allowed}") from exc
     return NotifyRequest(
         message=message,
         event=msg_event,
@@ -645,7 +649,7 @@ def replay(
     if bool(agent) != bool(session_key):
         raise typer.BadParameter("Provide both --agent and --session-key together")
 
-    history = NotificationHistory()
+    history = NotificationHistory(retention_days=int(cfg.get("history", "retention_days", default=30)))
     if agent and session_key:
         entries = history.get_recent_replayable_for_session(agent, session_key, limit=count)
         error = f"No replayable notifications found for agent={agent} session_key={session_key}"
@@ -895,10 +899,25 @@ def pi(
             raise typer.Exit(1)
         payload = json.loads(raw)
 
-    logger.info("pi_payload", extra={"payload": payload})
+    log_payloads = bool(cfg.get("logging", "log_provider_payloads", default=False))
+    if log_payloads:
+        logger.info(
+            "pi_payload",
+            extra={
+                "payload": redact_payload(
+                    payload,
+                    enabled=bool(cfg.get("logging", "redact_sensitive", default=True)),
+                )
+            },
+        )
+    else:
+        logger.info("pi_payload_loaded", extra={"payload_keys": sorted(str(key) for key in payload.keys())})
 
     request = request_from_pi_payload(payload)
-    result = NotifyService(cfg, history=NotificationHistory()).notify(request)
+    result = NotifyService(
+        cfg,
+        history=NotificationHistory(retention_days=int(cfg.get("history", "retention_days", default=30))),
+    ).notify(request)
     logger.info(
         "pi_wrapper_completed",
         extra={
@@ -963,6 +982,8 @@ def show_logs(
     cfg = Config.load(config)
     log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
     color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
+    log_file = str(Path(log_file).expanduser())
+    color_log_file = str(Path(color_log_file).expanduser())
     viewer_command = cfg.get("log_viewer", "command", default="tail -n 25 -f")
 
     color_log_path = Path(color_log_file)
@@ -1002,6 +1023,8 @@ def show_logs_path(
     cfg = Config.load(config)
     log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
     color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
+    log_file = str(Path(log_file).expanduser())
+    color_log_file = str(Path(color_log_file).expanduser())
 
     color_log_path = Path(color_log_file)
     log_path = Path(log_file)

@@ -100,7 +100,10 @@ def _notify_worker(request: NotifyRequest, config_path: str | None) -> None:
     _detach_stdio()
     config = Config.load(Path(config_path) if config_path else None)
     setup_app_logging(config.get("logging", default={}))
-    NotifyService(config, history=NotificationHistory()).notify(request)
+    NotifyService(
+        config,
+        history=NotificationHistory(retention_days=int(config.get("history", "retention_days", default=30))),
+    ).notify(request)
 
 
 def _run_payload_file(payload_path: str | Path) -> None:

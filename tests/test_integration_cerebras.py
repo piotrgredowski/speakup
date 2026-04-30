@@ -1,7 +1,7 @@
 """Integration tests for Cerebras summarizer using real API.
 
-These tests require the CEREBRAS_API_KEY environment variable to be set.
-They can be run with: pytest -m integration_cerebras
+These tests require CEREBRAS_API_KEY and SPEAKUP_RUN_CEREBRAS_INTEGRATION=1.
+They can be run with: SPEAKUP_RUN_CEREBRAS_INTEGRATION=1 pytest -m integration_cerebras
 
 To run only integration tests:
     pytest tests/test_integration_cerebras.py -v
@@ -20,10 +20,10 @@ from speakup.models import MessageEvent
 from speakup.summarizers.cerebras import CerebrasSummarizer
 
 
-# Skip all tests in this module if CEREBRAS_API_KEY is not set
+# Skip real API tests unless explicitly enabled.
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("CEREBRAS_API_KEY"),
-    reason="CEREBRAS_API_KEY environment variable not set",
+    not os.environ.get("CEREBRAS_API_KEY") or os.environ.get("SPEAKUP_RUN_CEREBRAS_INTEGRATION") != "1",
+    reason="Cerebras integration tests require CEREBRAS_API_KEY and SPEAKUP_RUN_CEREBRAS_INTEGRATION=1",
 )
 
 
@@ -31,8 +31,8 @@ pytestmark = pytest.mark.skipif(
 def cerebras_api_key() -> str:
     """Get Cerebras API key from environment."""
     key = os.environ.get("CEREBRAS_API_KEY")
-    if not key:
-        pytest.skip("CEREBRAS_API_KEY environment variable not set")
+    if not key or os.environ.get("SPEAKUP_RUN_CEREBRAS_INTEGRATION") != "1":
+        pytest.skip("CEREBRAS_API_KEY and SPEAKUP_RUN_CEREBRAS_INTEGRATION=1 required")
     return key
 
 
