@@ -83,6 +83,10 @@ def run_cli(
     cwd: str | Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, "-m", "speakup.cli", *args]
+    if cwd is None and "--config" in args:
+        config_index = args.index("--config")
+        if config_index + 1 < len(args):
+            cwd = Path(args[config_index + 1]).parent
     return subprocess.run(command, text=True, capture_output=True, env=env, input=stdin, cwd=cwd)
 
 

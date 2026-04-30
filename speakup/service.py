@@ -12,6 +12,7 @@ from uuid import uuid4
 from .app_logging import redact_payload
 from .classifier import infer_event
 from .config import Config, _strip_json_comments, runtime_temp_dir
+from .context_naming import SpokenContext, project_config_path, resolve_spoken_context
 from .dedup import DedupDecision, should_skip_progress
 from .errors import AdapterError
 from .history import NotificationHistory
@@ -109,8 +110,9 @@ _DEFAULT_SPEECH_TEMPLATE = {
         "separator": " ",
         "parts": [
             {"field": "source_tool", "fallback": "agent"},
-            {"text": "from session", "when": "session_name"},
-            {"field": "session_name", "when": "session_name"},
+            {"text": "from", "when": "context_name"},
+            {"field": "context_kind", "when": "context_name"},
+            {"field": "context_name", "when": "context_name"},
             {"text": "says"},
         ],
     },
@@ -119,6 +121,24 @@ _DEFAULT_SPEECH_TEMPLATE = {
         "parts": [{"field": "summary"}],
     },
 }
+
+def _is_legacy_session_title_template(segment: dict[object, object]) -> bool:
+    parts = segment.get("parts")
+    if not isinstance(parts, list) or len(parts) != 4:
+        return False
+    return (
+        isinstance(parts[0], dict)
+        and parts[0].get("field") == "source_tool"
+        and parts[0].get("fallback") == "agent"
+        and isinstance(parts[1], dict)
+        and parts[1].get("text") == "from session"
+        and parts[1].get("when") == "session_name"
+        and isinstance(parts[2], dict)
+        and parts[2].get("field") == "session_name"
+        and parts[2].get("when") == "session_name"
+        and isinstance(parts[3], dict)
+        and parts[3].get("text") == "says"
+    )
 
 
 def build_registry_from_config(config: Config) -> AdapterRegistry:
@@ -291,6 +311,7 @@ class NotifyService:
         summary_text: str,
         raw_message: str,
         session_name: str | None,
+        context: SpokenContext | None,
         agent: str | None,
         source_tool: str | None,
     ) -> dict[str, str | None]:
@@ -298,6 +319,8 @@ class NotifyService:
             "source_tool": sanitize_text_for_tts(str(source_tool or "")) or None,
             "agent": sanitize_text_for_tts(str(agent or "")) or None,
             "session_name": sanitize_text_for_tts(str(session_name or "")) or None,
+            "context_kind": sanitize_text_for_tts(str(context.kind if context else "")) or None,
+            "context_name": sanitize_text_for_tts(str(context.name if context else "")) or None,
             "summary": sanitize_text_for_tts(summary_text),
             "raw_message": sanitize_text_for_tts(raw_message),
             "event": event.value,
@@ -325,6 +348,8 @@ class NotifyService:
         segment = self.config.get("speech_template", segment_name, default=_DEFAULT_SPEECH_TEMPLATE.get(segment_name, {}))
         if not isinstance(segment, dict):
             return None
+        if segment_name == "title" and _is_legacy_session_title_template(segment):
+            segment = _DEFAULT_SPEECH_TEMPLATE["title"]
 
         separator = segment.get("separator", " ")
         if not isinstance(separator, str) or not separator:
@@ -392,6 +417,7 @@ class NotifyService:
         summary_text: str,
         raw_message: str,
         session_name: str | None,
+        context: SpokenContext | None,
         agent: str | None,
         source_tool: str | None,
     ) -> tuple[str | None, str, str]:
@@ -400,6 +426,7 @@ class NotifyService:
             summary_text=summary_text,
             raw_message=raw_message,
             session_name=session_name,
+            context=context,
             agent=agent,
             source_tool=source_tool,
         )
@@ -435,10 +462,7 @@ class NotifyService:
         return provider.strip() if isinstance(provider, str) and provider.strip() else None
 
     def _project_config_path(self, project_path: str | None) -> Path | None:
-        normalized_project_path = _normalize_project_path(project_path)
-        if not normalized_project_path:
-            return None
-        return Path(normalized_project_path) / ".speakup.jsonc"
+        return project_config_path(project_path)
 
     def _load_project_config(self, project_path: str | None) -> dict[str, object]:
         config_path = self._project_config_path(project_path)
@@ -498,6 +522,21 @@ class NotifyService:
             return {}
         provider_cfg = providers.get(provider, {})
         return provider_cfg if isinstance(provider_cfg, dict) else {}
+
+    def _context_naming_config(self, project_path: str | None) -> dict[str, object]:
+        cfg = self.config.get("context_naming", default={})
+        merged = dict(cfg) if isinstance(cfg, dict) else {}
+        project_cfg = self._load_project_config(project_path).get("context_naming", {})
+        if isinstance(project_cfg, dict):
+            merged.update(project_cfg)
+        return merged
+
+    def _resolve_spoken_context(self, project_path: str | None, session_name: str | None) -> SpokenContext | None:
+        return resolve_spoken_context(
+            cwd=project_path,
+            session_name=session_name,
+            config=self._context_naming_config(project_path),
+        )
 
     def _available_voices(self, provider_cfg: dict[object, object]) -> list[str]:
         voices = provider_cfg.get("available_voices", [])
@@ -668,6 +707,7 @@ class NotifyService:
     def notify(self, request: NotifyRequest) -> NotifyResult:
         request_id = uuid4().hex[:12]
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        request.metadata = metadata
         project_path = _normalize_project_path(metadata.get("cwd"))
         cli_speed = float(metadata["cli_speed"]) if isinstance(metadata.get("cli_speed"), (int, float)) else None
         include_message = bool(self.config.get("logging", "log_message_text", default=False))
@@ -692,6 +732,10 @@ class NotifyService:
             request,
             self.config.get("session_naming", default={}),
         )
+        spoken_context = self._resolve_spoken_context(project_path, request.session_name)
+        if spoken_context:
+            request.metadata["context_kind"] = spoken_context.kind
+            request.metadata["context_name"] = spoken_context.name
 
         if not self._should_speak(event):
             self.logger.info("notify_skipped_speak_disabled", extra={"request_id": request_id, "event": event.value})
@@ -755,6 +799,7 @@ class NotifyService:
             summary_text=summary_text,
             raw_message=request.message,
             session_name=request.session_name,
+            context=spoken_context,
             agent=request.agent,
             source_tool=request.source_tool,
         )
@@ -801,6 +846,8 @@ class NotifyService:
         summary: str,
         event: MessageEvent,
         session_name: str | None = None,
+        context_kind: str | None = None,
+        context_name: str | None = None,
         agent: str = "speakup",
         source_tool: str | None = None,
     ) -> NotifyResult:
@@ -820,6 +867,7 @@ class NotifyService:
             summary_text=summary,
             raw_message=summary,
             session_name=session_name,
+            context=SpokenContext(context_kind, context_name) if context_kind and context_name else self._resolve_spoken_context(None, session_name),
             agent=agent,
             source_tool=source_tool,
         )

@@ -73,6 +73,7 @@ def test_default_config_preserves_existing_dedup_behavior() -> None:
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
         (lambda c: c["dedup"].update({"mode": "always"}), "dedup.mode"),
         (lambda c: c["dedup"].update({"on_skip": "tts"}), "dedup.on_skip"),
+        (lambda c: c["context_naming"].update({"source": "branch"}), "context_naming.source"),
         (lambda c: c.setdefault("logging", {}).update({"level": "TRACE"}), "logging.level"),
         (lambda c: c.setdefault("logging", {}).update({"destination": ["console"]}), "logging.destination[0]"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
@@ -122,6 +123,7 @@ def test_config_load_given_partial_config_then_materializes_safe_defaults(tmp_pa
     assert loaded.get("privacy", "mode") == "local_only"
     assert loaded.get("privacy", "allow_remote_fallback") is False
     assert loaded.get("tts", "provider_order") == ["openai"]
+    assert loaded.get("context_naming", "source") == "session"
 
 
 def test_config_load_given_legacy_omlx_summarizer_then_remains_loadable(tmp_path: Path) -> None:

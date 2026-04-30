@@ -104,6 +104,55 @@ def test_notify_given_precomputed_summary_then_bypasses_configured_summarizer() 
     assert "Already rewritten for speech." in result.summary
 
 
+def test_notify_given_repo_local_context_name_then_uses_repository_title(tmp_path: Path) -> None:
+    repo = tmp_path / "speakup"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / ".speakup.jsonc").write_text('{"context_naming": {"source": "repository", "spoken_name": "Speak Up"}}')
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(
+        NotifyRequest(
+            message="done",
+            event=MessageEvent.FINAL,
+            metadata={"cwd": str(repo)},
+        )
+    )
+
+    assert result.summary == "speakup from repository Speak Up says Task is ready for review."
+
+
+def test_notify_given_non_dict_metadata_then_normalizes_before_context_write() -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    request = NotifyRequest(
+        message="done",
+        event=MessageEvent.FINAL,
+        session_name="Nightly Run",
+        metadata="oops",
+    )
+    result = service.notify(request)
+
+    assert result.summary == "speakup from session Nightly Run says Task is ready for review."
+    assert request.metadata == {"context_kind": "session", "context_name": "Nightly Run"}
+
+
+def test_replay_summary_given_saved_context_then_uses_original_repository_title() -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.replay_summary(
+        summary="speakup from repository Speak Up says Task is ready for review.",
+        event=MessageEvent.FINAL,
+        context_kind="repository",
+        context_name="Speak Up",
+    )
+
+    assert result.summary == "speakup from repository Speak Up says Task is ready for review."
+
+
 def test_notify_given_noop_summarizer_output_then_skips_tts() -> None:
     summarizer = _RecordingSummarizer("NO_SPEAKUP_SUMMARY")
     service = _service_with_summarizer(summarizer)

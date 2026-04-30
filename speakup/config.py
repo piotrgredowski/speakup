@@ -87,7 +87,7 @@ def get_default_log_file_path() -> Path:
     return get_default_log_dir() / "speakup.log"
 
 
-SpeechTemplateField = Literal["source_tool", "agent", "session_name", "summary", "raw_message", "event"]
+SpeechTemplateField = Literal["source_tool", "agent", "session_name", "context_kind", "context_name", "summary", "raw_message", "event"]
 
 
 @dataclass
@@ -165,6 +165,13 @@ class SessionNamingConfig:
 
 
 @dataclass
+class ContextNamingConfig:
+    enabled: bool = True
+    source: Literal["session", "repository", "directory"] = "session"
+    spoken_name: str | None = None
+
+
+@dataclass
 class DedupConfig:
     enabled: bool = True
     window_seconds: Annotated[int, Gt(0)] = 30
@@ -236,8 +243,9 @@ class SpeechTemplateConfig:
         default_factory=lambda: SpeechSegmentTemplateConfig(
             parts=[
                 SpeechTemplatePartConfig(field="source_tool", fallback="agent"),
-                SpeechTemplatePartConfig(text="from session", when="session_name"),
-                SpeechTemplatePartConfig(field="session_name", when="session_name"),
+                SpeechTemplatePartConfig(text="from", when="context_name"),
+                SpeechTemplatePartConfig(field="context_kind", when="context_name"),
+                SpeechTemplatePartConfig(field="context_name", when="context_name"),
                 SpeechTemplatePartConfig(text="says"),
             ]
         )
@@ -362,6 +370,7 @@ class AppConfig:
     event_sounds: EventSoundsConfig = field(default_factory=EventSoundsConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
     session_naming: SessionNamingConfig = field(default_factory=SessionNamingConfig)
+    context_naming: ContextNamingConfig = field(default_factory=ContextNamingConfig)
     dedup: DedupConfig = field(default_factory=DedupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)

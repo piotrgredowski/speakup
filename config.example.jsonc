@@ -50,6 +50,11 @@
   "session_naming": {
     "enabled": true
   },
+  "context_naming": {
+    "enabled": true,
+    "source": "session",
+    "spoken_name": null
+  },
   "dedup": {
     "enabled": true,
     "window_seconds": 30,
@@ -97,15 +102,21 @@
           "fallback": "agent"
         },
         {
-          "text": "from session",
+          "text": "from",
           "field": null,
-          "when": "session_name",
+          "when": "context_name",
           "fallback": null
         },
         {
           "text": null,
-          "field": "session_name",
-          "when": "session_name",
+          "field": "context_kind",
+          "when": "context_name",
+          "fallback": null
+        },
+        {
+          "text": null,
+          "field": "context_name",
+          "when": "context_name",
           "fallback": null
         },
         {

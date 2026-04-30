@@ -14,6 +14,7 @@ import typer
 
 from .app_logging import redact_payload, setup_logging
 from .config import Config, get_default_log_file_path, write_default_config
+from .context_naming import SpokenContext
 from .errors import AdapterError
 from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest
@@ -533,6 +534,8 @@ def _expected_replay_audio_paths(
     entry_summary: str,
     event: MessageEvent,
     session_name: str | None,
+    context_kind: str | None = None,
+    context_name: str | None = None,
     agent: str,
     source_tool: str | None,
 ) -> int:
@@ -541,12 +544,13 @@ def _expected_replay_audio_paths(
         summary_text=entry_summary,
         raw_message=entry_summary,
         session_name=session_name,
+        context=SpokenContext(context_kind, context_name) if context_kind and context_name else None,
         agent=agent,
         source_tool=source_tool,
     )
     if not spoken_title:
         return 1
-    if session_name:
+    if session_name or context_name:
         return 2
     if spoken_title and entry_summary == spoken_summary:
         return 2
@@ -687,6 +691,10 @@ def replay(
 
     for entry in reversed(entries):
         source_tool = entry.metadata.get("source_tool") if isinstance(entry.metadata, dict) else None
+        context_kind = entry.metadata.get("context_kind") if isinstance(entry.metadata, dict) else None
+        context_name = entry.metadata.get("context_name") if isinstance(entry.metadata, dict) else None
+        context_kind = context_kind if isinstance(context_kind, str) else None
+        context_name = context_name if isinstance(context_name, str) else None
         metadata_playback_audio_paths = entry.metadata.get("playback_audio_paths", []) if isinstance(entry.metadata, dict) else []
         saved_playback_audio_paths = [Path(str(path)) for path in metadata_playback_audio_paths if path]
         metadata_audio_paths = entry.metadata.get("audio_paths", []) if isinstance(entry.metadata, dict) else []
@@ -704,6 +712,8 @@ def replay(
             entry_summary=entry.summary,
             event=MessageEvent(entry.event),
             session_name=entry.session_name,
+            context_kind=context_kind,
+            context_name=context_name,
             agent=entry.agent,
             source_tool=source_tool,
         )
@@ -733,6 +743,8 @@ def replay(
             summary=entry.summary,
             event=MessageEvent(entry.event),
             session_name=entry.session_name,
+            context_kind=context_kind,
+            context_name=context_name,
             agent=entry.agent,
             source_tool=source_tool,
         )
