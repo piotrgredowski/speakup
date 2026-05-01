@@ -1,6 +1,6 @@
 [project]
 name = "speakup"
-version = "0.4.1"
+version = "0.4.2"
 description = "Speak concise agent status updates with pluggable local/remote backends"
 readme = "README.md"
 license = "MIT"

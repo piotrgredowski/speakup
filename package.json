@@ -1,6 +1,6 @@
 {
   "name": "speakup",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Spoken agent status updates with pluggable local/remote backends",
   "repository": {
     "type": "git",

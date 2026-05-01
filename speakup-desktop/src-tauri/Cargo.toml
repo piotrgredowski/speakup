@@ -1,6 +1,6 @@
 [package]
 name = "speakup-desktop"
-version = "0.4.1"
+version = "0.4.2"
 description = "Desktop notification history viewer for Speakup"
 authors = ["Piotr Gredowski"]
 edition = "2021"
