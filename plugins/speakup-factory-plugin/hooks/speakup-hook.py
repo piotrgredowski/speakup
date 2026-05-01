@@ -3,7 +3,7 @@
 # requires-python = ">=3.13"
 # dependencies = [
 #   "speakup",
-#   "structlog>=25.5.0",
+#   "structlog==25.5.0",
 # ]
 #
 # [tool.uv.sources]
