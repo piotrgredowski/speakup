@@ -35,6 +35,17 @@ def test_resolve_spoken_context_uses_repository_override(tmp_path: Path) -> None
     assert context.name == "Speak Up"
 
 
+def test_resolve_spoken_context_defaults_to_repository_name(tmp_path: Path) -> None:
+    repo = tmp_path / "speakup-desktop"
+    (repo / ".git").mkdir(parents=True)
+
+    context = resolve_spoken_context(cwd=repo, session_name="Nightly Run", config={})
+
+    assert context is not None
+    assert context.kind == "repository"
+    assert context.name == "speakup desktop"
+
+
 def test_resolve_spoken_context_defaults_to_session_name() -> None:
     context = resolve_spoken_context(cwd=None, session_name="Nightly Run", config={"source": "session"})
 

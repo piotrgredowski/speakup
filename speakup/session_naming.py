@@ -1,132 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import re
 
 from .models import NotifyRequest
 
 _HEX_LIKE_NAME_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
-
-SESSION_NAME_ADJECTIVES = (
-    "Agile",
-    "Amber",
-    "Artful",
-    "Astral",
-    "Avid",
-    "Bright",
-    "Brisk",
-    "Calm",
-    "Candid",
-    "Clever",
-    "Cloudy",
-    "Cozy",
-    "Curious",
-    "Daring",
-    "Dawnlit",
-    "Earnest",
-    "Eager",
-    "Electric",
-    "Ember",
-    "Fearless",
-    "Focused",
-    "Glowing",
-    "Gentle",
-    "Golden",
-    "Grand",
-    "Happy",
-    "Helpful",
-    "Honest",
-    "Icy",
-    "Inventive",
-    "Jolly",
-    "Joyful",
-    "Keen",
-    "Kind",
-    "Lively",
-    "Lucky",
-    "Mellow",
-    "Merry",
-    "Moonlit",
-    "Noble",
-    "Nimble",
-    "Playful",
-    "Polished",
-    "Radiant",
-    "Quick",
-    "Quiet",
-    "Ready",
-    "Rosy",
-    "Sharp",
-    "Shiny",
-    "Silken",
-    "Silver",
-    "Sincere",
-    "Skillful",
-    "Spry",
-    "Steady",
-    "Stellar",
-    "Sunny",
-    "Swift",
-    "Tidy",
-    "Tranquil",
-    "True",
-    "Upbeat",
-    "Valiant",
-    "Velvet",
-    "Vivid",
-    "Warm",
-    "Wise",
-    "Witty",
-    "Zesty",
-)
-
-POLISH_GIVEN_NAMES = (
-    "Alicja",
-    "Amelia",
-    "Ania",
-    "Borys",
-    "Bartek",
-    "Damian",
-    "Celina",
-    "Dawid",
-    "Dominik",
-    "Emilia",
-    "Ewa",
-    "Filip",
-    "Franciszek",
-    "Gabriela",
-    "Gosia",
-    "Hania",
-    "Hubert",
-    "Iga",
-    "Igor",
-    "Jan",
-    "Julia",
-    "Kasia",
-    "Klara",
-    "Laura",
-    "Lena",
-    "Liliana",
-    "Marek",
-    "Michal",
-    "Milena",
-    "Natalia",
-    "Nikodem",
-    "Olek",
-    "Oliwia",
-    "Piotr",
-    "Pola",
-    "Robert",
-    "Sara",
-    "Stanislaw",
-    "Szymon",
-    "Tomek",
-    "Tymon",
-    "Wiktoria",
-    "Wojtek",
-    "Zosia",
-    "Zuzanna",
-)
 
 
 def _is_random_hex_like_name(value: object) -> bool:
@@ -152,28 +30,6 @@ def normalize_session_name_candidate(value: object) -> str | None:
     return stripped
 
 
-def generate_session_name(seed: str | None) -> str | None:
-    if not isinstance(seed, str):
-        return None
-
-    value = seed.strip()
-    if not value:
-        return None
-
-    digest = hashlib.sha256(value.encode("utf-8")).digest()
-    adjective = SESSION_NAME_ADJECTIVES[int.from_bytes(digest[:2], "big") % len(SESSION_NAME_ADJECTIVES)]
-    name = POLISH_GIVEN_NAMES[int.from_bytes(digest[2:4], "big") % len(POLISH_GIVEN_NAMES)]
-    return f"{adjective} {name}"
-
-
-def _normalize_seed(value: str | None) -> str | None:
-    if not isinstance(value, str):
-        return None
-
-    stripped = value.strip()
-    return stripped or None
-
-
 def resolve_session_name(request: NotifyRequest, config: dict[str, object] | None = None) -> str | None:
     explicit_name = normalize_session_name_candidate(request.session_name)
     if explicit_name:
@@ -182,8 +38,4 @@ def resolve_session_name(request: NotifyRequest, config: dict[str, object] | Non
     if isinstance(config, dict) and not bool(config.get("enabled", True)):
         return None
 
-    return generate_session_name(
-        _normalize_seed(request.conversation_id)
-        or _normalize_seed(request.session_id)
-        or _normalize_seed(request.session_key)
-    )
+    return None

@@ -6,8 +6,6 @@ import tempfile
 
 from speakup.history import NotificationHistory
 from speakup.models import MessageEvent, NotifyRequest, NotifyResult
-from speakup.session_naming import generate_session_name
-
 from .conftest import run_pi_cli
 from .conftest import run_cli
 
@@ -75,7 +73,7 @@ def test_pi_wrapper_given_session_name_then_prefixes_summary(base_config: Path, 
     assert output["summary"] == _spoken_summary("Need your sign-off", "release-42")
 
 
-def test_pi_wrapper_given_no_session_name_then_generates_name_from_session_key(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+def test_pi_wrapper_given_no_session_name_then_uses_no_generated_name(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     payload = {
         "message": "Need your sign-off",
         "sessionKey": "conv-123",
@@ -86,7 +84,7 @@ def test_pi_wrapper_given_no_session_name_then_generates_name_from_session_key(b
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == _spoken_summary("Need your sign-off", generate_session_name("conv-123"))
+    assert output["summary"] == _spoken_summary("Need your sign-off")
 
 
 def test_pi_wrapper_given_session_title_then_prefers_it_over_session_id(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
@@ -120,7 +118,7 @@ def test_pi_wrapper_given_both_title_variants_then_prefers_session_title(base_co
     assert output["summary"] == _spoken_summary("Need your sign-off", "Code Changes Review Findings")
 
 
-def test_pi_wrapper_given_explicit_empty_session_name_then_generates_name_from_session_key(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+def test_pi_wrapper_given_explicit_empty_session_name_then_uses_no_generated_name(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     payload = {
         "message": "Need your sign-off",
         "sessionName": "",
@@ -132,7 +130,7 @@ def test_pi_wrapper_given_explicit_empty_session_name_then_generates_name_from_s
 
     assert result.returncode == 0
     output = json.loads(result.stdout)
-    assert output["summary"] == _spoken_summary("Need your sign-off", generate_session_name("conv-123"))
+    assert output["summary"] == _spoken_summary("Need your sign-off")
 
 
 def test_pi_wrapper_given_precomputed_summary_then_uses_it(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:

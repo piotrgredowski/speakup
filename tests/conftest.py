@@ -60,6 +60,7 @@ def base_config(tmp_path: Path) -> Path:
         },
         "event_sounds": {"enabled": True, "files": {}},
         "summarization": {"max_chars": 160, "provider_order": ["rule_based"]},
+        "context_naming": {"source": "session"},
         "tts": {
             "provider_order": ["macos"],
             "voice": "default",

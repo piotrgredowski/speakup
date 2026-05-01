@@ -55,7 +55,7 @@ def resolve_spoken_context(
     if not bool(cfg.get("enabled", True)):
         return None
 
-    source = cfg.get("source", "session")
+    source = cfg.get("source", "repository")
     if source not in {"session", "repository", "directory"}:
         source = "session"
 
@@ -67,8 +67,14 @@ def resolve_spoken_context(
     root = find_project_root(cwd)
     if source == "repository":
         name = override or verbalize_project_name(root.name if root else None)
-        return SpokenContext("repository", name) if name else None
+        if name:
+            return SpokenContext("repository", name)
+        fallback = normalize_session_name_candidate(session_name)
+        return SpokenContext("session", fallback) if fallback else None
 
     directory = Path(cwd).expanduser() if cwd else root
     name = override or verbalize_project_name(directory.name if directory else None)
-    return SpokenContext("directory", name) if name else None
+    if name:
+        return SpokenContext("directory", name)
+    fallback = normalize_session_name_candidate(session_name)
+    return SpokenContext("session", fallback) if fallback else None

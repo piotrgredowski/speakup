@@ -52,7 +52,7 @@
   },
   "context_naming": {
     "enabled": true,
-    "source": "session",
+    "source": "repository",
     "spoken_name": null
   },
   "dedup": {

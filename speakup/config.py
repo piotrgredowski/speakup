@@ -167,7 +167,7 @@ class SessionNamingConfig:
 @dataclass
 class ContextNamingConfig:
     enabled: bool = True
-    source: Literal["session", "repository", "directory"] = "session"
+    source: Literal["session", "repository", "directory"] = "repository"
     spoken_name: str | None = None
 
 

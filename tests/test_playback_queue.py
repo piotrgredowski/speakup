@@ -15,7 +15,6 @@ from speakup.models import AudioResult, MessageEvent, NotifyRequest
 from speakup.playback.base import PlaybackAdapter
 from speakup.playback.queued import SQLiteQueuedPlayback
 from speakup.registry import AdapterRegistry
-from speakup.session_naming import generate_session_name
 from speakup.service import NotifyService
 from speakup.tts.base import TTSAdapter
 
@@ -510,7 +509,7 @@ def test_notify_service_given_session_name_then_plays_title_and_message_with_spl
     assert fake_tts.calls == [(_spoken_title("Nightly Run"), "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
 
 
-def test_notify_service_given_empty_session_name_and_conversation_id_then_generates_title(tmp_path: Path) -> None:
+def test_notify_service_given_empty_session_name_and_conversation_id_then_uses_no_generated_title(tmp_path: Path) -> None:
     title_audio = tmp_path / "title.wav"
     message_audio = tmp_path / "message.wav"
 
@@ -537,12 +536,10 @@ def test_notify_service_given_empty_session_name_and_conversation_id_then_genera
         )
     )
 
-    generated = generate_session_name("conv-123")
-    assert generated is not None
     assert result.status == "ok"
-    assert result.summary == _spoken_summary("Build failed", generated)
+    assert result.summary == _spoken_summary("Build failed")
     assert playback.groups == [[title_audio, message_audio]]
-    assert fake_tts.calls == [(_spoken_title(generated), "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
+    assert fake_tts.calls == [(_spoken_title(), "provider-title", 1.0), ("Build failed", "provider-message", 1.0)]
 
 
 def test_replay_summary_given_prefixed_summary_then_does_not_duplicate_session_name(tmp_path: Path) -> None:
@@ -701,7 +698,7 @@ def test_notify_service_given_project_provider_then_picks_and_persists_project_v
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [(_spoken_title("Release 42"), "provider-title", 1.25), ("Ship it", "provider-message", 1.25)]
+    assert fake_tts.calls == [("speakup from repository project says", "provider-title", 1.25), ("Ship it", "provider-message", 1.25)]
     project_config = json.loads((project_path / ".speakup.jsonc").read_text())
     assert project_config["providers"]["fake"]["title_voice"] == "provider-title"
     assert project_config["providers"]["fake"]["message_voice"] == "provider-message"
@@ -750,7 +747,7 @@ def test_notify_service_given_persisted_project_voices_then_reuses_them(tmp_path
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [(_spoken_title("Release 42"), "saved-title", 1.25), ("Ship it", "saved-message", 1.25)]
+    assert fake_tts.calls == [("speakup from repository project says", "saved-title", 1.25), ("Ship it", "saved-message", 1.25)]
 
 
 def test_notify_service_given_non_object_project_config_then_recovers_and_persists_voices(tmp_path: Path, monkeypatch) -> None:
@@ -789,7 +786,7 @@ def test_notify_service_given_non_object_project_config_then_recovers_and_persis
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [(_spoken_title("Release 42"), "provider-title", 1.1), ("Ship it", "provider-message", 1.1)]
+    assert fake_tts.calls == [("speakup from repository project says", "provider-title", 1.1), ("Ship it", "provider-message", 1.1)]
     project_config = json.loads((project_path / ".speakup.jsonc").read_text())
     assert project_config["providers"]["fake"]["title_voice"] == "provider-title"
     assert project_config["providers"]["fake"]["message_voice"] == "provider-message"
@@ -827,7 +824,7 @@ def test_notify_service_given_empty_available_voices_then_falls_back_to_provider
     )
 
     assert result.status == "ok"
-    assert fake_tts.calls == [(_spoken_title(), "provider-default", 0.9), ("Ship it", "provider-default", 0.9)]
+    assert fake_tts.calls == [("speakup from repository project says", "provider-default", 0.9), ("Ship it", "provider-default", 0.9)]
 
 
 def test_notify_service_given_cli_speed_then_overrides_split_speeds(tmp_path: Path) -> None:

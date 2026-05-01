@@ -8,8 +8,6 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from speakup.session_naming import generate_session_name
-
 from .conftest import run_cli
 from speakup.history import NotificationHistory
 from speakup.cli import _normalize_notify_payload
@@ -225,7 +223,7 @@ def test_cli_given_session_name_then_prefixes_spoken_summary(base_config: Path, 
     assert payload["summary"] == _spoken_summary("Done implementing the feature", "nightly-fix")
 
 
-def test_cli_given_conversation_id_without_session_name_then_generates_session_name(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
+def test_cli_given_conversation_id_without_session_name_then_uses_no_generated_name(base_config: Path, env_with_fake_audio: dict[str, str]) -> None:
     result = run_cli(
         [
             "--config",
@@ -242,7 +240,7 @@ def test_cli_given_conversation_id_without_session_name_then_generates_session_n
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["summary"] == _spoken_summary("Done implementing the feature", generate_session_name("conv-123"))
+    assert payload["summary"] == _spoken_summary("Done implementing the feature")
 
 
 def test_normalize_notify_payload_given_both_source_tool_keys_then_drops_legacy_key() -> None:

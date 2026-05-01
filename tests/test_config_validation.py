@@ -123,7 +123,7 @@ def test_config_load_given_partial_config_then_materializes_safe_defaults(tmp_pa
     assert loaded.get("privacy", "mode") == "local_only"
     assert loaded.get("privacy", "allow_remote_fallback") is False
     assert loaded.get("tts", "provider_order") == ["openai"]
-    assert loaded.get("context_naming", "source") == "session"
+    assert loaded.get("context_naming", "source") == "repository"
 
 
 def test_config_load_given_legacy_omlx_summarizer_then_remains_loadable(tmp_path: Path) -> None:
