@@ -56,7 +56,7 @@ def test_hooks_configuration():
         command = hooks["hooks"][event_name][0]["hooks"][0]["command"]
         assert command in expected_commands
     pre_tool_use = hooks["hooks"]["PreToolUse"][0]
-    assert pre_tool_use["matcher"] == "AskUser"
+    assert pre_tool_use["matcher"] == "AskUser|ExitSpecMode"
     assert pre_tool_use["hooks"][0]["command"] in expected_commands
 
 
@@ -511,6 +511,24 @@ def test_extract_message_summarizes_askuser_pre_tool_use_questionnaire():
     }
 
     assert module.extract_message(payload, "PreToolUse") == "Droid needs input about Topic."
+
+
+def test_extract_message_summarizes_exit_spec_mode_pre_tool_use():
+    module = load_hook_module()
+
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "ExitSpecMode",
+        "tool_input": {
+            "title": "Notify SpeakUp on Droid specification proposals",
+            "plan": "## Goal\nSpeak when Droid is waiting for plan approval.",
+        },
+    }
+
+    assert (
+        module.extract_message(payload, "PreToolUse")
+        == "Droid is waiting for plan approval: Notify SpeakUp on Droid specification proposals."
+    )
 
 
 def test_extract_message_ignores_non_askuser_pre_tool_use():

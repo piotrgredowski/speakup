@@ -14,7 +14,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "AskUser",
+        "matcher": "AskUser|ExitSpecMode",
         "hooks": [
           {
             "type": "command",

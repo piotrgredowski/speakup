@@ -695,16 +695,21 @@ def extract_message(input_data: dict, droid_event: str) -> str | None:
         return msg
 
     if droid_event == "PreToolUse":
-        if input_data.get("tool_name") != "AskUser":
-            logger.debug("Ignoring PreToolUse event for non-AskUser tool")
+        tool_name = input_data.get("tool_name")
+        if tool_name not in ("AskUser", "ExitSpecMode"):
+            logger.debug("Ignoring PreToolUse event for unsupported tool")
             return None
         tool_input = input_data.get("tool_input")
         if not isinstance(tool_input, dict):
-            logger.debug("No tool_input for AskUser PreToolUse")
+            logger.debug(f"No tool_input for {tool_name} PreToolUse")
             return None
-        result = _summarize_questionnaire(tool_input.get("questionnaire"))
+        result = (
+            _summarize_questionnaire(tool_input.get("questionnaire"))
+            if tool_name == "AskUser"
+            else _summarize_exit_spec_mode(tool_input)
+        )
         if result:
-            logger.debug(f"Extracted AskUser questionnaire summary ({len(result)} chars)")
+            logger.debug(f"Extracted {tool_name} PreToolUse summary ({len(result)} chars)")
         return result
 
     elif droid_event in ("Stop", "SubagentStop"):
