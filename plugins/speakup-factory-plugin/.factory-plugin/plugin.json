@@ -1,9 +1,9 @@
 {
   "name": "speakup",
   "description": "Spoken notifications for Droid events - converts Droid lifecycle events into speech using TTS",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "author": {
-    "name": "Piotr Grędowski"
+    "name": "Piotr Gr\u0119dowski"
   },
   "homepage": "https://github.com/piotrgredowski/speakup",
   "repository": "https://github.com/piotrgredowski/speakup",
