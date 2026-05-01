@@ -14,7 +14,10 @@ import json
 import logging
 import os
 import platform
+import subprocess
 import sys
+import tempfile
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -95,6 +98,9 @@ _RESERVED_RECORD_KEYS = {
 
 logger = logging.getLogger("speakup-droid")
 _CURRENT_REQUEST_ID = DEFAULT_REQUEST_ID
+_SPEC_WATCH_ARG = "--watch-spec"
+_SPEC_WATCH_TIMEOUT_SECONDS = 600
+_SPEC_WATCH_POLL_SECONDS = 0.5
 
 
 
@@ -500,6 +506,48 @@ def _summarize_exit_spec_mode(tool_input: dict[object, object]) -> str | None:
         return f"Droid is waiting for plan approval. {goal}"
 
     return "Droid is waiting for plan approval."
+
+
+def _iter_exit_spec_mode_blocks(entry: dict) -> list[tuple[str, dict]]:
+    message = entry.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+    else:
+        content = entry.get("content")
+
+    if not isinstance(content, list):
+        return []
+
+    blocks: list[tuple[str, dict]] = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        if block.get("name") != "ExitSpecMode":
+            continue
+        tool_input = block.get("input")
+        if not isinstance(tool_input, dict):
+            continue
+        proposal_id = block.get("id")
+        if not isinstance(proposal_id, str) or not proposal_id.strip():
+            proposal_id = f"line:{hash(json.dumps(tool_input, sort_keys=True, default=str))}"
+        blocks.append((proposal_id, tool_input))
+    return blocks
+
+
+def extract_exit_spec_mode_notifications_from_line(line: str) -> list[tuple[str, str]]:
+    try:
+        entry = json.loads(line)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(entry, dict):
+        return []
+
+    notifications: list[tuple[str, str]] = []
+    for proposal_id, tool_input in _iter_exit_spec_mode_blocks(entry):
+        summary = _summarize_exit_spec_mode(tool_input)
+        if summary:
+            notifications.append((proposal_id, summary))
+    return notifications
 
 
 def _extract_message_from_notification_content(content: object) -> str | None:
@@ -932,6 +980,159 @@ def extract_session_id(input_data: dict) -> str | None:
     return None
 
 
+def get_spec_watcher_state_path(session_key: str) -> Path:
+    state_dir = Path.home() / ".config" / "speakup" / "droid-spec-watchers"
+    safe_key = _cwd_slug(session_key)
+    return state_dir / f"{safe_key}.json"
+
+
+def _is_pid_running(pid: object) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _read_spec_watcher_state(session_key: str) -> dict:
+    state_path = get_spec_watcher_state_path(session_key)
+    try:
+        payload = json.loads(state_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_spec_watcher_state(session_key: str, state: dict) -> None:
+    state_path = get_spec_watcher_state_path(session_key)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state))
+
+
+def _spec_watcher_payload(input_data: dict, session_key: str, start_offset: int) -> dict:
+    return {
+        "transcript_path": input_data.get("transcript_path") or input_data.get("transcriptPath"),
+        "session_key": session_key,
+        "session_id": extract_session_id(input_data) or session_key,
+        "session_name": extract_session_name(input_data),
+        "cwd": input_data.get("cwd"),
+        "start_offset": start_offset,
+    }
+
+
+def start_spec_proposal_watcher(input_data: dict) -> int | None:
+    transcript_path = input_data.get("transcript_path") or input_data.get("transcriptPath")
+    if not isinstance(transcript_path, str) or not transcript_path.strip():
+        logger.debug("No transcript_path for spec watcher")
+        return None
+
+    session_key = extract_session_key(input_data) or extract_session_id(input_data)
+    if not session_key:
+        logger.debug("No session key for spec watcher")
+        return None
+
+    existing = _read_spec_watcher_state(session_key)
+    if _is_pid_running(existing.get("pid")):
+        logger.debug(f"Spec watcher already running: pid={existing.get('pid')}")
+        return int(existing["pid"])
+
+    path = Path(transcript_path)
+    start_offset = path.stat().st_size if path.exists() else 0
+    payload = _spec_watcher_payload(input_data, session_key, start_offset)
+    fd, raw_path = tempfile.mkstemp(prefix="speakup-spec-watch-", suffix=".json")
+    payload_path = Path(raw_path)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+
+    cmd = ["uv", "run", str(Path(__file__).resolve()), _SPEC_WATCH_ARG, str(payload_path)]
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        payload_path.unlink(missing_ok=True)
+        raise
+
+    _write_spec_watcher_state(
+        session_key,
+        {
+            "pid": process.pid,
+            "transcript_path": transcript_path,
+            "started_at": time.time(),
+            "seen_ids": existing.get("seen_ids", []),
+        },
+    )
+    logger.info(f"Started spec proposal watcher: pid={process.pid}")
+    return process.pid
+
+
+def run_spec_proposal_watcher(payload_path: str | Path) -> int:
+    path = Path(payload_path)
+    try:
+        payload = json.loads(path.read_text())
+    finally:
+        path.unlink(missing_ok=True)
+
+    transcript_path = Path(str(payload["transcript_path"]))
+    session_key = str(payload["session_key"])
+    session_name = payload.get("session_name") if isinstance(payload.get("session_name"), str) else None
+    session_id = payload.get("session_id") if isinstance(payload.get("session_id"), str) else session_key
+    cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
+    start_offset = int(payload.get("start_offset", 0))
+
+    setup_logging(load_full_config())
+    logger.info(f"Spec proposal watcher started: session_key={session_key}")
+
+    state = _read_spec_watcher_state(session_key)
+    seen_ids = {str(value) for value in state.get("seen_ids", []) if isinstance(value, str)}
+    deadline = time.monotonic() + _SPEC_WATCH_TIMEOUT_SECONDS
+    offset = start_offset
+
+    while time.monotonic() < deadline:
+        if not transcript_path.exists():
+            time.sleep(_SPEC_WATCH_POLL_SECONDS)
+            continue
+
+        with transcript_path.open(encoding="utf-8") as handle:
+            handle.seek(offset)
+            lines = handle.readlines()
+            offset = handle.tell()
+
+        for line in lines:
+            for proposal_id, message in extract_exit_spec_mode_notifications_from_line(line):
+                if proposal_id in seen_ids:
+                    continue
+                seen_ids.add(proposal_id)
+                _write_spec_watcher_state(
+                    session_key,
+                    {
+                        "pid": os.getpid(),
+                        "transcript_path": str(transcript_path),
+                        "started_at": state.get("started_at", time.time()),
+                        "seen_ids": sorted(seen_ids),
+                    },
+                )
+                run_speakup(
+                    message,
+                    "needs_input",
+                    session_name=session_name,
+                    session_key=session_key,
+                    session_id=session_id,
+                    cwd=cwd,
+                    source_tool="Droid",
+                )
+        time.sleep(_SPEC_WATCH_POLL_SECONDS)
+
+    logger.info("Spec proposal watcher finished")
+    return 0
+
+
 def run_speakup(
     message: str,
     event: str,
@@ -983,6 +1184,9 @@ def main():
     """Main hook entry point."""
     global _CURRENT_REQUEST_ID
 
+    if len(sys.argv) == 3 and sys.argv[1] == _SPEC_WATCH_ARG:
+        raise SystemExit(run_spec_proposal_watcher(sys.argv[2]))
+
     # Read JSON input from stdin
     try:
         input_data = json.load(sys.stdin)
@@ -1019,6 +1223,7 @@ def main():
     event_key = {
         "Notification": "notification",
         "PreToolUse": "notification",
+        "UserPromptSubmit": "notification",
         "Stop": "stop",
         "SubagentStop": "subagent_stop",
         "SessionStart": "session_start",
@@ -1035,6 +1240,13 @@ def main():
 
     if is_worker_stop and not event_config.get("subagent_stop", False):
         logger.debug("Worker Stop event suppressed by subagent_stop config")
+        sys.exit(0)
+
+    if droid_event == "UserPromptSubmit":
+        try:
+            start_spec_proposal_watcher(input_data)
+        except Exception:
+            logger.warning("Failed to start spec proposal watcher", exc_info=True)
         sys.exit(0)
 
     # Extract message based on event type

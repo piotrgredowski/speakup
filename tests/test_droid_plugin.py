@@ -47,6 +47,7 @@ def test_hooks_configuration():
     # Check that all expected events are configured
     assert "Notification" in hooks["hooks"]
     assert "PreToolUse" in hooks["hooks"]
+    assert "UserPromptSubmit" in hooks["hooks"]
     assert "Stop" in hooks["hooks"]
     expected_commands = {
         'uv run --script "${DROID_PLUGIN_ROOT}/hooks/speakup-hook.py"',
@@ -58,6 +59,8 @@ def test_hooks_configuration():
     pre_tool_use = hooks["hooks"]["PreToolUse"][0]
     assert pre_tool_use["matcher"] == "AskUser|ExitSpecMode"
     assert pre_tool_use["hooks"][0]["command"] in expected_commands
+    user_prompt_submit = hooks["hooks"]["UserPromptSubmit"][0]
+    assert user_prompt_submit["hooks"][0]["command"] in expected_commands
 
 
 def test_hook_script_exists():
@@ -529,6 +532,55 @@ def test_extract_message_summarizes_exit_spec_mode_pre_tool_use():
         module.extract_message(payload, "PreToolUse")
         == "Droid is waiting for plan approval: Notify SpeakUp on Droid specification proposals."
     )
+
+
+def test_extract_exit_spec_mode_notifications_from_transcript_line():
+    module = load_hook_module()
+    line = json.dumps(
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call-spec-123",
+                        "name": "ExitSpecMode",
+                        "input": {
+                            "title": "Notify on spec proposals",
+                            "plan": "## Goal\nSpeak before approval.",
+                        },
+                    }
+                ],
+            },
+        }
+    )
+
+    assert module.extract_exit_spec_mode_notifications_from_line(line) == [
+        ("call-spec-123", "Droid is waiting for plan approval: Notify on spec proposals.")
+    ]
+
+
+def test_extract_exit_spec_mode_notifications_ignores_non_spec_tool_use():
+    module = load_hook_module()
+    line = json.dumps(
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call-read",
+                        "name": "Read",
+                        "input": {"file_path": "/tmp/file"},
+                    }
+                ],
+            },
+        }
+    )
+
+    assert module.extract_exit_spec_mode_notifications_from_line(line) == []
 
 
 def test_extract_message_ignores_non_askuser_pre_tool_use():
@@ -1091,6 +1143,151 @@ def test_main_speaks_askuser_pre_tool_use_questionnaire(monkeypatch):
         stdout.getvalue().strip()
         == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
     )
+
+
+def test_main_starts_spec_watcher_on_user_prompt_submit(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text("")
+    captured = {}
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "sess-123",
+            "transcript_path": str(transcript),
+            "cwd": "/tmp/project",
+        },
+    )
+    monkeypatch.setattr(module, "start_spec_proposal_watcher", lambda input_data: captured.update(input_data) or 321)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert captured["hook_event_name"] == "UserPromptSubmit"
+    assert captured["transcript_path"] == str(transcript)
+    assert stdout.getvalue() == ""
+
+
+def test_start_spec_proposal_watcher_launches_detached_process(monkeypatch, tmp_path):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text('{"type":"message"}\n')
+    captured = {}
+
+    class FakeProcess:
+        pid = 4321
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+
+    pid = module.start_spec_proposal_watcher(
+        {
+            "session_id": "sess-123",
+            "transcript_path": str(transcript),
+            "cwd": "/tmp/project",
+        }
+    )
+
+    assert pid == 4321
+    assert captured["cmd"][:3] == ["uv", "run", str(Path(module.__file__).resolve())]
+    assert captured["cmd"][3] == module._SPEC_WATCH_ARG
+    assert captured["kwargs"]["stdin"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["stdout"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] is module.subprocess.DEVNULL
+    assert captured["kwargs"]["start_new_session"] is True
+    payload_path = Path(captured["cmd"][4])
+    payload = json.loads(payload_path.read_text())
+    assert payload["start_offset"] == len('{"type":"message"}\n')
+    assert payload["session_key"] == "sess-123"
+    state = json.loads(module.get_spec_watcher_state_path("sess-123").read_text())
+    assert state["pid"] == 4321
+
+
+def test_start_spec_proposal_watcher_reuses_running_process(monkeypatch, tmp_path):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text("")
+    module._write_spec_watcher_state("sess-123", {"pid": 4321})
+
+    monkeypatch.setattr(module, "_is_pid_running", lambda pid: pid == 4321)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError))
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+
+    assert module.start_spec_proposal_watcher({"session_id": "sess-123", "transcript_path": str(transcript)}) == 4321
+
+
+def test_run_spec_proposal_watcher_deduplicates_proposal_ids(monkeypatch, tmp_path):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    transcript = tmp_path / "session.jsonl"
+    line = json.dumps(
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call-spec-123",
+                        "name": "ExitSpecMode",
+                        "input": {"title": "Spec title", "plan": "## Goal\nDo it."},
+                    }
+                ],
+            },
+        }
+    )
+    transcript.write_text(f"{line}\n{line}\n")
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "transcript_path": str(transcript),
+                "session_key": "sess-123",
+                "session_id": "sess-123",
+                "session_name": "Session Name",
+                "cwd": "/tmp/project",
+                "start_offset": 0,
+            }
+        )
+    )
+    captured = []
+
+    monkeypatch.setattr(module, "_SPEC_WATCH_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(module, "_SPEC_WATCH_POLL_SECONDS", 0)
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module, "run_speakup", lambda *args, **kwargs: captured.append((args, kwargs)) or True)
+
+    assert module.run_spec_proposal_watcher(payload_path) == 0
+
+    assert len(captured) == 1
+    args, kwargs = captured[0]
+    assert args == ("Droid is waiting for plan approval: Spec title.", "needs_input")
+    assert kwargs["session_key"] == "sess-123"
+    state = json.loads(module.get_spec_watcher_state_path("sess-123").read_text())
+    assert state["seen_ids"] == ["call-spec-123"]
 
 
 def test_main_ignores_non_askuser_pre_tool_use(monkeypatch):
