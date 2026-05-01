@@ -1155,6 +1155,170 @@ def test_main_prints_stop_summary_to_stdout(monkeypatch, tmp_path):
     assert stdout.getvalue() == ""
 
 
+def test_main_suppresses_worker_stop_by_session_name(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"worker done"}]}}\n'
+    )
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"stop": True, "subagent_stop": False}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "worker")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
+    )
+
+    called = {"run_speakup": False}
+
+    def fake_run_speakup(*args, **kwargs):
+        called["run_speakup"] = True
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert called["run_speakup"] is False
+    assert stdout.getvalue() == ""
+
+
+def test_main_suppresses_worker_stop_by_transcript_marker(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        textwrap.dedent(
+            """
+            {"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"worker done"}]}}
+            {"type":"workers_stopped"}
+            """
+        ).strip()
+        + "\n"
+    )
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"stop": True, "subagent_stop": False}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
+    )
+
+    called = {"run_speakup": False}
+
+    def fake_run_speakup(*args, **kwargs):
+        called["run_speakup"] = True
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert called["run_speakup"] is False
+    assert stdout.getvalue() == ""
+
+
+def test_main_allows_worker_stop_when_subagent_stop_enabled(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"worker done"}]}}\n'
+    )
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"stop": True, "subagent_stop": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "worker")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
+    )
+
+    called = {"run_speakup": False}
+
+    def fake_run_speakup(*args, **kwargs):
+        called["run_speakup"] = True
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert called["run_speakup"] is True
+
+
+def test_main_allows_worker_stop_when_stop_disabled_but_subagent_stop_enabled(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"worker done"}]}}\n'
+    )
+
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(
+        module,
+        "load_droid_config",
+        lambda: {"enabled": True, "events": {"stop": False, "subagent_stop": True}},
+    )
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "worker")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(
+        module.json,
+        "load",
+        lambda _: {"hook_event_name": "Stop", "transcript_path": str(transcript)},
+    )
+
+    called = {"run_speakup": False}
+
+    def fake_run_speakup(*args, **kwargs):
+        called["run_speakup"] = True
+        return True
+
+    monkeypatch.setattr(module, "run_speakup", fake_run_speakup)
+
+    try:
+        module.main()
+    except SystemExit:
+        pass
+
+    assert called["run_speakup"] is True
+
+
 def test_main_ignores_subagent_stop_when_disabled(monkeypatch, tmp_path):
     module = load_hook_module()
     stdout = io.StringIO()

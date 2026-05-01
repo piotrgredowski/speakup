@@ -473,16 +473,18 @@ def _setup_logging_from_options(
 def _self_test_audio(config: Config) -> dict:
     logger = logging.getLogger(__name__)
     playback = MacOSPlaybackAdapter()
+    event_sound_path = Path(
+        config.get("event_sounds", "files", default={}).get("info", "/System/Library/Sounds/Ping.aiff")
+    )
     checks: dict[str, dict[str, str | bool | None]] = {
         "event_sound": {
             "ok": False,
             "error": None,
-            "path": "/System/Library/Sounds/Ping.aiff",
+            "path": str(event_sound_path),
         },
     }
 
     try:
-        event_sound_path = Path("/System/Library/Sounds/Ping.aiff")
         playback.play_file(event_sound_path)
         checks["event_sound"]["ok"] = True
     except AdapterError as exc:

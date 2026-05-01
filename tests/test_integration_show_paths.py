@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 
 from tests.conftest import run_cli
@@ -40,7 +42,11 @@ def test_show_logs_path_given_default_then_prints_default_log_path(
     result = run_cli(["show-logs-path"], env=env)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == str(tmp_path / "Library" / "Logs" / "speakup" / "speakup.log")
+    if os.name == "posix" and "darwin" in sys.platform:
+        expected = tmp_path / "Library" / "Logs" / "speakup" / "speakup.log"
+    else:
+        expected = tmp_path / ".local" / "state" / "speakup" / "speakup.log"
+    assert result.stdout.strip() == str(expected)
 
 
 def test_show_logs_path_given_override_then_prints_configured_path(

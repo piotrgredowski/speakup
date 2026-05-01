@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import stat
 from pathlib import Path
 
@@ -14,6 +15,10 @@ def _make_fake_command(tmp_path: Path, name: str, log_path: Path) -> Path:
     return script
 
 
+def _default_opener_name() -> str:
+    return "open" if platform.system() == "Darwin" else "xdg-open"
+
+
 def test_show_config_given_existing_file_then_uses_default_opener_on_macos(tmp_path: Path, env_with_fake_audio: dict[str, str]) -> None:
     env = dict(env_with_fake_audio)
     env["HOME"] = str(tmp_path)
@@ -21,7 +26,7 @@ def test_show_config_given_existing_file_then_uses_default_opener_on_macos(tmp_p
     log_path = tmp_path / "open.log"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    _make_fake_command(bin_dir, "open", log_path)
+    _make_fake_command(bin_dir, _default_opener_name(), log_path)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
 
     cfg_path = tmp_path / ".config" / "speakup" / "config.jsonc"
@@ -61,7 +66,7 @@ def test_show_config_given_missing_file_and_accept_then_creates_and_opens(tmp_pa
     log_path = tmp_path / "open.log"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    _make_fake_command(bin_dir, "open", log_path)
+    _make_fake_command(bin_dir, _default_opener_name(), log_path)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
 
     result = run_cli(["show-config"], env=env, stdin="y\n")

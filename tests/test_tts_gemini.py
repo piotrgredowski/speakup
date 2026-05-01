@@ -93,6 +93,7 @@ def test_gemini_tts_given_mp3_output_then_transcodes_from_wav(tmp_path, monkeypa
         return subprocess.CompletedProcess(command, 0, b"", b"")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("shutil.which", lambda command: command)
     monkeypatch.setattr("subprocess.run", fake_run)
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key-123")
 

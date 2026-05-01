@@ -790,6 +790,75 @@ def extract_session_name(input_data: dict) -> str | None:
     return None
 
 
+def _is_worker_session_name(session_name: str | None) -> bool:
+    return isinstance(session_name, str) and session_name.strip().casefold() in {"worker", "workers", "subagent", "subagents"}
+
+
+def _has_worker_metadata(source: dict | None) -> bool:
+    if not isinstance(source, dict):
+        return False
+
+    for key in ("is_worker", "isWorker", "worker", "is_subagent", "isSubagent", "subagent"):
+        if source.get(key) is True:
+            return True
+
+    for key in ("kind", "type", "session_type", "sessionType", "role"):
+        value = source.get(key)
+        if isinstance(value, str) and value.strip().casefold() in {"worker", "subagent", "workers_stopped"}:
+            return True
+
+    return False
+
+
+def transcript_ends_with_workers_stopped(transcript_path: object, max_lines: int = 20) -> bool:
+    if not isinstance(transcript_path, str) or not transcript_path.strip():
+        return False
+
+    path = Path(transcript_path)
+    if not path.exists():
+        return False
+
+    try:
+        with path.open() as handle:
+            lines = handle.readlines()
+    except IOError:
+        logger.debug("Failed to inspect transcript worker marker", exc_info=True)
+        return False
+
+    for line in reversed(lines[-max_lines:]):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        entry_type = entry.get("type")
+        if entry_type == "session_end":
+            continue
+        return entry_type == "workers_stopped"
+
+    return False
+
+
+def is_worker_stop_payload(input_data: dict, session_name: str | None) -> bool:
+    if _is_worker_session_name(session_name):
+        return True
+    if transcript_ends_with_workers_stopped(input_data.get("transcript_path")):
+        return True
+    return any(
+        _has_worker_metadata(source)
+        for source in (
+            input_data,
+            input_data.get("metadata"),
+            input_data.get("request"),
+            input_data.get("session"),
+        )
+    )
+
+
 def extract_request_id(input_data: dict) -> str:
     """Extract request id from Droid hook payload when available."""
     candidates = (
@@ -949,9 +1018,18 @@ def main():
         "SubagentStop": "subagent_stop",
         "SessionStart": "session_start",
     }.get(droid_event, droid_event.lower())
+    session_name = extract_session_name(input_data) if droid_event == "Stop" else None
+    is_worker_stop = droid_event == "Stop" and is_worker_stop_payload(input_data, session_name)
 
     if not event_config.get(event_key, True):
-        logger.debug(f"Event type {event_key} disabled, exiting")
+        if is_worker_stop and event_config.get("subagent_stop", False):
+            logger.debug("Worker Stop event allowed by subagent_stop config")
+        else:
+            logger.debug(f"Event type {event_key} disabled, exiting")
+            sys.exit(0)
+
+    if is_worker_stop and not event_config.get("subagent_stop", False):
+        logger.debug("Worker Stop event suppressed by subagent_stop config")
         sys.exit(0)
 
     # Extract message based on event type
@@ -964,10 +1042,11 @@ def main():
     speakup_event = map_event_to_speakup(droid_event)
 
     # Get session name (optional)
-    session_name = extract_session_name(input_data)
+    session_name = session_name or extract_session_name(input_data)
     session_id = extract_session_id(input_data)
     session_key = extract_session_key(input_data) or session_id
     cwd = input_data.get("cwd")
+
     if session_key and isinstance(cwd, str) and cwd.strip():
         save_current_session_pointer(cwd.strip(), session_key, session_name)
 
