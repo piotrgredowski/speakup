@@ -37,24 +37,26 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          python -c "
-import requests
-import sys
+          python - <<'PY'
+          import os
+          import sys
 
-version = '$VERSION'
-url = f'https://test.pypi.org/pypi/speakup/{version}/json'
+          import requests
 
-try:
-    response = requests.get(url, timeout=10)
-    if response.status_code == 200:
-        print(f'✓ Version {version} found on TestPyPI')
-    else:
-        print(f'✗ Version {version} not found on TestPyPI')
-        sys.exit(1)
-except Exception as e:
-    print(f'Error checking TestPyPI: {e}')
-    sys.exit(1)
-"
+          version = os.environ["VERSION"]
+          url = f"https://test.pypi.org/pypi/speakup/{version}/json"
+
+          try:
+              response = requests.get(url, timeout=10)
+              if response.status_code == 200:
+                  print(f"✓ Version {version} found on TestPyPI")
+              else:
+                  print(f"✗ Version {version} not found on TestPyPI")
+                  sys.exit(1)
+          except Exception as e:
+              print(f"Error checking TestPyPI: {e}")
+              sys.exit(1)
+          PY
 
       - name: Download from TestPyPI
         env:
