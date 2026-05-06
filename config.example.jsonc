@@ -92,6 +92,7 @@
     "command": null
   },
   "repo_config": {
+    "auto_register": true,
     "save_active_provider_config": false
   },
   "repositories": {},

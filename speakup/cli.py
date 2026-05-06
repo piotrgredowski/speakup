@@ -15,11 +15,13 @@ import typer
 from .app_logging import redact_payload, setup_logging
 from .config import (
     Config,
-    _load_jsonc,
+    _load_config_for_write,
+    active_repo_config_payload,
     deep_merge,
-    default_config,
     get_default_log_file_path,
-    normalize_config,
+    load_config_without_repository_registration,
+    load_config_with_repository_registration,
+    register_repository_config,
     validate_config,
     write_default_config,
 )
@@ -67,95 +69,8 @@ def _resolve_summary_model_target(
     return "lmstudio", "model"
 
 
-_SAFE_PROVIDER_CONFIG_KEYS = {
-    "api_key_env",
-    "args",
-    "available_voices",
-    "base_url",
-    "command",
-    "message_voice",
-    "model",
-    "summary_model",
-    "timeout",
-    "timeout_seconds",
-    "title_voice",
-    "trim_output",
-    "tts_model",
-    "voice",
-    "voice_id",
-}
-
-
-def _provider_config_key(provider: str) -> str:
-    return "command_summary" if provider == "command" else provider
-
-
-def _safe_provider_config(provider_config: object) -> dict[str, object]:
-    if not isinstance(provider_config, dict):
-        return {}
-    return {
-        str(key): value
-        for key, value in provider_config.items()
-        if isinstance(key, str) and key in _SAFE_PROVIDER_CONFIG_KEYS
-    }
-
-
-def _load_config_for_write(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return default_config()
-    return normalize_config(_load_jsonc(path))
-
-
-def _resolve_project_override_from_config(cfg: Config, cwd: Path) -> dict[object, object]:
-    overrides = cfg.get("tts", "project_overrides", default={})
-    if not isinstance(overrides, dict):
-        return {}
-    try:
-        resolved_cwd = str(cwd.resolve())
-    except OSError:
-        resolved_cwd = str(cwd)
-    for project_path, override in overrides.items():
-        if not isinstance(project_path, str) or not isinstance(override, dict):
-            continue
-        try:
-            resolved_project = str(Path(project_path).expanduser().resolve())
-        except OSError:
-            resolved_project = str(Path(project_path).expanduser())
-        if resolved_project == resolved_cwd:
-            return override
-    return {}
-
-
 def _active_repo_config_payload(cfg: Config, cwd: Path) -> dict[str, object]:
-    summary_order = cfg.get("summarization", "provider_order", default=["rule_based"])
-    tts_order = cfg.get("tts", "provider_order", default=["macos"])
-    if not isinstance(summary_order, list):
-        summary_order = ["rule_based"]
-    if not isinstance(tts_order, list):
-        tts_order = ["macos"]
-
-    project_override = _resolve_project_override_from_config(cfg, cwd)
-    project_provider = project_override.get("provider")
-    effective_tts_order = [project_provider] if isinstance(project_provider, str) and project_provider.strip() else tts_order
-
-    provider_names = {
-        _provider_config_key(provider)
-        for provider in [*summary_order, *effective_tts_order]
-        if isinstance(provider, str) and provider.strip()
-    }
-    providers: dict[str, object] = {}
-    for provider_name in sorted(provider_names):
-        provider_cfg = _safe_provider_config(cfg.get("providers", provider_name, default={}))
-        if provider_cfg:
-            providers[provider_name] = provider_cfg
-
-    payload: dict[str, object] = {
-        "summarization": {"provider_order": summary_order},
-        "tts": {"provider_order": effective_tts_order},
-    }
-    if providers:
-        payload["providers"] = providers
-    return payload
+    return active_repo_config_payload(cfg, cwd)
 
 
 def _open_with_default_app(path: Path) -> None:
@@ -325,7 +240,7 @@ def _run_notify(
         },
     )
 
-    cfg = Config.load(config)
+    cfg = load_config_without_repository_registration(config)
     _setup_logging_from_options(
         cfg, debug, log_level, log_format, str(log_file) if log_file else None
     )
@@ -363,6 +278,7 @@ def _run_notify(
     if speed is not None:
         request.metadata["cli_speed"] = speed
     request.skip_summarization = no_summarize
+    register_repository_config(cfg, config, request.metadata.get("cwd"))
     logger.info(
         "request_loaded",
         extra={
@@ -747,7 +663,7 @@ def replay(
     ),
 ) -> None:
     """Replay recent notifications, optionally scoped to an exact agent/session pair."""
-    cfg = Config.load(config)
+    cfg = load_config_with_repository_registration(config)
     _setup_logging_from_options(
         cfg, debug, log_level, log_format, str(log_file) if log_file else None
     )
@@ -926,7 +842,7 @@ def self_test(
     ),
 ) -> None:
     """Run event sound playback diagnostics."""
-    cfg = Config.load(config)
+    cfg = load_config_with_repository_registration(config)
     _setup_logging_from_options(cfg, debug, log_level, log_format, log_file)
 
     result = _self_test_audio(cfg)
@@ -955,7 +871,7 @@ def doctor(
     ),
 ) -> None:
     """Run configured health checks."""
-    cfg = Config.load(config)
+    cfg = load_config_with_repository_registration(config)
     _setup_logging_from_options(
         cfg, debug, log_level, log_format, str(log_file) if log_file else None
     )
@@ -984,7 +900,7 @@ def pi(
     logger = logging.getLogger(__name__)
 
     try:
-        cfg = Config.load(config)
+        cfg = load_config_with_repository_registration(config)
     except ConfigValidationError as exc:
         json.dump({"status": "error", "error": str(exc)}, sys.stdout)
         sys.stdout.write("\n")
@@ -1059,14 +975,14 @@ def show_config(
     viewer_command: str | None = None
 
     if target_path.exists():
-        cfg = Config.load(target_path)
+        cfg = load_config_with_repository_registration(target_path)
         viewer_command = cfg.get("config_viewer", "command")
     else:
         if not typer.confirm(f"Config file does not exist: {target_path}\nCreate default config?"):
             print(f"Config file not found: {target_path}", file=sys.stderr)
             raise typer.Exit(1)
         target_path = write_default_config(target_path)
-        cfg = Config.load(target_path)
+        cfg = load_config_with_repository_registration(target_path)
         viewer_command = cfg.get("config_viewer", "command")
 
     print(f"Config file: {target_path}")
@@ -1093,7 +1009,7 @@ def save_repo_config(
     ),
 ) -> None:
     """Save active provider settings to the main config repositories section."""
-    cfg = Config.load(config)
+    cfg = load_config_with_repository_registration(config, cwd)
     if not bool(cfg.get("repo_config", "save_active_provider_config", default=False)):
         json.dump(
             {
@@ -1136,7 +1052,7 @@ def show_logs(
     import shlex
     import subprocess
 
-    cfg = Config.load(config)
+    cfg = load_config_with_repository_registration(config)
     log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
     color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
     log_file = str(Path(log_file).expanduser())
@@ -1177,7 +1093,7 @@ def show_logs_path(
     ),
 ) -> None:
     """Print the configured log file path."""
-    cfg = Config.load(config)
+    cfg = load_config_with_repository_registration(config)
     log_file = cfg.get("logging", "file_path", default=str(get_default_log_file_path()))
     color_log_file = cfg.get("logging", "file_path_color") or f"{log_file}.color"
     log_file = str(Path(log_file).expanduser())

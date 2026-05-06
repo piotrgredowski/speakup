@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Annotated, Any, Literal, Union
@@ -217,6 +218,7 @@ class ConfigViewerConfig:
 
 @dataclass
 class RepoConfig:
+    auto_register: bool = True
     save_active_provider_config: bool = False
 
 
@@ -434,6 +436,182 @@ def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
         else:
             result[key] = value
     return result
+
+
+_SAFE_PROVIDER_CONFIG_KEYS = {
+    "api_key_env",
+    "args",
+    "available_voices",
+    "base_url",
+    "command",
+    "message_voice",
+    "model",
+    "summary_model",
+    "timeout",
+    "timeout_seconds",
+    "title_voice",
+    "trim_output",
+    "tts_model",
+    "voice",
+    "voice_id",
+}
+
+
+def _provider_config_key(provider: str) -> str:
+    return "command_summary" if provider == "command" else provider
+
+
+def _safe_provider_config(provider_config: object) -> dict[str, object]:
+    if not isinstance(provider_config, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in provider_config.items()
+        if isinstance(key, str) and key in _SAFE_PROVIDER_CONFIG_KEYS
+    }
+
+
+def _load_config_for_write(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return default_config()
+    return normalize_config(_load_jsonc(path))
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=path.parent, encoding="utf-8") as handle:
+        temp_path = Path(handle.name)
+        handle.write(json.dumps(payload, indent=2) + "\n")
+    temp_path.replace(path)
+
+
+@contextmanager
+def _config_write_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(f"{path.name}.lock")
+    with lock_path.open("a", encoding="utf-8") as lock_file:
+        if os.name == "posix":
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "posix":
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _normalize_existing_path(path: Path) -> str:
+    try:
+        return str(path.expanduser().resolve())
+    except OSError:
+        return str(path.expanduser().absolute())
+
+
+def repository_config_key(cwd: str | Path | None) -> str | None:
+    from .context_naming import find_project_root
+
+    if cwd is None:
+        cwd = Path.cwd()
+    root = find_project_root(cwd)
+    if root is not None:
+        return _normalize_existing_path(root)
+    return _normalize_existing_path(Path(cwd))
+
+
+def _resolve_project_override_from_config(cfg: "Config", cwd: Path) -> dict[object, object]:
+    overrides = cfg.get("tts", "project_overrides", default={})
+    if not isinstance(overrides, dict):
+        return {}
+    resolved_cwd = _normalize_existing_path(cwd)
+    for project_path, override in overrides.items():
+        if not isinstance(project_path, str) or not isinstance(override, dict):
+            continue
+        if _normalize_existing_path(Path(project_path)) == resolved_cwd:
+            return override
+    return {}
+
+
+def active_repo_config_payload(cfg: "Config", cwd: Path) -> dict[str, object]:
+    summary_order = cfg.get("summarization", "provider_order", default=["rule_based"])
+    tts_order = cfg.get("tts", "provider_order", default=["macos"])
+    if not isinstance(summary_order, list):
+        summary_order = ["rule_based"]
+    if not isinstance(tts_order, list):
+        tts_order = ["macos"]
+
+    project_override = _resolve_project_override_from_config(cfg, cwd)
+    project_provider = project_override.get("provider")
+    effective_tts_order = [project_provider] if isinstance(project_provider, str) and project_provider.strip() else tts_order
+
+    provider_names = {
+        _provider_config_key(provider)
+        for provider in [*summary_order, *effective_tts_order]
+        if isinstance(provider, str) and provider.strip()
+    }
+    providers: dict[str, object] = {}
+    for provider_name in sorted(provider_names):
+        provider_cfg = _safe_provider_config(cfg.get("providers", provider_name, default={}))
+        if provider_cfg:
+            providers[provider_name] = provider_cfg
+
+    tts_payload: dict[str, object] = {"provider_order": effective_tts_order}
+    project_speed = project_override.get("speed")
+    if isinstance(project_speed, (int, float)):
+        tts_payload["speed"] = project_speed
+
+    payload: dict[str, object] = {
+        "summarization": {"provider_order": summary_order},
+        "tts": tts_payload,
+    }
+    if providers:
+        payload["providers"] = providers
+    return payload
+
+
+def config_write_path(path: str | Path | None) -> Path:
+    return Path(path) if path is not None else default_config_path()
+
+
+def load_config_without_repository_registration(path: str | Path | None) -> "Config":
+    if path is not None and not Path(path).exists():
+        return Config(default_config())
+    return Config.load(path)
+
+
+def register_repository_config(cfg: "Config", path: str | Path | None, cwd: str | Path | None = None) -> "Config":
+    target_path = config_write_path(path)
+    if not bool(cfg.get("repo_config", "auto_register", default=True)):
+        return cfg
+
+    repository_path = repository_config_key(cwd)
+    if repository_path is None:
+        return cfg
+
+    payload = active_repo_config_payload(cfg, Path(repository_path))
+    with _config_write_lock(target_path):
+        writable_config = _load_config_for_write(target_path)
+        repositories = writable_config.setdefault("repositories", {})
+        if not isinstance(repositories, dict):
+            validate_config(writable_config)
+            return cfg
+        if repository_path not in repositories:
+            repositories[repository_path] = payload
+            validate_config(writable_config)
+            _write_json_atomic(target_path, writable_config)
+
+        cfg.raw.setdefault("repositories", {})[repository_path] = repositories[repository_path]
+    return cfg
+
+
+def load_config_with_repository_registration(path: str | Path | None, cwd: str | Path | None = None) -> "Config":
+    target_path = config_write_path(path)
+    if target_path.exists() or path is None:
+        cfg = Config.load(path)
+    else:
+        cfg = Config(default_config())
+
+    return register_repository_config(cfg, target_path, cwd)
 
 
 @dataclass

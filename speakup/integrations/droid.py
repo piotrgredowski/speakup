@@ -10,7 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from ..app_logging import setup_logging as setup_app_logging
-from ..config import Config
+from ..config import load_config_with_repository_registration
 from ..history import NotificationHistory
 from ..models import MessageEvent, NotifyRequest
 from ..service import NotifyService
@@ -98,7 +98,9 @@ def _detach_stdio() -> None:
 
 def _notify_worker(request: NotifyRequest, config_path: str | None) -> None:
     _detach_stdio()
-    config = Config.load(Path(config_path) if config_path else None)
+    metadata = request.metadata if isinstance(request.metadata, dict) else {}
+    cwd = metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None
+    config = load_config_with_repository_registration(Path(config_path) if config_path else None, cwd)
     setup_app_logging(config.get("logging", default={}))
     NotifyService(
         config,
