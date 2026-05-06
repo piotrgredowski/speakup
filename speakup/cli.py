@@ -13,7 +13,16 @@ from typing import Optional
 import typer
 
 from .app_logging import redact_payload, setup_logging
-from .config import Config, _strip_json_comments, deep_merge, get_default_log_file_path, write_default_config
+from .config import (
+    Config,
+    _load_jsonc,
+    deep_merge,
+    default_config,
+    get_default_log_file_path,
+    normalize_config,
+    validate_config,
+    write_default_config,
+)
 from .context_naming import SpokenContext, project_config_path
 from .errors import AdapterError
 from .history import NotificationHistory
@@ -91,16 +100,10 @@ def _safe_provider_config(provider_config: object) -> dict[str, object]:
     }
 
 
-def _load_repo_config_payload(path: Path) -> dict[str, object]:
+def _load_config_for_write(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {}
-    try:
-        payload = json.loads(_strip_json_comments(path.read_text()))
-    except Exception as exc:
-        raise typer.BadParameter(f"Could not read repo config {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        return {}
-    return payload
+        return default_config()
+    return normalize_config(_load_jsonc(path))
 
 
 def _resolve_project_override_from_config(cfg: Config, cwd: Path) -> dict[object, object]:
@@ -1086,10 +1089,10 @@ def save_repo_config(
         None, "--config", "-c", help="Path to config JSON"
     ),
     cwd: Optional[Path] = typer.Option(
-        None, "--cwd", help="Project directory to save .speakup.jsonc in"
+        None, "--cwd", help="Project directory to save central repository config for"
     ),
 ) -> None:
-    """Save active provider settings to the repository .speakup.jsonc."""
+    """Save active provider settings to the main config repositories section."""
     cfg = Config.load(config)
     if not bool(cfg.get("repo_config", "save_active_provider_config", default=False)):
         json.dump(
@@ -1103,18 +1106,23 @@ def save_repo_config(
         raise typer.Exit(2)
 
     project_dir = (cwd or Path.cwd()).expanduser()
-    target_path = project_config_path(project_dir)
-    if target_path is None:
+    repo_config_path = project_config_path(project_dir)
+    if repo_config_path is None:
         json.dump({"status": "error", "error": f"No repository root found from: {project_dir}"}, sys.stdout)
         sys.stdout.write("\n")
         raise typer.Exit(2)
 
-    existing = _load_repo_config_payload(target_path)
-    payload = _active_repo_config_payload(cfg, project_dir)
-    merged = deep_merge(existing, payload)
+    target_path = _get_config_path(config)
+    repository_path = str(repo_config_path.parent.resolve())
+    payload = _active_repo_config_payload(cfg, repo_config_path.parent)
+    writable_config = _load_config_for_write(target_path)
+    repositories = writable_config.setdefault("repositories", {})
+    existing_repo_config = repositories.get(repository_path, {}) if isinstance(repositories, dict) else {}
+    repositories[repository_path] = deep_merge(existing_repo_config, payload)
+    validate_config(writable_config)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(json.dumps(merged, indent=2) + "\n")
-    json.dump({"status": "ok", "config_path": str(target_path)}, sys.stdout)
+    target_path.write_text(json.dumps(writable_config, indent=2) + "\n")
+    json.dump({"status": "ok", "config_path": str(target_path), "repository_path": repository_path}, sys.stdout)
     sys.stdout.write("\n")
 
 

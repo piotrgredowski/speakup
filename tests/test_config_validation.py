@@ -49,6 +49,23 @@ def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_ove
     assert loaded.get("providers", "edge", "voice") == "en-US-AriaNeural"
 
 
+def test_config_load_given_repository_config_then_accepts_absolute_path(tmp_path: Path) -> None:
+    config = default_config()
+    config["repositories"] = {
+        str(tmp_path.resolve()): {
+            "summarization": {"provider_order": ["gemini"]},
+            "tts": {"provider_order": ["edge"], "speed": 1.1},
+            "providers": {"edge": {"voice": "en-US-AriaNeural"}},
+        }
+    }
+    config_path = tmp_path / "config_repositories.json"
+    config_path.write_text(json.dumps(config))
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("repositories", str(tmp_path.resolve()), "tts", "provider_order") == ["edge"]
+
+
 def test_default_config_uses_rule_based_summarization_only() -> None:
     cfg = default_config()
     assert cfg["summarization"]["provider_order"] == ["rule_based"]
@@ -78,6 +95,7 @@ def test_default_config_preserves_existing_dedup_behavior() -> None:
         (lambda c: c.setdefault("logging", {}).update({"destination": ["console"]}), "logging.destination[0]"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
         (lambda c: c.setdefault("providers", {}).setdefault("command_summary", {}).update({"args": "-p {message}"}), "providers.command_summary.args"),
+        (lambda c: c.setdefault("repositories", {}).update({"relative/path": {}}), "repositories key 'relative/path' must be an absolute path"),
     ],
 )
 def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path) -> None:

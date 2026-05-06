@@ -94,6 +94,7 @@
   "repo_config": {
     "save_active_provider_config": false
   },
+  "repositories": {},
   "speech_template": {
     "title": {
       "separator": " ",

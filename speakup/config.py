@@ -220,6 +220,9 @@ class RepoConfig:
     save_active_provider_config: bool = False
 
 
+RepositoryConfig = dict[str, Any]
+
+
 @dataclass
 class MacOSConfig:
     voice: str = "default"
@@ -382,6 +385,7 @@ class AppConfig:
     log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)
     config_viewer: ConfigViewerConfig = field(default_factory=ConfigViewerConfig)
     repo_config: RepoConfig = field(default_factory=RepoConfig)
+    repositories: dict[str, RepositoryConfig] = field(default_factory=dict)
     speech_template: SpeechTemplateConfig = field(default_factory=SpeechTemplateConfig)
     providers: ProvidersConfig = field(default_factory=ProvidersConfig)
     droid: DroidConfig = field(default_factory=DroidConfig)
@@ -396,13 +400,30 @@ def validate_config(raw: dict[str, Any]) -> None:
         from_dict(AppConfig, raw)
     except SchemaValidationError as e:
         raise ConfigValidationError(str(e))
+    _validate_repositories(raw)
 
 
 def normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
     try:
-        return asdict(from_dict(AppConfig, raw))
+        normalized = asdict(from_dict(AppConfig, raw))
     except SchemaValidationError as e:
         raise ConfigValidationError(str(e))
+    _validate_repositories(normalized)
+    return normalized
+
+
+def _validate_repositories(raw: dict[str, Any]) -> None:
+    repositories = raw.get("repositories", {})
+    if not isinstance(repositories, dict):
+        raise ConfigValidationError("repositories must be an object")
+    for path_value, repository_config in repositories.items():
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise ConfigValidationError("repositories keys must be non-empty absolute paths")
+        path = Path(path_value).expanduser()
+        if not path.is_absolute():
+            raise ConfigValidationError(f"repositories key '{path_value}' must be an absolute path")
+        if not isinstance(repository_config, dict):
+            raise ConfigValidationError(f"repositories.{path_value} must be an object")
 
 
 def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:

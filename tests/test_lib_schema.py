@@ -466,6 +466,12 @@ class TestAppConfigIntegration:
             },
             "session_naming": {"enabled": False},
             "context_naming": {"source": "repository", "spoken_name": "Speak Up"},
+            "repositories": {
+                "/tmp/project": {
+                    "summarization": {"provider_order": ["openai"]},
+                    "tts": {"provider_order": ["openai"], "speed": 0.95},
+                }
+            },
         }
         result = from_dict(AppConfig, raw)
         assert result.tts.voice == "custom_voice"
@@ -478,6 +484,7 @@ class TestAppConfigIntegration:
         assert result.session_naming.enabled is False
         assert result.context_naming.source == "repository"
         assert result.context_naming.spoken_name == "Speak Up"
+        assert result.repositories["/tmp/project"]["tts"]["provider_order"] == ["openai"]
         # other sections get defaults
         assert result.privacy.mode == "local_only"
 

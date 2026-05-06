@@ -458,12 +458,15 @@ class NotifyService:
         return {}
 
     def _resolve_project_provider(self, project_path: str | None) -> str | None:
+        project_tts = self._effective_project_config(project_path).get("tts", {})
+        if isinstance(project_tts, dict) and isinstance(project_tts.get("provider_order"), list):
+            return None
         provider = self._resolve_project_override(project_path).get("provider")
         return provider.strip() if isinstance(provider, str) and provider.strip() else None
 
     @contextmanager
     def _project_config_overlay(self, project_path: str | None):
-        payload = self._load_project_config(project_path)
+        payload = self._effective_project_config(project_path)
         if not payload:
             yield
             return
@@ -479,6 +482,35 @@ class NotifyService:
 
     def _project_config_path(self, project_path: str | None) -> Path | None:
         return project_config_path(project_path)
+
+    def _central_project_config(self, project_path: str | None) -> dict[str, object]:
+        normalized_project_path = _normalize_project_path(project_path)
+        if not normalized_project_path:
+            return {}
+
+        repositories = self.config.get("repositories", default={})
+        if not isinstance(repositories, dict):
+            return {}
+
+        project = Path(normalized_project_path)
+        best_match: tuple[int, dict[str, object]] | None = None
+        for candidate_path, payload in repositories.items():
+            normalized_candidate = _normalize_project_path(candidate_path)
+            if not normalized_candidate or not isinstance(payload, dict):
+                continue
+            candidate = Path(normalized_candidate)
+            if project == candidate or project.is_relative_to(candidate):
+                match = (len(candidate.parts), payload)
+                if best_match is None or match[0] > best_match[0]:
+                    best_match = match
+        return best_match[1] if best_match else {}
+
+    def _effective_project_config(self, project_path: str | None) -> dict[str, object]:
+        central = self._central_project_config(project_path)
+        local = self._load_project_config(project_path)
+        if central and local:
+            return deep_merge(local, central)
+        return central or local
 
     def _load_project_config(self, project_path: str | None) -> dict[str, object]:
         config_path = self._project_config_path(project_path)
@@ -532,7 +564,7 @@ class NotifyService:
         config_path.write_text(json.dumps(payload, indent=2) + "\n")
 
     def _project_provider_config(self, provider: str, project_path: str | None) -> dict[object, object]:
-        payload = self._load_project_config(project_path)
+        payload = self._effective_project_config(project_path)
         providers = payload.get("providers", {})
         if not isinstance(providers, dict):
             return {}
@@ -542,7 +574,7 @@ class NotifyService:
     def _context_naming_config(self, project_path: str | None) -> dict[str, object]:
         cfg = self.config.get("context_naming", default={})
         merged = dict(cfg) if isinstance(cfg, dict) else {}
-        project_cfg = self._load_project_config(project_path).get("context_naming", {})
+        project_cfg = self._effective_project_config(project_path).get("context_naming", {})
         if isinstance(project_cfg, dict):
             merged.update(project_cfg)
         return merged
@@ -589,6 +621,9 @@ class NotifyService:
     def _resolve_base_speed(self, project_path: str | None, cli_speed: float | None = None) -> float:
         if cli_speed is not None:
             return float(cli_speed)
+        project_tts = self._effective_project_config(project_path).get("tts", {})
+        if isinstance(project_tts, dict) and isinstance(project_tts.get("speed"), (int, float)):
+            return float(self.config.get("tts", "speed", default=project_tts["speed"]))
         project_speed = self._resolve_project_override(project_path).get("speed")
         if isinstance(project_speed, (int, float)):
             return float(project_speed)

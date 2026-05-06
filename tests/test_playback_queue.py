@@ -11,11 +11,12 @@ import pytest
 
 from speakup.config import Config, default_config
 from speakup.errors import AdapterError
-from speakup.models import AudioResult, MessageEvent, NotifyRequest
+from speakup.models import AudioResult, MessageEvent, NotifyRequest, SummaryResult
 from speakup.playback.base import PlaybackAdapter
 from speakup.playback.queued import SQLiteQueuedPlayback
 from speakup.registry import AdapterRegistry
 from speakup.service import NotifyService
+from speakup.summarizers.base import Summarizer
 from speakup.tts.base import TTSAdapter
 
 
@@ -83,6 +84,17 @@ class _FailingTTS(TTSAdapter):
 
     def synthesize(self, text: str, output_dir: Path, *, voice: str = "default", speed: float = 1.0, audio_format: str = "mp3") -> AudioResult:
         raise AdapterError("broken")
+
+
+class _FakeSummarizer(Summarizer):
+    name = "fake_summary"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, MessageEvent, int]] = []
+
+    def summarize(self, message: str, event: MessageEvent, max_chars: int) -> SummaryResult:
+        self.calls.append((message, event, max_chars))
+        return SummaryResult(summary="Central summary", state=event)
 
 
 def _spoken_title(session_name: str | None = None, *, agent: str = "speakup", source_tool: str | None = None) -> str:
@@ -791,6 +803,62 @@ def test_notify_service_given_repo_provider_config_then_uses_repo_provider_order
     assert result.backend == "fake"
     assert fake_tts.calls == [("speakup from repository project says", "repo-title", 1.0), ("Ship it", "repo-message", 1.0)]
     assert config.get("tts", "provider_order") == ["macos"]
+
+
+def test_notify_service_given_central_repository_config_then_uses_repository_overrides(tmp_path: Path) -> None:
+    message_audio = tmp_path / "message.wav"
+    title_audio = tmp_path / "title.wav"
+    project_path = (tmp_path / "project").resolve()
+    project_path.mkdir()
+    (project_path / ".git").mkdir()
+    (project_path / ".speakup.jsonc").write_text(json.dumps({"tts": {"provider_order": ["stale"]}}))
+    nested_path = project_path / "src"
+    nested_path.mkdir()
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["macos"]
+    config_data["summarization"]["provider_order"] = ["rule_based"]
+    config_data["repositories"] = {
+        str(project_path): {
+            "summarization": {"provider_order": ["fake_summary"]},
+            "tts": {"provider_order": ["fake"], "speed": 1.3},
+            "providers": {
+                "fake": {
+                    "title_voice": "central-title",
+                    "message_voice": "central-message",
+                }
+            },
+        }
+    }
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    fake_summary = _FakeSummarizer()
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+    registry.register_summarizer("fake_summary", lambda: fake_summary)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Ship it",
+            event=MessageEvent.FINAL,
+            metadata={"cwd": str(nested_path)},
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.backend == "fake"
+    assert fake_summary.calls == [("Ship it", MessageEvent.FINAL, 220)]
+    assert fake_tts.calls == [
+        ("speakup from repository project says", "central-title", 1.3),
+        ("Central summary", "central-message", 1.3),
+    ]
+    assert config.get("tts", "provider_order") == ["macos"]
+    assert config.get("summarization", "provider_order") == ["rule_based"]
 
 
 def test_notify_service_given_non_object_project_config_then_recovers_and_persists_voices(tmp_path: Path, monkeypatch) -> None:
