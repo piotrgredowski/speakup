@@ -13,8 +13,8 @@ from typing import Optional
 import typer
 
 from .app_logging import redact_payload, setup_logging
-from .config import Config, get_default_log_file_path, write_default_config
-from .context_naming import SpokenContext
+from .config import Config, _strip_json_comments, deep_merge, get_default_log_file_path, write_default_config
+from .context_naming import SpokenContext, project_config_path
 from .errors import AdapterError
 from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest
@@ -56,6 +56,103 @@ def _resolve_summary_model_target(
     if provider == "gemini":
         return "gemini", "summary_model"
     return "lmstudio", "model"
+
+
+_SAFE_PROVIDER_CONFIG_KEYS = {
+    "api_key_env",
+    "args",
+    "available_voices",
+    "base_url",
+    "command",
+    "message_voice",
+    "model",
+    "summary_model",
+    "timeout",
+    "timeout_seconds",
+    "title_voice",
+    "trim_output",
+    "tts_model",
+    "voice",
+    "voice_id",
+}
+
+
+def _provider_config_key(provider: str) -> str:
+    return "command_summary" if provider == "command" else provider
+
+
+def _safe_provider_config(provider_config: object) -> dict[str, object]:
+    if not isinstance(provider_config, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in provider_config.items()
+        if isinstance(key, str) and key in _SAFE_PROVIDER_CONFIG_KEYS
+    }
+
+
+def _load_repo_config_payload(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(_strip_json_comments(path.read_text()))
+    except Exception as exc:
+        raise typer.BadParameter(f"Could not read repo config {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def _resolve_project_override_from_config(cfg: Config, cwd: Path) -> dict[object, object]:
+    overrides = cfg.get("tts", "project_overrides", default={})
+    if not isinstance(overrides, dict):
+        return {}
+    try:
+        resolved_cwd = str(cwd.resolve())
+    except OSError:
+        resolved_cwd = str(cwd)
+    for project_path, override in overrides.items():
+        if not isinstance(project_path, str) or not isinstance(override, dict):
+            continue
+        try:
+            resolved_project = str(Path(project_path).expanduser().resolve())
+        except OSError:
+            resolved_project = str(Path(project_path).expanduser())
+        if resolved_project == resolved_cwd:
+            return override
+    return {}
+
+
+def _active_repo_config_payload(cfg: Config, cwd: Path) -> dict[str, object]:
+    summary_order = cfg.get("summarization", "provider_order", default=["rule_based"])
+    tts_order = cfg.get("tts", "provider_order", default=["macos"])
+    if not isinstance(summary_order, list):
+        summary_order = ["rule_based"]
+    if not isinstance(tts_order, list):
+        tts_order = ["macos"]
+
+    project_override = _resolve_project_override_from_config(cfg, cwd)
+    project_provider = project_override.get("provider")
+    effective_tts_order = [project_provider] if isinstance(project_provider, str) and project_provider.strip() else tts_order
+
+    provider_names = {
+        _provider_config_key(provider)
+        for provider in [*summary_order, *effective_tts_order]
+        if isinstance(provider, str) and provider.strip()
+    }
+    providers: dict[str, object] = {}
+    for provider_name in sorted(provider_names):
+        provider_cfg = _safe_provider_config(cfg.get("providers", provider_name, default={}))
+        if provider_cfg:
+            providers[provider_name] = provider_cfg
+
+    payload: dict[str, object] = {
+        "summarization": {"provider_order": summary_order},
+        "tts": {"provider_order": effective_tts_order},
+    }
+    if providers:
+        payload["providers"] = providers
+    return payload
 
 
 def _open_with_default_app(path: Path) -> None:
@@ -981,6 +1078,44 @@ def show_config_path(
 ) -> None:
     """Print the config file path."""
     print(_get_config_path(config))
+
+
+@app.command("save-repo-config")
+def save_repo_config(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+    cwd: Optional[Path] = typer.Option(
+        None, "--cwd", help="Project directory to save .speakup.jsonc in"
+    ),
+) -> None:
+    """Save active provider settings to the repository .speakup.jsonc."""
+    cfg = Config.load(config)
+    if not bool(cfg.get("repo_config", "save_active_provider_config", default=False)):
+        json.dump(
+            {
+                "status": "error",
+                "error": "repo_config.save_active_provider_config is disabled",
+            },
+            sys.stdout,
+        )
+        sys.stdout.write("\n")
+        raise typer.Exit(2)
+
+    project_dir = (cwd or Path.cwd()).expanduser()
+    target_path = project_config_path(project_dir)
+    if target_path is None:
+        json.dump({"status": "error", "error": f"No repository root found from: {project_dir}"}, sys.stdout)
+        sys.stdout.write("\n")
+        raise typer.Exit(2)
+
+    existing = _load_repo_config_payload(target_path)
+    payload = _active_repo_config_payload(cfg, project_dir)
+    merged = deep_merge(existing, payload)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(json.dumps(merged, indent=2) + "\n")
+    json.dump({"status": "ok", "config_path": str(target_path)}, sys.stdout)
+    sys.stdout.write("\n")
 
 
 @app.command("show-logs")

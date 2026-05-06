@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from .app_logging import redact_payload
 from .classifier import infer_event
-from .config import Config, _strip_json_comments, runtime_temp_dir
+from .config import Config, _strip_json_comments, deep_merge, runtime_temp_dir
 from .context_naming import SpokenContext, project_config_path, resolve_spoken_context
 from .dedup import DedupDecision, should_skip_progress
 from .errors import AdapterError
@@ -461,6 +461,22 @@ class NotifyService:
         provider = self._resolve_project_override(project_path).get("provider")
         return provider.strip() if isinstance(provider, str) and provider.strip() else None
 
+    @contextmanager
+    def _project_config_overlay(self, project_path: str | None):
+        payload = self._load_project_config(project_path)
+        if not payload:
+            yield
+            return
+
+        original_raw = self.config.raw
+        self.config.raw = deep_merge(original_raw, payload)
+        self.registry.clear_cache()
+        try:
+            yield
+        finally:
+            self.config.raw = original_raw
+            self.registry.clear_cache()
+
     def _project_config_path(self, project_path: str | None) -> Path | None:
         return project_config_path(project_path)
 
@@ -710,6 +726,22 @@ class NotifyService:
         request.metadata = metadata
         project_path = _normalize_project_path(metadata.get("cwd"))
         cli_speed = float(metadata["cli_speed"]) if isinstance(metadata.get("cli_speed"), (int, float)) else None
+        with self._project_config_overlay(project_path):
+            return self._notify_with_effective_config(
+                request,
+                request_id=request_id,
+                project_path=project_path,
+                cli_speed=cli_speed,
+            )
+
+    def _notify_with_effective_config(
+        self,
+        request: NotifyRequest,
+        *,
+        request_id: str,
+        project_path: str | None,
+        cli_speed: float | None,
+    ) -> NotifyResult:
         include_message = bool(self.config.get("logging", "log_message_text", default=False))
         self.logger.info(
             "notify_received",
@@ -839,6 +871,7 @@ class NotifyService:
 
         self._save_history(request, result, request_id=request_id)
         return result
+
 
     def replay_summary(
         self,

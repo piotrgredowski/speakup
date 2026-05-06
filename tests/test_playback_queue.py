@@ -750,6 +750,49 @@ def test_notify_service_given_persisted_project_voices_then_reuses_them(tmp_path
     assert fake_tts.calls == [("speakup from repository project says", "saved-title", 1.25), ("Ship it", "saved-message", 1.25)]
 
 
+def test_notify_service_given_repo_provider_config_then_uses_repo_provider_order_and_voices(tmp_path: Path) -> None:
+    message_audio = tmp_path / "message.wav"
+    title_audio = tmp_path / "title.wav"
+    project_path = (tmp_path / "project").resolve()
+    project_path.mkdir()
+    (project_path / ".speakup.jsonc").write_text(json.dumps({
+        "tts": {"provider_order": ["fake"]},
+        "providers": {
+            "fake": {
+                "title_voice": "repo-title",
+                "message_voice": "repo-message",
+            }
+        },
+    }))
+
+    config_data = default_config()
+    config_data["tts"]["provider_order"] = ["macos"]
+    config_data["event_sounds"]["enabled"] = False
+    config = Config(config_data)
+
+    registry = AdapterRegistry()
+    playback = _RecordingPlayback()
+    fake_tts = _FakeTTS([title_audio, message_audio])
+    registry.set_playback(playback)
+    registry.register_tts("fake", lambda: fake_tts)
+
+    service = NotifyService(config, registry=registry)
+    result = service.notify(
+        NotifyRequest(
+            message="Ship it",
+            event=MessageEvent.FINAL,
+            session_name="Release 42",
+            skip_summarization=True,
+            metadata={"cwd": str(project_path)},
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.backend == "fake"
+    assert fake_tts.calls == [("speakup from repository project says", "repo-title", 1.0), ("Ship it", "repo-message", 1.0)]
+    assert config.get("tts", "provider_order") == ["macos"]
+
+
 def test_notify_service_given_non_object_project_config_then_recovers_and_persists_voices(tmp_path: Path, monkeypatch) -> None:
     message_audio = tmp_path / "message.wav"
     title_audio = tmp_path / "title.wav"

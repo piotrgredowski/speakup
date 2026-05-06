@@ -216,6 +216,11 @@ class ConfigViewerConfig:
 
 
 @dataclass
+class RepoConfig:
+    save_active_provider_config: bool = False
+
+
+@dataclass
 class MacOSConfig:
     voice: str = "default"
     title_voice: str | None = None
@@ -376,6 +381,7 @@ class AppConfig:
     history: HistoryConfig = field(default_factory=HistoryConfig)
     log_viewer: LogViewerConfig = field(default_factory=LogViewerConfig)
     config_viewer: ConfigViewerConfig = field(default_factory=ConfigViewerConfig)
+    repo_config: RepoConfig = field(default_factory=RepoConfig)
     speech_template: SpeechTemplateConfig = field(default_factory=SpeechTemplateConfig)
     providers: ProvidersConfig = field(default_factory=ProvidersConfig)
     droid: DroidConfig = field(default_factory=DroidConfig)

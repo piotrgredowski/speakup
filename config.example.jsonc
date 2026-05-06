@@ -91,6 +91,9 @@
   "config_viewer": {
     "command": null
   },
+  "repo_config": {
+    "save_active_provider_config": false
+  },
   "speech_template": {
     "title": {
       "separator": " ",
