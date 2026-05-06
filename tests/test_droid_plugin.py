@@ -56,7 +56,7 @@ def test_hooks_configuration():
         command = hooks["hooks"][event_name][0]["hooks"][0]["command"]
         assert command in expected_commands
     pre_tool_use = hooks["hooks"]["PreToolUse"][0]
-    assert pre_tool_use["matcher"] == "AskUser|ExitSpecMode"
+    assert pre_tool_use["matcher"] == "^(AskUser|ExitSpecMode)$"
     assert pre_tool_use["hooks"][0]["command"] in expected_commands
 
 
@@ -970,6 +970,104 @@ def test_main_skips_seen_exit_spec_mode_notification(monkeypatch, tmp_path):
         pass
 
     assert stdout.getvalue() == ""
+
+
+def test_main_speaks_duplicate_exit_spec_mode_pre_tool_use_once(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    tool_input = {
+        "title": "Add AskUser questionnaire support to Droid notifications",
+        "plan": "## Goal\nMake notifications work.",
+    }
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "ExitSpecMode",
+        "tool_use_id": "call-spec-123",
+        "session_id": "sess-123",
+        "cwd": "/tmp/project",
+        "tool_input": tool_input,
+    }
+    calls = []
+
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(module.json, "load", lambda _: payload)
+    monkeypatch.setattr(module, "run_speakup", lambda *args, **kwargs: calls.append((args, kwargs)) or True)
+
+    for _ in range(2):
+        try:
+            module.main()
+        except SystemExit:
+            pass
+
+    assert len(calls) == 1
+    assert stdout.getvalue().strip() == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
+
+
+def test_main_speaks_exit_spec_mode_pre_tool_use_and_notification_once(monkeypatch, tmp_path):
+    module = load_hook_module()
+    stdout = io.StringIO()
+    tool_input = {
+        "title": "Add AskUser questionnaire support to Droid notifications",
+        "plan": "## Goal\nMake notifications work.",
+    }
+    payloads = iter(
+        [
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ExitSpecMode",
+                "tool_use_id": "call-spec-123",
+                "session_id": "sess-123",
+                "cwd": "/tmp/project",
+                "tool_input": tool_input,
+            },
+            {
+                "hook_event_name": "Notification",
+                "session_id": "sess-123",
+                "cwd": "/tmp/project",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "call-spec-123",
+                            "name": "ExitSpecMode",
+                            "input": tool_input,
+                        }
+                    ],
+                },
+            },
+        ]
+    )
+    calls = []
+
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(module.sys, "stdout", stdout)
+    monkeypatch.setattr(module, "load_full_config", lambda: {})
+    monkeypatch.setattr(module, "load_droid_config", lambda: {"enabled": True, "events": {"notification": True}})
+    monkeypatch.setattr(module, "setup_logging", lambda config: None)
+    monkeypatch.setattr(module, "extract_request_id", lambda _: "req-123")
+    monkeypatch.setattr(module, "extract_session_name", lambda _: "Session Name")
+    monkeypatch.setattr(module.logger, "info", lambda message: None)
+    monkeypatch.setattr(module.logger, "debug", lambda message: None)
+    monkeypatch.setattr(module.json, "load", lambda _: next(payloads))
+    monkeypatch.setattr(module, "run_speakup", lambda *args, **kwargs: calls.append((args, kwargs)) or True)
+
+    for _ in range(2):
+        try:
+            module.main()
+        except SystemExit:
+            pass
+
+    assert len(calls) == 1
+    assert stdout.getvalue().strip() == "Session: Session Name\nReplay cmd: speakup replay 1 --agent droid --session-key sess-123"
 
 
 def test_main_prints_notification_summary_from_questionnaire(monkeypatch):

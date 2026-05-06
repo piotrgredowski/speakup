@@ -1043,6 +1043,12 @@ def get_spec_watcher_state_path(session_key: str) -> Path:
     return state_dir / f"{safe_key}.json"
 
 
+def get_spec_watcher_claim_path(session_key: str, dedupe_keys: list[str]) -> Path:
+    claim_source = next((key for key in dedupe_keys if key.startswith("input:")), dedupe_keys[0])
+    claim_key = sha256(claim_source.encode("utf-8")).hexdigest()
+    return get_spec_watcher_state_path(session_key).with_suffix(f".{claim_key}.claim")
+
+
 def _read_spec_watcher_state(session_key: str) -> dict:
     state_path = get_spec_watcher_state_path(session_key)
     try:
@@ -1056,6 +1062,25 @@ def _write_spec_watcher_state(session_key: str, state: dict) -> None:
     state_path = get_spec_watcher_state_path(session_key)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state))
+
+
+def claim_exit_spec_mode_notification(session_key: str | None, dedupe_keys: list[str]) -> bool:
+    if not session_key or not dedupe_keys:
+        return True
+    if has_seen_exit_spec_mode(session_key, dedupe_keys):
+        return False
+
+    claim_path = get_spec_watcher_claim_path(session_key, dedupe_keys)
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(claim_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump({"claimed_at": time.time(), "dedupe_keys": dedupe_keys}, handle)
+
+    mark_exit_spec_mode_seen(session_key, dedupe_keys)
+    return True
 
 
 def run_speakup(
@@ -1182,7 +1207,7 @@ def main():
         save_current_session_pointer(cwd.strip(), session_key, session_name)
 
     dedupe_keys = extract_exit_spec_mode_dedupe_keys(input_data, droid_event)
-    if session_key and has_seen_exit_spec_mode(session_key, dedupe_keys):
+    if not claim_exit_spec_mode_notification(session_key, dedupe_keys):
         logger.debug("ExitSpecMode notification already seen, exiting")
         sys.exit(0)
 
@@ -1196,8 +1221,6 @@ def main():
         cwd=cwd.strip() if isinstance(cwd, str) and cwd.strip() else None,
         source_tool="Droid",
     ):
-        if session_key and dedupe_keys:
-            mark_exit_spec_mode_seen(session_key, dedupe_keys)
         output = build_hook_output(session_key, session_name)
         if output:
             print(output)
