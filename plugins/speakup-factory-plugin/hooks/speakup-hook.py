@@ -901,7 +901,12 @@ def extract_session_name(input_data: dict) -> str | None:
 
 
 def _is_worker_session_name(session_name: str | None) -> bool:
-    return isinstance(session_name, str) and session_name.strip().casefold() in {"worker", "workers", "subagent", "subagents"}
+    if not isinstance(session_name, str):
+        return False
+    normalized = session_name.strip().casefold()
+    return normalized in {"worker", "workers", "subagent", "subagents"} or normalized.startswith(
+        ("worker:", "workers:", "subagent:", "subagents:")
+    )
 
 
 def _has_worker_metadata(source: dict | None) -> bool:
