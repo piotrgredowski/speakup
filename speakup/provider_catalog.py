@@ -20,6 +20,7 @@ PROVIDERS: tuple[ProviderDescriptor, ...] = (
     ProviderDescriptor("rule_based", "summarizer", False, "summarization"),
     ProviderDescriptor("lmstudio", "summarizer", False, "providers.lmstudio"),
     ProviderDescriptor("command", "summarizer", False, "providers.command_summary"),
+    ProviderDescriptor("omlx", "summarizer", False, "providers.omlx"),
     ProviderDescriptor("cerebras", "summarizer", True, "providers.cerebras"),
     ProviderDescriptor("openai", "summarizer", True, "providers.openai"),
     ProviderDescriptor("gemini", "summarizer", True, "providers.gemini"),

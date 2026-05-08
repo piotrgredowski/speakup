@@ -40,10 +40,10 @@ Raw agent messages can contain source code, file paths, API keys, or prompt cont
 ```jsonc
 {
   "summarization": {
-    "provider_order": ["rule_based"]
+    "provider_order": ["omlx", "rule_based"]
   },
   "tts": {
-    "provider_order": ["macos"]
+    "provider_order": ["omlx", "macos"]
   }
 }
 ```
@@ -61,7 +61,7 @@ Provider order controls fallback. Hosted providers receive message text when sel
 | `openai` | both | summarizer/TTS | yes |
 | `gemini` | both | summarizer/TTS | yes |
 | `macos` | `tts.provider_order` | TTS | no |
-| `omlx` | `tts.provider_order` | TTS | no, if pointed at localhost |
+| `omlx` | both | summarizer/TTS | no, if pointed at localhost |
 | `edge` | `tts.provider_order` | TTS | yes |
 | `elevenlabs` | `tts.provider_order` | TTS | yes |
 

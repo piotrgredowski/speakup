@@ -50,6 +50,7 @@ class SummarizerProvider(str, Enum):
     command = "command"
     cerebras = "cerebras"
     gemini = "gemini"
+    omlx = "omlx"
 
 
 def _resolve_summary_model_target(
@@ -66,7 +67,93 @@ def _resolve_summary_model_target(
         return "cerebras", "model"
     if provider == "gemini":
         return "gemini", "summary_model"
+    if provider == "omlx":
+        return "omlx", "summary_model"
     return "lmstudio", "model"
+
+
+def _summary_model_targets(cfg: Config, summary_provider: Optional[str]) -> list[tuple[str, str]]:
+    if summary_provider:
+        return [_resolve_summary_model_target(cfg, summary_provider)]
+    return [
+        ("lmstudio", "model"),
+        ("openai", "summary_model"),
+        ("cerebras", "model"),
+        ("gemini", "summary_model"),
+        ("omlx", "summary_model"),
+    ]
+
+
+def _resolve_tts_model_target(cfg: Config, tts_provider: Optional[str]) -> tuple[str, str]:
+    provider = tts_provider
+    if not provider:
+        provider_order = cfg.get("tts", "provider_order", default=["lmstudio"])
+        provider = provider_order[0] if provider_order else "lmstudio"
+
+    if provider == "lmstudio":
+        return "lmstudio", "tts_model"
+    return provider, "model"
+
+
+def _tts_model_targets(cfg: Config, tts_provider: Optional[str]) -> list[tuple[str, str]]:
+    if tts_provider:
+        return [_resolve_tts_model_target(cfg, tts_provider)]
+    return [
+        ("lmstudio", "tts_model"),
+        ("elevenlabs", "model"),
+        ("openai", "model"),
+        ("gemini", "model"),
+        ("omlx", "model"),
+    ]
+
+
+def _merge_cli_provider_config(payload: dict[str, object], provider: str, key: str, value: object) -> None:
+    providers = payload.setdefault("providers", {})
+    if not isinstance(providers, dict):
+        providers = {}
+        payload["providers"] = providers
+    provider_cfg = providers.setdefault(provider, {})
+    if not isinstance(provider_cfg, dict):
+        provider_cfg = {}
+        providers[provider] = provider_cfg
+    provider_cfg[key] = value
+
+
+def _build_cli_override_payload(
+    cfg: Config,
+    *,
+    no_play: bool = False,
+    fail_fast: bool = False,
+    speed: Optional[float] = None,
+    summary_provider: Optional[str] = None,
+    tts_provider: Optional[str] = None,
+    summary_model: Optional[str] = None,
+    tts_model: Optional[str] = None,
+    dedup_mode: Optional[str] = None,
+    dedup_on_skip: Optional[str] = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    if no_play:
+        payload.setdefault("tts", {})["play_audio"] = False
+    if fail_fast:
+        payload.setdefault("fallback", {})["fail_fast"] = True
+    if speed is not None:
+        payload.setdefault("tts", {})["speed"] = speed
+    if summary_provider:
+        payload.setdefault("summarization", {})["provider_order"] = [summary_provider]
+    if tts_provider:
+        payload.setdefault("tts", {})["provider_order"] = [tts_provider]
+    if summary_model:
+        for provider_name, key_name in _summary_model_targets(cfg, summary_provider):
+            _merge_cli_provider_config(payload, provider_name, key_name, summary_model)
+    if tts_model:
+        for provider_name, key_name in _tts_model_targets(cfg, tts_provider):
+            _merge_cli_provider_config(payload, provider_name, key_name, tts_model)
+    if dedup_mode:
+        payload.setdefault("dedup", {})["mode"] = dedup_mode
+    if dedup_on_skip:
+        payload.setdefault("dedup", {})["on_skip"] = dedup_on_skip
+    return payload
 
 
 def _active_repo_config_payload(cfg: Config, cwd: Path) -> dict[str, object]:
@@ -184,9 +271,10 @@ def _apply_cli_overrides(
         )
 
     if tts_model:
-        cfg.set_provider_config("lmstudio", "tts_model", tts_model)
+        provider_name, key_name = _resolve_tts_model_target(cfg, tts_provider)
+        cfg.set_provider_config(provider_name, key_name, tts_model)
         logger.info(
-            "tts_model_overridden", extra={"provider": "lmstudio", "model": tts_model}
+            "tts_model_overridden", extra={"provider": provider_name, "model": tts_model}
         )
 
     if dedup_mode:
@@ -275,6 +363,20 @@ def _run_notify(
     if not isinstance(request.metadata, dict):
         request.metadata = {}
     request.metadata.setdefault("cwd", str(Path.cwd().resolve()))
+    cli_override_payload = _build_cli_override_payload(
+        cfg,
+        no_play=no_play,
+        fail_fast=fail_fast,
+        speed=speed,
+        summary_provider=summary_provider.value if summary_provider else None,
+        tts_provider=tts_provider.value if tts_provider else None,
+        summary_model=summary_model,
+        tts_model=tts_model,
+        dedup_mode=dedup_mode.value if dedup_mode else None,
+        dedup_on_skip=dedup_on_skip.value if dedup_on_skip else None,
+    )
+    if cli_override_payload:
+        request.metadata["_speakup_cli_overrides"] = cli_override_payload
     if speed is not None:
         request.metadata["cli_speed"] = speed
     request.skip_summarization = no_summarize
@@ -381,7 +483,7 @@ def main_callback(
         None, "--tts-provider", "-t", help="Override TTS provider"
     ),
     tts_model: Optional[str] = typer.Option(
-        None, "--tts-model", help="Override LM Studio TTS model for this run"
+        None, "--tts-model", help="Override TTS model for this run"
     ),
     dedup_mode: Optional[DedupMode] = typer.Option(
         None,

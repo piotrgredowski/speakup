@@ -6,7 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from speakup.cli import app
-from speakup.cli import _apply_cli_overrides
+from speakup.cli import _apply_cli_overrides, _build_cli_override_payload
 from speakup.config import Config, default_config, load_config_without_repository_registration, register_repository_config
 
 
@@ -43,6 +43,103 @@ def test_apply_cli_overrides_given_gemini_summary_provider_then_updates_gemini_s
     assert cfg.get("providers", "gemini", "summary_model") == "gemini-2.5-flash-lite"
 
 
+def test_apply_cli_overrides_given_omlx_summary_provider_then_updates_omlx_summary_model() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        summary_provider="omlx",
+        summary_model="unsloth/gemma-4-E4B-it-UD-MLX-4bit",
+    )
+
+    assert cfg.get("summarization", "provider_order") == ["omlx"]
+    assert cfg.get("providers", "omlx", "summary_model") == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
+
+
+def test_apply_cli_overrides_given_omlx_tts_provider_then_updates_omlx_model() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        tts_provider="omlx",
+        tts_model="Kokoro-82M-bf16",
+    )
+
+    assert cfg.get("tts", "provider_order") == ["omlx"]
+    assert cfg.get("providers", "omlx", "model") == "Kokoro-82M-bf16"
+
+
+def test_apply_cli_overrides_given_lmstudio_tts_provider_then_updates_lmstudio_tts_model() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        tts_provider="lmstudio",
+        tts_model="local-speech-model",
+    )
+
+    assert cfg.get("tts", "provider_order") == ["lmstudio"]
+    assert cfg.get("providers", "lmstudio", "tts_model") == "local-speech-model"
+
+
+def test_apply_cli_overrides_given_openai_tts_provider_then_updates_openai_model() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        tts_provider="openai",
+        tts_model="gpt-4o-mini-tts",
+    )
+
+    assert cfg.get("tts", "provider_order") == ["openai"]
+    assert cfg.get("providers", "openai", "model") == "gpt-4o-mini-tts"
+
+
+def test_build_cli_override_payload_given_omlx_models_then_targets_omlx_provider() -> None:
+    cfg = Config(default_config())
+
+    payload = _build_cli_override_payload(
+        cfg,
+        summary_provider="omlx",
+        summary_model="unsloth/gemma-4-E4B-it-UD-MLX-4bit",
+        tts_provider="omlx",
+        tts_model="Kokoro-82M-bf16",
+    )
+
+    assert payload == {
+        "summarization": {"provider_order": ["omlx"]},
+        "tts": {"provider_order": ["omlx"]},
+        "providers": {
+            "omlx": {
+                "summary_model": "unsloth/gemma-4-E4B-it-UD-MLX-4bit",
+                "model": "Kokoro-82M-bf16",
+            }
+        },
+    }
+
+
+def test_build_cli_override_payload_given_model_only_then_targets_model_capable_providers() -> None:
+    cfg = Config(default_config())
+
+    payload = _build_cli_override_payload(
+        cfg,
+        summary_model="custom-summary-model",
+        tts_model="custom-tts-model",
+    )
+
+    providers = payload["providers"]
+    assert providers["omlx"]["summary_model"] == "custom-summary-model"
+    assert providers["gemini"]["summary_model"] == "custom-summary-model"
+    assert providers["openai"]["summary_model"] == "custom-summary-model"
+    assert providers["cerebras"]["model"] == "custom-summary-model"
+    assert providers["lmstudio"]["model"] == "custom-summary-model"
+    assert providers["omlx"]["model"] == "custom-tts-model"
+    assert providers["gemini"]["model"] == "custom-tts-model"
+    assert providers["openai"]["model"] == "custom-tts-model"
+    assert providers["elevenlabs"]["model"] == "custom-tts-model"
+    assert providers["lmstudio"]["tts_model"] == "custom-tts-model"
+
+
 def test_save_repo_config_given_disabled_setting_then_refuses(tmp_path: Path) -> None:
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -55,8 +152,8 @@ def test_save_repo_config_given_disabled_setting_then_refuses(tmp_path: Path) ->
     assert json.loads(result.stdout)["status"] == "error"
     assert not (project_path / ".speakup.jsonc").exists()
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
-    assert repo_config["summarization"]["provider_order"] == ["rule_based"]
-    assert repo_config["tts"]["provider_order"] == ["macos"]
+    assert repo_config["summarization"]["provider_order"] == ["omlx", "rule_based"]
+    assert repo_config["tts"]["provider_order"] == ["omlx", "macos"]
 
 
 def test_config_loading_given_missing_default_config_then_auto_registers_git_root(
@@ -76,8 +173,9 @@ def test_config_loading_given_missing_default_config_then_auto_registers_git_roo
     config_path = home / ".config" / "speakup" / "config.jsonc"
     assert result.stdout.strip() == str(home / "Library" / "Logs" / "speakup" / "speakup.log")
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
-    assert repo_config["summarization"]["provider_order"] == ["rule_based"]
-    assert repo_config["tts"]["provider_order"] == ["macos"]
+    assert repo_config["summarization"]["provider_order"] == ["omlx", "rule_based"]
+    assert repo_config["tts"]["provider_order"] == ["omlx", "macos"]
+    assert repo_config["providers"]["omlx"]["summary_model"] == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
     assert repo_config["providers"]["macos"]["voice"] == "default"
 
 
@@ -236,5 +334,5 @@ def test_save_repo_config_given_local_sidecar_then_does_not_persist_sidecar_sett
 
     assert result.exit_code == 0
     written = json.loads(config_path.read_text())
-    assert written["tts"]["provider_order"] == ["macos"]
+    assert written["tts"]["provider_order"] == ["omlx", "macos"]
     assert written["repositories"][str(project_path.resolve())]["tts"]["provider_order"] == ["lmstudio"]

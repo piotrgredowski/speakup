@@ -9,6 +9,8 @@
 
 `speakup` is currently supported on macOS. Other platforms are not a public support target yet.
 
+For the smoothest fully local macOS experience, Speakup prefers oMLX by default with local fallbacks. See the [local macOS setup guide](docs/local-macos.md) for oMLX, Kokoro TTS, and local summarization.
+
 ## What it does
 
 - Speaks concise status updates for `final`, `error`, `needs_input`, `progress`, and `info` events.
@@ -33,7 +35,7 @@ For local development, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start: local-first
 
-The default config is local-first. It uses the macOS `say` command for TTS and the built-in rule-based summarizer, so no agent text is sent to hosted APIs by default.
+The default config is local-first. It tries local oMLX first for summarization and TTS, then falls back to the built-in rule-based summarizer and macOS `say`, so no agent text is sent to hosted APIs by default.
 
 ```bash
 speakup init-config
@@ -80,6 +82,8 @@ export GOOGLE_API_KEY=your_api_key_here
 
 ## Local server setup example: OMLX
 
+For the smoothest fully local macOS setup with oMLX, Kokoro TTS, and Gemma summarization, see [docs/local-macos.md](docs/local-macos.md).
+
 ```jsonc
 {
   "privacy": {
@@ -87,16 +91,17 @@ export GOOGLE_API_KEY=your_api_key_here
     "allow_remote_fallback": false
   },
   "summarization": {
-    "provider_order": ["rule_based"]
+    "provider_order": ["omlx", "rule_based"]
   },
   "tts": {
-    "provider_order": ["omlx"],
+    "provider_order": ["omlx", "macos"],
     "audio_format": "wav"
   },
   "providers": {
     "omlx": {
       "base_url": "http://127.0.0.1:8000/v1",
       "api_key_env": "OMLX_API_KEY",
+      "summary_model": "unsloth/gemma-4-E4B-it-UD-MLX-4bit",
       "model": "Kokoro-82M-bf16",
       "voice": "af_heart"
     }
@@ -110,8 +115,8 @@ By default:
 
 - `privacy.mode` is `local_only`.
 - `privacy.allow_remote_fallback` is `false`.
-- summarization uses `rule_based`.
-- TTS uses `macos`.
+- summarization tries `omlx`, then `rule_based`.
+- TTS tries `omlx`, then `macos`.
 - notification history does not store raw messages unless `history.store_messages` is enabled.
 - logs do not include raw message text unless `logging.log_message_text` is enabled.
 
@@ -142,7 +147,7 @@ speakup show-logs-path
 | `rule_based` | yes | no | yes | Built-in fallback summarizer |
 | `macos` | no | yes | yes | Uses `say` and `afplay` |
 | `lmstudio` | yes | yes | yes | Assumes local LM Studio-compatible server |
-| `omlx` | no | yes | yes | Assumes local OpenAI-compatible TTS server |
+| `omlx` | yes | yes | yes | Assumes local OpenAI-compatible oMLX server |
 | `command` | yes | no | depends | Runs a configured local command |
 | `edge` | no | yes | no | Requires `speakup[edge]` and Microsoft Edge TTS service |
 | `openai` | yes | yes | no | Hosted OpenAI APIs |

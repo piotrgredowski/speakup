@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from speakup.config import Config, ConfigValidationError, default_config, get_default_log_file_path
+from speakup.service import build_registry_from_config
 
 
 def test_config_load_given_valid_default_then_succeeds(tmp_path, monkeypatch) -> None:
@@ -23,9 +24,9 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     assert Path(cfg["logging"]["file_path"]) == get_default_log_file_path()
 
 
-def test_default_config_uses_local_macos_tts_only() -> None:
+def test_default_config_uses_local_omlx_tts_with_macos_fallback() -> None:
     cfg = default_config()
-    assert cfg["tts"]["provider_order"] == ["macos"]
+    assert cfg["tts"]["provider_order"] == ["omlx", "macos"]
 
 
 def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_override(tmp_path: Path) -> None:
@@ -66,9 +67,10 @@ def test_config_load_given_repository_config_then_accepts_absolute_path(tmp_path
     assert loaded.get("repositories", str(tmp_path.resolve()), "tts", "provider_order") == ["edge"]
 
 
-def test_default_config_uses_rule_based_summarization_only() -> None:
+def test_default_config_uses_local_omlx_summarization_with_rule_based_fallback() -> None:
     cfg = default_config()
-    assert cfg["summarization"]["provider_order"] == ["rule_based"]
+    assert cfg["summarization"]["provider_order"] == ["omlx", "rule_based"]
+    assert cfg["providers"]["omlx"]["summary_model"] == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
     assert cfg["privacy"]["allow_remote_fallback"] is False
 
 
@@ -153,3 +155,31 @@ def test_config_load_given_legacy_omlx_summarizer_then_remains_loadable(tmp_path
     loaded = Config.load(config_path)
 
     assert loaded.get("summarization", "provider_order") == ["omlx", "rule_based"]
+
+
+def test_config_load_given_omlx_for_summarization_and_tts_then_accepts_provider_config(tmp_path: Path) -> None:
+    config = default_config()
+    config["summarization"]["provider_order"] = ["omlx", "rule_based"]
+    config["tts"]["provider_order"] = ["omlx"]
+    config["providers"]["omlx"]["summary_model"] = "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
+    config["providers"]["omlx"]["model"] = "Kokoro-82M-bf16"
+    config_path = tmp_path / "omlx.jsonc"
+    config_path.write_text(json.dumps(config))
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("summarization", "provider_order") == ["omlx", "rule_based"]
+    assert loaded.get("tts", "provider_order") == ["omlx"]
+    assert loaded.get("providers", "omlx", "summary_model") == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
+    assert loaded.get("providers", "omlx", "model") == "Kokoro-82M-bf16"
+
+
+def test_build_registry_from_config_registers_omlx_summarizer(tmp_path: Path) -> None:
+    config = default_config()
+    config["summarization"]["provider_order"] = ["omlx", "rule_based"]
+    config_path = tmp_path / "omlx.jsonc"
+    config_path.write_text(json.dumps(config))
+
+    registry = build_registry_from_config(Config.load(config_path))
+
+    assert registry.has_summarizer("omlx") is True

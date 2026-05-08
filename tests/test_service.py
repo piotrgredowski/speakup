@@ -78,6 +78,41 @@ def test_notify_given_short_message_then_still_uses_configured_summarizer() -> N
     assert "Task is ready for review." in result.summary
 
 
+def test_project_config_overlay_given_cli_overrides_then_cli_overrides_win(tmp_path: Path) -> None:
+    raw = default_config()
+    raw["repositories"] = {
+        str(tmp_path): {
+            "summarization": {"provider_order": ["cerebras"]},
+            "tts": {"provider_order": ["lmstudio"]},
+            "providers": {
+                "omlx": {
+                    "summary_model": "old-summary-model",
+                    "model": "old-tts-model",
+                }
+            },
+        }
+    }
+    service = NotifyService(Config(raw), registry=AdapterRegistry())
+
+    with service._project_config_overlay(
+        str(tmp_path),
+        {
+            "summarization": {"provider_order": ["omlx"]},
+            "tts": {"provider_order": ["omlx"]},
+            "providers": {
+                "omlx": {
+                    "summary_model": "unsloth/gemma-4-E4B-it-UD-MLX-4bit",
+                    "model": "Kokoro-82M-bf16",
+                }
+            },
+        },
+    ):
+        assert service.config.get("summarization", "provider_order") == ["omlx"]
+        assert service.config.get("tts", "provider_order") == ["omlx"]
+        assert service.config.get("providers", "omlx", "summary_model") == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
+        assert service.config.get("providers", "omlx", "model") == "Kokoro-82M-bf16"
+
+
 def test_notify_given_skip_summarization_then_bypasses_configured_summarizer() -> None:
     summarizer = _RecordingSummarizer()
     service = _service_with_summarizer(summarizer)

@@ -117,7 +117,7 @@ class EventsConfig:
 class SummarizationConfig:
     max_chars: Annotated[int, Gt(0)] = 220
     provider_order: list[Literal["rule_based", "lmstudio", "openai", "command", "cerebras", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["rule_based"]
+        default_factory=lambda: ["omlx", "rule_based"]
     )
 
 
@@ -148,7 +148,7 @@ class TTSConfig:
         speed: float = 1.0
 
     provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["macos"]
+        default_factory=lambda: ["omlx", "macos"]
     )
     voice: str = "default"
     speed: float = 1.0
@@ -328,6 +328,7 @@ class OMLXConfig:
     base_url: str = "http://127.0.0.1:8000/v1"
     api_key_env: str = "OMLX_API_KEY"
     model: str = "Kokoro-82M-bf16"
+    summary_model: str = "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
     voice: str = "af_heart"
     title_voice: str | None = None
     message_voice: str | None = None

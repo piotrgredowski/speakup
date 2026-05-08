@@ -27,6 +27,7 @@ from .summarizers.cerebras import CerebrasSummarizer
 from .summarizers.command import CommandSummarizer
 from .summarizers.gemini import GeminiSummarizer
 from .summarizers.lmstudio import LMStudioSummarizer
+from .summarizers.omlx import OmlxSummarizer
 from .summarizers.openai import OpenAISummarizer
 from .summarizers.rule_based import RuleBasedSummarizer
 from .text_transform import sanitize_text_for_tts
@@ -256,12 +257,22 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             model=gem.get("summary_model", "gemini-2.5-flash"),
         )
 
+    def make_omlx_summarizer() -> OmlxSummarizer:
+        ok = config.get("providers", "omlx", default={})
+        return OmlxSummarizer(
+            base_url=ok.get("base_url", "http://127.0.0.1:8000/v1"),
+            api_key_env=ok.get("api_key_env", "OMLX_API_KEY"),
+            model=ok.get("summary_model", "unsloth/gemma-4-E4B-it-UD-MLX-4bit"),
+            timeout=float(ok.get("timeout", 60.0)),
+        )
+
     registry.register_summarizer("rule_based", make_rule_based)
     registry.register_summarizer("command", make_command_summarizer)
     registry.register_summarizer("lmstudio", make_lmstudio_summarizer)
     registry.register_summarizer("openai", make_openai_summarizer)
     registry.register_summarizer("cerebras", make_cerebras_summarizer)
     registry.register_summarizer("gemini", make_gemini_summarizer)
+    registry.register_summarizer("omlx", make_omlx_summarizer)
 
     return registry
 
@@ -465,8 +476,10 @@ class NotifyService:
         return provider.strip() if isinstance(provider, str) and provider.strip() else None
 
     @contextmanager
-    def _project_config_overlay(self, project_path: str | None):
+    def _project_config_overlay(self, project_path: str | None, cli_overrides: object = None):
         payload = self._effective_project_config(project_path)
+        if isinstance(cli_overrides, dict):
+            payload = deep_merge(payload, cli_overrides)
         if not payload:
             yield
             return
@@ -761,7 +774,7 @@ class NotifyService:
         request.metadata = metadata
         project_path = _normalize_project_path(metadata.get("cwd"))
         cli_speed = float(metadata["cli_speed"]) if isinstance(metadata.get("cli_speed"), (int, float)) else None
-        with self._project_config_overlay(project_path):
+        with self._project_config_overlay(project_path, metadata.get("_speakup_cli_overrides")):
             return self._notify_with_effective_config(
                 request,
                 request_id=request_id,
@@ -1091,7 +1104,7 @@ class NotifyService:
         project_path: str | None = None,
         cli_speed: float | None = None,
     ):
-        provider_order = self.config.get("tts", "provider_order", default=["macos", "omlx"])
+        provider_order = self.config.get("tts", "provider_order", default=["omlx", "macos"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         current_provider = provider_override or (provider_order[0] if provider_order else "macos")
         resolved_voice = voice or self._resolve_base_voice(current_provider, project_path)
@@ -1146,7 +1159,7 @@ class NotifyService:
         cli_speed: float | None = None,
     ):
         project_provider = self._resolve_project_provider(project_path)
-        provider_order = [project_provider] if project_provider else self.config.get("tts", "provider_order", default=["macos", "omlx"])
+        provider_order = [project_provider] if project_provider else self.config.get("tts", "provider_order", default=["omlx", "macos"])
         default_speed = self._resolve_base_speed(project_path, cli_speed)
         if cli_speed is not None:
             session_speed = float(cli_speed)
