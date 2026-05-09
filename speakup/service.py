@@ -33,7 +33,7 @@ from .summarizers.rule_based import RuleBasedSummarizer
 from .text_transform import sanitize_text_for_tts
 from .tts.edge import EdgeTTSAdapter
 from .tts.elevenlabs import ElevenLabsTTSAdapter
-from .tts.gemini import GeminiTTSAdapter
+from .tts.gemini import GeminiTTSAdapter, SUPPORTED_VOICES as GEMINI_SUPPORTED_VOICES
 from .tts.omlx import OmlxTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
@@ -522,7 +522,7 @@ class NotifyService:
         central = self._central_project_config(project_path)
         local = self._load_project_config(project_path)
         if central and local:
-            return deep_merge(local, central)
+            return deep_merge(central, local)
         return central or local
 
     def _load_project_config(self, project_path: str | None) -> dict[str, object]:
@@ -599,11 +599,14 @@ class NotifyService:
             config=self._context_naming_config(project_path),
         )
 
-    def _available_voices(self, provider_cfg: dict[object, object]) -> list[str]:
+    def _available_voices(self, provider: str, provider_cfg: dict[object, object]) -> list[str]:
         voices = provider_cfg.get("available_voices", [])
         if not isinstance(voices, list):
             return []
-        return [voice.strip() for voice in voices if isinstance(voice, str) and voice.strip()]
+        available_voices = [voice.strip() for voice in voices if isinstance(voice, str) and voice.strip()]
+        if provider == "gemini":
+            return [voice for voice in available_voices if voice in GEMINI_SUPPORTED_VOICES]
+        return available_voices
 
     def _choose_project_role_voice(self, provider: str, role: str, project_path: str | None) -> str | None:
         project_provider_cfg = self._project_provider_config(provider, project_path)
@@ -612,7 +615,7 @@ class NotifyService:
             return persisted_voice
 
         provider_cfg = self.config.get("providers", provider, default={})
-        available_voices = self._available_voices(provider_cfg)
+        available_voices = self._available_voices(provider, provider_cfg)
         if not available_voices:
             return None
 

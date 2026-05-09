@@ -811,7 +811,6 @@ def test_notify_service_given_central_repository_config_then_uses_repository_ove
     project_path = (tmp_path / "project").resolve()
     project_path.mkdir()
     (project_path / ".git").mkdir()
-    (project_path / ".speakup.jsonc").write_text(json.dumps({"tts": {"provider_order": ["stale"]}}))
     nested_path = project_path / "src"
     nested_path.mkdir()
 

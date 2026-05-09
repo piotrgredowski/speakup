@@ -15,7 +15,7 @@ from .base import TTSAdapter
 from ..errors import AdapterError
 from ..models import AudioResult
 
-_SUPPORTED_VOICES = {
+SUPPORTED_VOICES = {
     "Achernar",
     "Achird",
     "Algenib",
@@ -79,7 +79,7 @@ class GeminiTTSAdapter(TTSAdapter):
 
     def _resolve_voice(self, voice: str) -> str:
         selected_voice = self.default_voice if voice == "default" else voice
-        if selected_voice not in _SUPPORTED_VOICES:
+        if selected_voice not in SUPPORTED_VOICES:
             raise AdapterError(f"Unsupported Gemini voice: {selected_voice}")
         return selected_voice
 

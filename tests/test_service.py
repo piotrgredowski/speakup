@@ -113,6 +113,40 @@ def test_project_config_overlay_given_cli_overrides_then_cli_overrides_win(tmp_p
         assert service.config.get("providers", "omlx", "model") == "Kokoro-82M-bf16"
 
 
+def test_effective_project_config_given_local_config_then_overrides_central_repository_config(tmp_path: Path) -> None:
+    raw = default_config()
+    raw["repositories"] = {
+        str(tmp_path): {
+            "tts": {"provider_order": ["omlx", "gemini"]},
+            "providers": {
+                "gemini": {
+                    "title_voice": "Vega",
+                    "message_voice": "Eclipse",
+                }
+            },
+        }
+    }
+    (tmp_path / ".speakup.jsonc").write_text(
+        '{"tts": {"provider_order": ["macos"]}, "providers": {"gemini": {"title_voice": "Erinome"}}}'
+    )
+    service = NotifyService(Config(raw), registry=AdapterRegistry())
+
+    effective = service._effective_project_config(str(tmp_path))
+
+    assert effective["tts"]["provider_order"] == ["macos"]
+    assert effective["providers"]["gemini"]["title_voice"] == "Erinome"
+    assert effective["providers"]["gemini"]["message_voice"] == "Eclipse"
+
+
+def test_choose_project_role_voice_given_invalid_gemini_available_voices_then_uses_base_voice(tmp_path: Path) -> None:
+    raw = default_config()
+    raw["providers"]["gemini"]["available_voices"] = ["Vega", "Eclipse"]
+    raw["providers"]["gemini"]["voice"] = "Kore"
+    service = NotifyService(Config(raw), registry=AdapterRegistry())
+
+    assert service._resolve_voice("gemini", "title", str(tmp_path)) == "Kore"
+
+
 def test_notify_given_skip_summarization_then_bypasses_configured_summarizer() -> None:
     summarizer = _RecordingSummarizer()
     service = _service_with_summarizer(summarizer)
