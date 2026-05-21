@@ -373,6 +373,7 @@ class DroidConfig:
 
 @dataclass
 class AppConfig:
+    enabled: bool = True
     playback: PlaybackConfig = field(default_factory=PlaybackConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     events: EventsConfig = field(default_factory=EventsConfig)
@@ -427,6 +428,8 @@ def _validate_repositories(raw: dict[str, Any]) -> None:
             raise ConfigValidationError(f"repositories key '{path_value}' must be an absolute path")
         if not isinstance(repository_config, dict):
             raise ConfigValidationError(f"repositories.{path_value} must be an object")
+        if "enabled" in repository_config and not isinstance(repository_config["enabled"], bool):
+            raise ConfigValidationError(f"repositories.{path_value}.enabled must be a boolean")
 
 
 def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:

@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "playback": {
     "queue_enabled": true,
     "compose_segments": true,

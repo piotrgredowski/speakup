@@ -23,10 +23,13 @@ class _DummyNotifyResult:
 
 
 class _DummyNotifyService:
+    last_request: object | None = None
+
     def __init__(self, config: Config, **_: object) -> None:
         self.config = config
 
     def notify(self, request: object) -> _DummyNotifyResult:
+        type(self).last_request = request
         return _DummyNotifyResult()
 
 
@@ -138,6 +141,66 @@ def test_build_cli_override_payload_given_model_only_then_targets_model_capable_
     assert providers["openai"]["model"] == "custom-tts-model"
     assert providers["elevenlabs"]["model"] == "custom-tts-model"
     assert providers["lmstudio"]["tts_model"] == "custom-tts-model"
+
+
+def test_disable_given_config_path_then_writes_root_enabled_false(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(default_config()))
+
+    result = runner.invoke(app, ["disable", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    output = json.loads(result.stdout)
+    assert output["status"] == "ok"
+    assert output["enabled"] is False
+    assert json.loads(config_path.read_text())["enabled"] is False
+
+
+def test_enable_given_config_path_then_writes_root_enabled_true(tmp_path: Path) -> None:
+    config = default_config()
+    config["enabled"] = False
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+
+    result = runner.invoke(app, ["enable", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["enabled"] is True
+    assert json.loads(config_path.read_text())["enabled"] is True
+
+
+def test_disable_given_repo_then_writes_repository_enabled_false(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    project_path.mkdir()
+    (project_path / ".git").mkdir()
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(default_config()))
+
+    result = runner.invoke(app, ["disable", "--repo", "--config", str(config_path), "--cwd", str(project_path)])
+
+    assert result.exit_code == 0
+    output = json.loads(result.stdout)
+    assert output["enabled"] is False
+    assert output["repository_path"] == str(project_path.resolve())
+    written = json.loads(config_path.read_text())
+    assert written["enabled"] is True
+    assert written["repositories"][str(project_path.resolve())]["enabled"] is False
+
+
+def test_enable_given_repo_then_preserves_existing_repository_config(tmp_path: Path) -> None:
+    project_path = tmp_path / "project"
+    project_path.mkdir()
+    config = default_config()
+    config["repositories"][str(project_path.resolve())] = {"tts": {"provider_order": ["edge"]}, "enabled": False}
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+
+    result = runner.invoke(app, ["enable", "--repo", "--config", str(config_path), "--cwd", str(project_path)])
+
+    assert result.exit_code == 0
+    repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
+    assert repo_config["enabled"] is True
+    assert repo_config["tts"]["provider_order"] == ["edge"]
 
 
 def test_save_repo_config_given_disabled_setting_then_refuses(tmp_path: Path) -> None:
@@ -263,6 +326,18 @@ def test_notify_given_cli_provider_overrides_then_auto_registers_overridden_payl
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
     assert repo_config["summarization"]["provider_order"] == ["gemini"]
     assert repo_config["tts"]["provider_order"] == ["macos"]
+
+
+def test_notify_given_no_title_flag_then_sets_skip_title_metadata(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(default_config()))
+    _DummyNotifyService.last_request = None
+    monkeypatch.setattr("speakup.cli.NotifyService", _DummyNotifyService)
+
+    result = runner.invoke(app, ["--config", str(config_path), "--message", "done", "--no-title"])
+
+    assert result.exit_code == 0
+    assert getattr(_DummyNotifyService.last_request, "metadata")["_speakup_skip_title"] is True
 
 
 def test_register_repository_config_given_stale_loaded_configs_then_preserves_both_entries(tmp_path: Path) -> None:

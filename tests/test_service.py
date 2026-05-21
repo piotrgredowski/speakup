@@ -78,6 +78,51 @@ def test_notify_given_short_message_then_still_uses_configured_summarizer() -> N
     assert "Task is ready for review." in result.summary
 
 
+def test_notify_given_root_disabled_then_skips_without_summarizing() -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+    service.config.raw["enabled"] = False
+
+    result = service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    assert result.status == "skipped"
+    assert result.backend == "none"
+    assert result.played is False
+    assert summarizer.messages == []
+    assert _FileTTS.texts == []
+
+
+def test_notify_given_central_repository_disabled_then_skips(tmp_path: Path) -> None:
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+    service.config.raw["repositories"] = {str(tmp_path.resolve()): {"enabled": False}}
+
+    result = service.notify(
+        NotifyRequest(message="done", event=MessageEvent.FINAL, metadata={"cwd": str(tmp_path)})
+    )
+
+    assert result.status == "skipped"
+    assert summarizer.messages == []
+    assert _FileTTS.texts == []
+
+
+def test_notify_given_local_repository_disabled_then_skips(tmp_path: Path) -> None:
+    repo = tmp_path / "project"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / ".speakup.jsonc").write_text('{"enabled": false}')
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(
+        NotifyRequest(message="done", event=MessageEvent.FINAL, metadata={"cwd": str(repo)})
+    )
+
+    assert result.status == "skipped"
+    assert summarizer.messages == []
+    assert _FileTTS.texts == []
+
+
 def test_project_config_overlay_given_cli_overrides_then_cli_overrides_win(tmp_path: Path) -> None:
     raw = default_config()
     raw["repositories"] = {
@@ -190,6 +235,26 @@ def test_notify_given_repo_local_context_name_then_uses_repository_title(tmp_pat
     )
 
     assert result.summary == "speakup from repository Speak Up says Task is ready for review."
+
+
+def test_notify_given_skip_title_metadata_then_speaks_only_message(tmp_path: Path) -> None:
+    repo = tmp_path / "speakup"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / ".speakup.jsonc").write_text('{"context_naming": {"source": "repository", "spoken_name": "Speak Up"}}')
+    summarizer = _RecordingSummarizer()
+    service = _service_with_summarizer(summarizer)
+
+    result = service.notify(
+        NotifyRequest(
+            message="done",
+            event=MessageEvent.FINAL,
+            metadata={"cwd": str(repo), "_speakup_skip_title": True},
+        )
+    )
+
+    assert result.summary == "Task is ready for review."
+    assert _FileTTS.texts == ["Task is ready for review."]
 
 
 def test_notify_given_non_dict_metadata_then_normalizes_before_context_write() -> None:

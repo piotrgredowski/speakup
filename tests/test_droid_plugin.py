@@ -136,6 +136,19 @@ def test_hook_falls_back_to_legacy_json_config(tmp_path, monkeypatch):
     assert config["events"]["session_start"] is False
 
 
+def test_hook_root_enabled_false_disables_droid_config(tmp_path, monkeypatch):
+    module = load_hook_module()
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+
+    cfg_dir = tmp_path / ".config" / "speakup"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.jsonc").write_text(json.dumps({"enabled": False, "droid": {"enabled": True}}))
+
+    config = module.load_droid_config()
+
+    assert config["enabled"] is False
+
+
 def test_hook_merges_partial_droid_event_overrides_with_defaults(tmp_path, monkeypatch):
     module = load_hook_module()
     monkeypatch.setattr(module.Path, "home", lambda: tmp_path)

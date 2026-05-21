@@ -793,6 +793,18 @@ class NotifyService:
         project_path: str | None,
         cli_speed: float | None,
     ) -> NotifyResult:
+        if not bool(self.config.get("enabled", default=True)):
+            self.logger.info("notify_skipped_speakup_disabled", extra={"request_id": request_id})
+            result = NotifyResult(
+                status="skipped",
+                summary="",
+                state=request.event,
+                backend="none",
+                played=False,
+            )
+            self._save_history(request, result, request_id=request_id)
+            return result
+
         include_message = bool(self.config.get("logging", "log_message_text", default=False))
         self.logger.info(
             "notify_received",
@@ -886,6 +898,9 @@ class NotifyService:
             agent=request.agent,
             source_tool=request.source_tool,
         )
+        if request.metadata.get("_speakup_skip_title") is True:
+            spoken_title = None
+            spoken_summary = spoken_message
 
         include_payloads = bool(self.config.get("logging", "log_provider_payloads", default=False))
         debug_extra = {

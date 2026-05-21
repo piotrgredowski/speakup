@@ -13,6 +13,7 @@ from speakup.service import build_registry_from_config
 def test_config_load_given_valid_default_then_succeeds(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = Config.load(None)
+    assert cfg.get("enabled") is True
     assert cfg.get("privacy", "mode") == "local_only"
 
 
@@ -54,6 +55,7 @@ def test_config_load_given_repository_config_then_accepts_absolute_path(tmp_path
     config = default_config()
     config["repositories"] = {
         str(tmp_path.resolve()): {
+            "enabled": False,
             "summarization": {"provider_order": ["gemini"]},
             "tts": {"provider_order": ["edge"], "speed": 1.1},
             "providers": {"edge": {"voice": "en-US-AriaNeural"}},
@@ -64,6 +66,7 @@ def test_config_load_given_repository_config_then_accepts_absolute_path(tmp_path
 
     loaded = Config.load(config_path)
 
+    assert loaded.get("repositories", str(tmp_path.resolve()), "enabled") is False
     assert loaded.get("repositories", str(tmp_path.resolve()), "tts", "provider_order") == ["edge"]
 
 
@@ -84,6 +87,7 @@ def test_default_config_preserves_existing_dedup_behavior() -> None:
     "mutator,expected",
     [
         (lambda c: c.setdefault("playback", {}).update({"queue_enabled": "yes"}), "playback.queue_enabled"),
+        (lambda c: c.update({"enabled": "yes"}), "enabled must be a boolean"),
         (lambda c: c["privacy"].update({"mode": "remote_only"}), "privacy.mode"),
         (lambda c: c["tts"].update({"audio_format": "flac"}), "tts.audio_format"),
         (lambda c: c["tts"].update({"play_audio": "yes"}), "tts.play_audio"),
@@ -98,6 +102,7 @@ def test_default_config_preserves_existing_dedup_behavior() -> None:
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
         (lambda c: c.setdefault("providers", {}).setdefault("command_summary", {}).update({"args": "-p {message}"}), "providers.command_summary.args"),
         (lambda c: c.setdefault("repositories", {}).update({"relative/path": {}}), "repositories key 'relative/path' must be an absolute path"),
+        (lambda c: c.setdefault("repositories", {}).update({"/tmp/repo": {"enabled": "yes"}}), "repositories./tmp/repo.enabled must be a boolean"),
     ],
 )
 def test_config_load_given_invalid_shape_then_raises(mutator, expected, tmp_path) -> None:

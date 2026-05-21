@@ -16,12 +16,14 @@ from .app_logging import redact_payload, setup_logging
 from .config import (
     Config,
     _load_config_for_write,
+    _write_json_atomic,
     active_repo_config_payload,
     deep_merge,
     get_default_log_file_path,
     load_config_without_repository_registration,
     load_config_with_repository_registration,
     register_repository_config,
+    repository_config_key,
     validate_config,
     write_default_config,
 )
@@ -301,6 +303,7 @@ def _run_notify(
     input_file: Optional[Path],
     message_file: Optional[Path],
     no_play: bool,
+    no_title: bool,
     no_summarize: bool,
     fail_fast: bool,
     speed: Optional[float],
@@ -379,6 +382,8 @@ def _run_notify(
         request.metadata["_speakup_cli_overrides"] = cli_override_payload
     if speed is not None:
         request.metadata["cli_speed"] = speed
+    if no_title:
+        request.metadata["_speakup_skip_title"] = True
     request.skip_summarization = no_summarize
     register_repository_config(cfg, config, request.metadata.get("cwd"))
     logger.info(
@@ -503,6 +508,9 @@ def main_callback(
     no_play: bool = typer.Option(
         False, "--no-play", help="Synthesize audio but skip local playback"
     ),
+    no_title: bool = typer.Option(
+        False, "--no-title", help="Skip reading the spoken title; read only the notification message"
+    ),
     log_level: Optional[str] = typer.Option(
         None,
         "--log-level",
@@ -549,6 +557,7 @@ def main_callback(
             input_file=input_file,
             message_file=message_file,
             no_play=no_play,
+            no_title=no_title,
             no_summarize=no_summarize,
             fail_fast=fail_fast,
             speed=speed,
@@ -1064,6 +1073,76 @@ def pi(
 
 def _get_config_path(config: Optional[Path]) -> Path:
     return config or Path.home() / ".config" / "speakup" / "config.jsonc"
+
+
+def _set_enabled(
+    enabled: bool,
+    *,
+    config: Optional[Path] = None,
+    repo: bool = False,
+    cwd: Optional[Path] = None,
+) -> None:
+    target_path = _get_config_path(config)
+    writable_config = _load_config_for_write(target_path)
+    repository_path: str | None = None
+
+    if repo:
+        repository_path = repository_config_key(cwd)
+        if repository_path is None:
+            json.dump({"status": "error", "error": f"No repository root found from: {cwd or Path.cwd()}"}, sys.stdout)
+            sys.stdout.write("\n")
+            raise typer.Exit(2)
+
+        repositories = writable_config.setdefault("repositories", {})
+        if not isinstance(repositories, dict):
+            validate_config(writable_config)
+            raise typer.Exit(2)
+        existing_repo_config = repositories.get(repository_path, {})
+        if not isinstance(existing_repo_config, dict):
+            existing_repo_config = {}
+        repositories[repository_path] = deep_merge(existing_repo_config, {"enabled": enabled})
+    else:
+        writable_config["enabled"] = enabled
+
+    validate_config(writable_config)
+    _write_json_atomic(target_path, writable_config)
+    output: dict[str, object] = {"status": "ok", "config_path": str(target_path), "enabled": enabled}
+    if repository_path:
+        output["repository_path"] = repository_path
+    json.dump(output, sys.stdout)
+    sys.stdout.write("\n")
+
+
+@app.command("enable")
+def enable(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+    repo: bool = typer.Option(
+        False, "--repo", help="Toggle the active repository entry instead of the root config"
+    ),
+    cwd: Optional[Path] = typer.Option(
+        None, "--cwd", help="Project directory to toggle when using --repo"
+    ),
+) -> None:
+    """Enable speakup globally or for a repository."""
+    _set_enabled(True, config=config, repo=repo, cwd=cwd)
+
+
+@app.command("disable")
+def disable(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config JSON"
+    ),
+    repo: bool = typer.Option(
+        False, "--repo", help="Toggle the active repository entry instead of the root config"
+    ),
+    cwd: Optional[Path] = typer.Option(
+        None, "--cwd", help="Project directory to toggle when using --repo"
+    ),
+) -> None:
+    """Disable speakup globally or for a repository."""
+    _set_enabled(False, config=config, repo=repo, cwd=cwd)
 
 
 @app.command("show-config")

@@ -373,7 +373,10 @@ def load_droid_config() -> dict:
     }
 
     full_config = load_full_config()
-    return merge_nested_defaults(defaults, full_config.get("droid"))
+    config = merge_nested_defaults(defaults, full_config.get("droid"))
+    if full_config.get("enabled") is False:
+        config["enabled"] = False
+    return config
 
 
 def map_event_to_speakup(droid_event: str) -> str:
