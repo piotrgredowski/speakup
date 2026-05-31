@@ -68,3 +68,25 @@ Provider order controls fallback. Hosted providers receive message text when sel
 ## Project overrides
 
 `speakup` can persist per-project voice selections in `.speakup.jsonc` under the project directory. This file is ignored by this repo and should normally remain local.
+
+## Integration toggles
+
+Agent integrations can also be disabled independently from the root `enabled` flag:
+
+```jsonc
+{
+  "codex": {
+    "enabled": true,
+    "events": {
+      "notification": true,
+      "stop": true,
+      "plan_approval": true
+    }
+  },
+  "droid": {
+    "enabled": true
+  }
+}
+```
+
+For Codex, `notification` covers explicit input or approval prompts, `stop` covers completed turns, and `plan_approval` covers proposed-plan waits.

@@ -372,6 +372,19 @@ class DroidConfig:
 
 
 @dataclass
+class CodexEvents:
+    notification: bool = True
+    stop: bool = True
+    plan_approval: bool = True
+
+
+@dataclass
+class CodexConfig:
+    enabled: bool = True
+    events: CodexEvents = field(default_factory=CodexEvents)
+
+
+@dataclass
 class AppConfig:
     enabled: bool = True
     playback: PlaybackConfig = field(default_factory=PlaybackConfig)
@@ -393,6 +406,7 @@ class AppConfig:
     speech_template: SpeechTemplateConfig = field(default_factory=SpeechTemplateConfig)
     providers: ProvidersConfig = field(default_factory=ProvidersConfig)
     droid: DroidConfig = field(default_factory=DroidConfig)
+    codex: CodexConfig = field(default_factory=CodexConfig)
 
 
 def default_config() -> dict[str, Any]:

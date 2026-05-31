@@ -227,5 +227,13 @@
       "subagent_stop": false,
       "session_start": false
     }
+  },
+  "codex": {
+    "enabled": true,
+    "events": {
+      "notification": true,
+      "stop": true,
+      "plan_approval": true
+    }
   }
 }

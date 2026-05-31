@@ -83,6 +83,32 @@ def test_default_config_preserves_existing_dedup_behavior() -> None:
     assert cfg["dedup"]["on_skip"] == "skip"
 
 
+def test_default_config_includes_codex_integration_defaults() -> None:
+    cfg = default_config()
+
+    assert cfg["codex"] == {
+        "enabled": True,
+        "events": {
+            "notification": True,
+            "stop": True,
+            "plan_approval": True,
+        },
+    }
+
+
+def test_config_load_given_codex_overrides_then_accepts_shape(tmp_path: Path) -> None:
+    config = default_config()
+    config["codex"]["enabled"] = False
+    config["codex"]["events"]["plan_approval"] = False
+    config_path = tmp_path / "config_codex.json"
+    config_path.write_text(json.dumps(config))
+
+    loaded = Config.load(config_path)
+
+    assert loaded.get("codex", "enabled") is False
+    assert loaded.get("codex", "events", "plan_approval") is False
+
+
 @pytest.mark.parametrize(
     "mutator,expected",
     [
@@ -101,6 +127,8 @@ def test_default_config_preserves_existing_dedup_behavior() -> None:
         (lambda c: c.setdefault("logging", {}).update({"destination": ["console"]}), "logging.destination[0]"),
         (lambda c: c.setdefault("fallback", {}).update({"fail_fast": "yes"}), "fallback.fail_fast"),
         (lambda c: c.setdefault("providers", {}).setdefault("command_summary", {}).update({"args": "-p {message}"}), "providers.command_summary.args"),
+        (lambda c: c.setdefault("codex", {}).update({"enabled": "yes"}), "codex.enabled"),
+        (lambda c: c.setdefault("codex", {}).setdefault("events", {}).update({"plan_approval": "yes"}), "codex.events.plan_approval"),
         (lambda c: c.setdefault("repositories", {}).update({"relative/path": {}}), "repositories key 'relative/path' must be an absolute path"),
         (lambda c: c.setdefault("repositories", {}).update({"/tmp/repo": {"enabled": "yes"}}), "repositories./tmp/repo.enabled must be a boolean"),
     ],
