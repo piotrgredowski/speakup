@@ -1,0 +1,11 @@
+{
+  "name": "speakup-codex-plugin",
+  "description": "Spoken notifications for Codex lifecycle events using SpeakUp",
+  "version": "0.1.0",
+  "author": {
+    "name": "Piotr Gredowski"
+  },
+  "homepage": "https://github.com/piotrgredowski/speakup",
+  "repository": "https://github.com/piotrgredowski/speakup",
+  "license": "MIT"
+}

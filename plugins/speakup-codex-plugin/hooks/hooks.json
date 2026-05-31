@@ -1,0 +1,27 @@
+{
+  "description": "Speak spoken notifications for Codex lifecycle events",
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --script \"${PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --script \"${PLUGIN_ROOT}/hooks/speakup-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

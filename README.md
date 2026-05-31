@@ -17,7 +17,7 @@ For the smoothest fully local macOS experience, Speakup prefers oMLX by default 
 - Summarizes long agent output before playback.
 - Routes through configurable local or hosted summarization/TTS providers.
 - Stores replayable notification history.
-- Integrates with Droid and Pi.
+- Integrates with Codex, Droid, and Pi.
 
 ## Install
 
@@ -156,6 +156,24 @@ speakup show-logs-path
 | `elevenlabs` | no | yes | no | Hosted ElevenLabs API |
 
 ## Integrations
+
+### Codex
+
+The Codex plugin lives in `plugins/speakup-codex-plugin`.
+
+The packaged plugin wires:
+
+- `Notification` to `needs_input`
+- `Stop` to `final`
+- proposed-plan waits to `needs_input`
+
+Replay current Codex sessions with:
+
+```bash
+speakup replay 1 --agent codex --session-key <session_key>
+```
+
+See [plugins/speakup-codex-plugin/README.md](plugins/speakup-codex-plugin/README.md).
 
 ### Droid
 

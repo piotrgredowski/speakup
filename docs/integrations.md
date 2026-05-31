@@ -23,6 +23,18 @@ Packaged hooks:
 
 The hook stores a session pointer under `~/.config/speakup/droid-session-pointers/` so `/speakup replay N` can replay the current Droid session exactly.
 
+## Codex plugin
+
+The Codex plugin lives in `plugins/speakup-codex-plugin`.
+
+Packaged hooks:
+
+- `Notification` -> `needs_input`
+- `Stop` -> `final`
+- Proposed plan blocks -> `needs_input` with a precomputed plan-approval summary
+
+The hook stores a session pointer under `~/.config/speakup/codex-session-pointers/` so `speakup replay N --agent codex --session-key <session_key>` can replay the current Codex session exactly.
+
 ## Pi plugin
 
 The Pi extension lives in `plugins/pi` and calls:
