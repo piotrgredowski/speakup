@@ -7,7 +7,13 @@ from typer.testing import CliRunner
 
 from speakup.cli import app
 from speakup.cli import _apply_cli_overrides, _build_cli_override_payload
-from speakup.config import Config, default_config, load_config_without_repository_registration, register_repository_config
+from speakup.config import (
+    Config,
+    default_config,
+    get_default_log_file_path,
+    load_config_without_repository_registration,
+    register_repository_config,
+)
 
 
 runner = CliRunner()
@@ -234,7 +240,7 @@ def test_config_loading_given_missing_default_config_then_auto_registers_git_roo
 
     assert result.exit_code == 0
     config_path = home / ".config" / "speakup" / "config.jsonc"
-    assert result.stdout.strip() == str(home / "Library" / "Logs" / "speakup" / "speakup.log")
+    assert result.stdout.strip() == str(get_default_log_file_path())
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
     assert repo_config["summarization"]["provider_order"] == ["omlx", "rule_based"]
     assert repo_config["tts"]["provider_order"] == ["omlx", "piper", "macos"]
