@@ -216,7 +216,7 @@ def test_save_repo_config_given_disabled_setting_then_refuses(tmp_path: Path) ->
     assert not (project_path / ".speakup.jsonc").exists()
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
     assert repo_config["summarization"]["provider_order"] == ["omlx", "rule_based"]
-    assert repo_config["tts"]["provider_order"] == ["omlx", "macos"]
+    assert repo_config["tts"]["provider_order"] == ["omlx", "piper", "macos"]
 
 
 def test_config_loading_given_missing_default_config_then_auto_registers_git_root(
@@ -237,8 +237,9 @@ def test_config_loading_given_missing_default_config_then_auto_registers_git_roo
     assert result.stdout.strip() == str(home / "Library" / "Logs" / "speakup" / "speakup.log")
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
     assert repo_config["summarization"]["provider_order"] == ["omlx", "rule_based"]
-    assert repo_config["tts"]["provider_order"] == ["omlx", "macos"]
+    assert repo_config["tts"]["provider_order"] == ["omlx", "piper", "macos"]
     assert repo_config["providers"]["omlx"]["summary_model"] == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
+    assert repo_config["providers"]["piper"]["model"] == "pl_PL-bass-high"
     assert repo_config["providers"]["macos"]["voice"] == "default"
 
 
@@ -409,5 +410,5 @@ def test_save_repo_config_given_local_sidecar_then_does_not_persist_sidecar_sett
 
     assert result.exit_code == 0
     written = json.loads(config_path.read_text())
-    assert written["tts"]["provider_order"] == ["omlx", "macos"]
+    assert written["tts"]["provider_order"] == ["omlx", "piper", "macos"]
     assert written["repositories"][str(project_path.resolve())]["tts"]["provider_order"] == ["lmstudio"]

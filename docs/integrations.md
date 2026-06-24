@@ -48,3 +48,5 @@ It passes Pi message payloads through stdin and uses `sessionKey` for exact repl
 3. Keep API keys in environment variables.
 4. Add mocked tests for success, missing credentials, non-audio/non-JSON responses, and truncation/cleanup behavior.
 5. Register the provider in `build_registry_from_config()` and update the config schema/docs.
+
+Local server-backed providers may keep a process running across short-lived CLI invocations. Store that runtime state outside notification history so replay/history data stays user-facing.

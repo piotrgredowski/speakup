@@ -211,6 +211,7 @@ class TTSProvider(str, Enum):
     openai = "openai"
     gemini = "gemini"
     omlx = "omlx"
+    piper = "piper"
 
 
 class DedupMode(str, Enum):

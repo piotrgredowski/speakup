@@ -43,7 +43,7 @@ Raw agent messages can contain source code, file paths, API keys, or prompt cont
     "provider_order": ["omlx", "rule_based"]
   },
   "tts": {
-    "provider_order": ["omlx", "macos"]
+    "provider_order": ["omlx", "piper", "macos"]
   }
 }
 ```
@@ -62,8 +62,34 @@ Provider order controls fallback. Hosted providers receive message text when sel
 | `gemini` | both | summarizer/TTS | yes |
 | `macos` | `tts.provider_order` | TTS | no |
 | `omlx` | both | summarizer/TTS | no, if pointed at localhost |
+| `piper` | `tts.provider_order` | TTS | no |
 | `edge` | `tts.provider_order` | TTS | yes |
 | `elevenlabs` | `tts.provider_order` | TTS | yes |
+
+## Piper
+
+Piper is a local optional TTS provider. Install it with `speakup[piper]`, download voices into the configured `providers.piper.data_dir`, and enable `piper` in `tts.provider_order`.
+
+```jsonc
+{
+  "tts": {
+    "provider_order": ["omlx", "piper", "macos"]
+  },
+  "providers": {
+    "piper": {
+      "base_url": "http://127.0.0.1:5000",
+      "auto_start": true,
+      "host": "127.0.0.1",
+      "port": 5000,
+      "data_dir": "~/.local/share/speakup/piper-voices",
+      "model": "pl_PL-bass-high",
+      "voice": "pl_PL-bass-high"
+    }
+  }
+}
+```
+
+When `auto_start` is enabled, SpeakUp starts Piper lazily and records the warm local server in its runtime database so later CLI invocations can reuse it. Piper returns WAV audio; `tts.audio_format` is ignored for this provider. `tts.speed` maps to Piper `length_scale` as `clamp(1 / speed, 0.5, 2.0)`.
 
 ## Project overrides
 

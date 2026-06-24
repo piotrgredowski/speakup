@@ -39,6 +39,7 @@
   "tts": {
     "provider_order": [
       "omlx",
+      "piper",
       "macos"
     ],
     "voice": "default",
@@ -208,6 +209,21 @@
       "message_voice": null,
       "available_voices": [],
       "timeout": 60.0
+    },
+    "piper": {
+      "base_url": "http://127.0.0.1:5000",
+      "auto_start": true,
+      "host": "127.0.0.1",
+      "port": 5000,
+      "data_dir": "~/.local/share/speakup/piper-voices",
+      "model": "pl_PL-bass-high",
+      "voice": "pl_PL-bass-high",
+      "title_voice": null,
+      "message_voice": null,
+      "available_voices": [],
+      "timeout": 20.0,
+      "startup_timeout": 10.0,
+      "extra_args": []
     },
     "command_summary": {
       "command": "pi",
