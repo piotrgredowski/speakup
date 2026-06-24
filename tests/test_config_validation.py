@@ -29,6 +29,11 @@ def test_default_config_uses_local_omlx_tts_with_piper_and_macos_fallback() -> N
     cfg = default_config()
     assert cfg["tts"]["provider_order"] == ["omlx", "piper", "macos"]
     assert cfg["providers"]["piper"]["model"] == "en_GB-alba-medium"
+    assert cfg["providers"]["piper"]["available_voices"] == [
+        "en_GB-alba-medium",
+        "pl_PL-mc_speech-medium",
+        "pl_PL-bass-high",
+    ]
 
 
 def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_override(tmp_path: Path) -> None:
