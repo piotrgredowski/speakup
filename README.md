@@ -110,6 +110,11 @@ For the smoothest fully local macOS setup with oMLX, Kokoro TTS, and Gemma summa
       "data_dir": "~/.local/share/speakup/piper-voices",
       "model": "en_GB-alba-medium",
       "voice": "en_GB-alba-medium",
+      "available_voices": [
+        "en_GB-alba-medium",
+        "pl_PL-mc_speech-medium",
+        "pl_PL-bass-high"
+      ],
       "idle_timeout_seconds": 600
     }
   }
@@ -122,7 +127,10 @@ Piper support is optional:
 
 ```bash
 pip install 'speakup[piper]'
-python -m piper.download_voices --download-dir ~/.local/share/speakup/piper-voices en_GB-alba-medium
+python -m piper.download_voices --download-dir ~/.local/share/speakup/piper-voices \
+  en_GB-alba-medium \
+  pl_PL-mc_speech-medium \
+  pl_PL-bass-high
 ```
 
 SpeakUp can autostart and reuse a local Piper HTTP server. The server speaks through `POST /` with a JSON body, exposes `GET /voices` for readiness checks, and stops after 10 idle minutes by default.

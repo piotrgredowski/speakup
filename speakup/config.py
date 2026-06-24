@@ -347,7 +347,9 @@ class PiperConfig:
     voice: str = "en_GB-alba-medium"
     title_voice: str | None = None
     message_voice: str | None = None
-    available_voices: list[str] = field(default_factory=list)
+    available_voices: list[str] = field(
+        default_factory=lambda: ["en_GB-alba-medium", "pl_PL-mc_speech-medium", "pl_PL-bass-high"]
+    )
     timeout: float = 20.0
     startup_timeout: float = 10.0
     idle_timeout_seconds: int | None = 600

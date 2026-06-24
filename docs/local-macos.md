@@ -64,6 +64,11 @@ Then set `~/.config/speakup/config.jsonc` to use oMLX locally:
       "data_dir": "~/.local/share/speakup/piper-voices",
       "model": "en_GB-alba-medium",
       "voice": "en_GB-alba-medium",
+      "available_voices": [
+        "en_GB-alba-medium",
+        "pl_PL-mc_speech-medium",
+        "pl_PL-bass-high"
+      ],
       "idle_timeout_seconds": 600
     }
   }
