@@ -82,8 +82,8 @@ Piper is a local optional TTS provider. Install it with `speakup[piper]`, downlo
       "host": "127.0.0.1",
       "port": 5000,
       "data_dir": "~/.local/share/speakup/piper-voices",
-      "model": "pl_PL-bass-high",
-      "voice": "pl_PL-bass-high",
+      "model": "en_GB-alba-medium",
+      "voice": "en_GB-alba-medium",
       "idle_timeout_seconds": 600
     }
   }

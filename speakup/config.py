@@ -343,8 +343,8 @@ class PiperConfig:
     host: str = "127.0.0.1"
     port: Annotated[int, Gt(0)] = 5000
     data_dir: str = "~/.local/share/speakup/piper-voices"
-    model: str = "pl_PL-bass-high"
-    voice: str = "pl_PL-bass-high"
+    model: str = "en_GB-alba-medium"
+    voice: str = "en_GB-alba-medium"
     title_voice: str | None = None
     message_voice: str | None = None
     available_voices: list[str] = field(default_factory=list)
