@@ -21,6 +21,15 @@ uv run python -m build
 uv run twine check dist/*
 ```
 
+Hosted-provider integration tests should use Cerebras by default. To run them locally:
+
+```bash
+SPEAKUP_INTEGRATION_TEST_PROVIDER=cerebras CEREBRAS_API_KEY=... \
+  uv run pytest tests/test_integration_cerebras.py -v -m integration_cerebras
+```
+
+`SPEAKUP_INTEGRATION_TEST_PROVIDER` selects which hosted provider suite is active; it defaults to `cerebras`. CI runs the Cerebras integration suite on Python 3.13 when the `CEREBRAS_API_KEY` repository secret is configured. Gemini and other hosted-provider integrations should stay opt-in for targeted provider work.
+
 For desktop changes, also run:
 
 ```bash

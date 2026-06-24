@@ -42,26 +42,30 @@ Raw agent messages can contain source code, file paths, API keys, or prompt cont
   "summarization": {
     "provider_order": ["omlx", "rule_based"]
   },
+  "pronunciation": {
+    "enabled": true,
+    "provider_order": ["omlx"]
+  },
   "tts": {
     "provider_order": ["omlx", "piper", "macos"]
   }
 }
 ```
 
-Provider order controls fallback. Hosted providers receive message text when selected, so place them only in configs where remote processing is acceptable.
+Provider order controls fallback. Pronunciation adaptation runs after summarization and speech-template rendering, but before TTS synthesis. Hosted providers receive message text when selected, so place them only in configs where remote processing is acceptable.
 
 ## Provider matrix
 
 | Provider | Section | Kind | Remote |
 | --- | --- | --- | --- |
 | `rule_based` | `summarization.provider_order` | summarizer | no |
-| `lmstudio` | both | summarizer/TTS | no, if pointed at localhost |
-| `command` | `summarization.provider_order` | summarizer | depends on command |
-| `cerebras` | `summarization.provider_order` | summarizer | yes |
-| `openai` | both | summarizer/TTS | yes |
-| `gemini` | both | summarizer/TTS | yes |
+| `lmstudio` | summarization/pronunciation/tts provider order | summarizer/pronunciation/TTS | no, if pointed at localhost |
+| `command` | summarization/pronunciation provider order | summarizer/pronunciation | depends on command |
+| `cerebras` | summarization/pronunciation provider order | summarizer/pronunciation | yes |
+| `openai` | summarization/pronunciation/tts provider order | summarizer/pronunciation/TTS | yes |
+| `gemini` | summarization/pronunciation/tts provider order | summarizer/pronunciation/TTS | yes |
 | `macos` | `tts.provider_order` | TTS | no |
-| `omlx` | both | summarizer/TTS | no, if pointed at localhost |
+| `omlx` | summarization/pronunciation/tts provider order | summarizer/pronunciation/TTS | no, if pointed at localhost |
 | `piper` | `tts.provider_order` | TTS | no |
 | `edge` | `tts.provider_order` | TTS | yes |
 | `elevenlabs` | `tts.provider_order` | TTS | yes |

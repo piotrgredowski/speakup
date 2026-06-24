@@ -1,7 +1,8 @@
 """Integration tests for Cerebras summarizer using real API.
 
-These tests require CEREBRAS_API_KEY and SPEAKUP_RUN_CEREBRAS_INTEGRATION=1.
-They can be run with: SPEAKUP_RUN_CEREBRAS_INTEGRATION=1 pytest -m integration_cerebras
+These are the default hosted-provider integration tests for SpeakUp.
+They run when SPEAKUP_INTEGRATION_TEST_PROVIDER is unset or set to cerebras, and require CEREBRAS_API_KEY.
+They can be run with: SPEAKUP_INTEGRATION_TEST_PROVIDER=cerebras pytest -m integration_cerebras
 
 To run only integration tests:
     pytest tests/test_integration_cerebras.py -v
@@ -19,11 +20,13 @@ from speakup.errors import AdapterError
 from speakup.models import MessageEvent
 from speakup.summarizers.cerebras import CerebrasSummarizer
 
+from .conftest import selected_integration_provider
 
-# Skip real API tests unless explicitly enabled.
+
+# Skip real API tests unless Cerebras is the selected hosted integration provider.
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("CEREBRAS_API_KEY") or os.environ.get("SPEAKUP_RUN_CEREBRAS_INTEGRATION") != "1",
-    reason="Cerebras integration tests require CEREBRAS_API_KEY and SPEAKUP_RUN_CEREBRAS_INTEGRATION=1",
+    selected_integration_provider() != "cerebras" or not os.environ.get("CEREBRAS_API_KEY"),
+    reason="Cerebras integration tests require SPEAKUP_INTEGRATION_TEST_PROVIDER=cerebras and CEREBRAS_API_KEY",
 )
 
 
@@ -31,8 +34,10 @@ pytestmark = pytest.mark.skipif(
 def cerebras_api_key() -> str:
     """Get Cerebras API key from environment."""
     key = os.environ.get("CEREBRAS_API_KEY")
-    if not key or os.environ.get("SPEAKUP_RUN_CEREBRAS_INTEGRATION") != "1":
-        pytest.skip("CEREBRAS_API_KEY and SPEAKUP_RUN_CEREBRAS_INTEGRATION=1 required")
+    if selected_integration_provider() != "cerebras":
+        pytest.skip("SPEAKUP_INTEGRATION_TEST_PROVIDER is not cerebras")
+    if not key:
+        pytest.skip("CEREBRAS_API_KEY required")
     return key
 
 
@@ -41,7 +46,7 @@ def cerebras_summarizer(cerebras_api_key: str) -> CerebrasSummarizer:
     """Create CerebrasSummarizer instance with API key from environment."""
     return CerebrasSummarizer(
         api_key_env="CEREBRAS_API_KEY",
-        model="llama3.1-8b",
+        model="llama-3.3-70b",
         base_url="https://api.cerebras.ai/v1",
     )
 
@@ -127,7 +132,7 @@ def test_cerebras_real_api_with_custom_model():
     # Try with a different model if available
     summarizer = CerebrasSummarizer(
         api_key_env="CEREBRAS_API_KEY",
-        model="llama3.1-8b",
+        model="llama-3.3-70b",
     )
 
     result = summarizer.summarize("Test message", MessageEvent.FINAL, max_chars=220)
@@ -143,7 +148,7 @@ def test_cerebras_real_api_given_invalid_key_then_raises():
 
     summarizer = CerebrasSummarizer(
         api_key_env="INVALID_CEREBRAS_KEY",
-        model="llama3.1-8b",
+        model="llama-3.3-70b",
     )
 
     with pytest.raises(AdapterError) as exc:

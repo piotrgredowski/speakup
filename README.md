@@ -35,7 +35,7 @@ For local development, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start: local-first
 
-The default config is local-first. It tries local oMLX first for summarization and TTS, then local Piper TTS, then falls back to the built-in rule-based summarizer and macOS `say`, so no agent text is sent to hosted APIs by default.
+The default config is local-first. It tries local oMLX first for summarization, pronunciation adaptation, and TTS, then local Piper TTS, then falls back to the built-in rule-based summarizer and macOS `say`, so no agent text is sent to hosted APIs by default.
 
 ```bash
 speakup init-config
@@ -93,6 +93,10 @@ For the smoothest fully local macOS setup with oMLX, Kokoro TTS, and Gemma summa
   "summarization": {
     "provider_order": ["omlx", "rule_based"]
   },
+  "pronunciation": {
+    "enabled": true,
+    "provider_order": ["omlx"]
+  },
   "tts": {
     "provider_order": ["omlx", "piper", "macos"],
     "audio_format": "wav"
@@ -142,6 +146,7 @@ By default:
 - `privacy.mode` is `local_only`.
 - `privacy.allow_remote_fallback` is `false`.
 - summarization tries `omlx`, then `rule_based`.
+- pronunciation adaptation tries `omlx`.
 - TTS tries `omlx`, then `piper`, then `macos`.
 - notification history does not store raw messages unless `history.store_messages` is enabled.
 - logs do not include raw message text unless `logging.log_message_text` is enabled.
@@ -155,6 +160,7 @@ speakup --message "Done implementing the feature." --event final
 speakup --input-json '{"message":"Build failed in CI","event":"error","agent":"droid"}'
 speakup --no-play --message "Background task finished." --event final
 speakup verbalize --text "Room 402 opens at 3:30 in 1980."
+speakup pronounce --message "GitHub action failed" --spoken-language pl
 speakup self-test
 speakup doctor
 speakup replay 3

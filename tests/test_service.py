@@ -6,10 +6,14 @@ from typing import ClassVar
 import pytest
 
 from speakup.config import Config, default_config
+from speakup.errors import AdapterError
+from speakup.history import NotificationHistory
 from speakup.models import AudioResult, MessageEvent, NotifyRequest, SummaryResult
 from speakup.playback.base import PlaybackAdapter
+from speakup.pronunciation import PronunciationAdapter, PronunciationResult
 from speakup.registry import AdapterRegistry
 from speakup.service import NotifyService
+from speakup.session_state import SessionStateStore
 from speakup.summarizers.base import Summarizer
 from speakup.tts.base import TTSAdapter
 
@@ -46,6 +50,37 @@ class _FileTTS(TTSAdapter):
         return AudioResult(kind="file", value=str(path), provider=self.name)
 
 
+class _RecordingPronunciationAdapter(PronunciationAdapter):
+    name: ClassVar[str] = "command"
+
+    def __init__(
+        self,
+        *,
+        title: str | None = "spikap mówi",
+        message: str = "GitHab ekszyn fejld",
+        spoken_language: str = "pl",
+    ) -> None:
+        self.title = title
+        self.message = message
+        self.spoken_language = spoken_language
+        self.calls: list[tuple[str | None, str, str | None]] = []
+
+    def adapt(self, *, title: str | None, message: str, spoken_language: str | None) -> PronunciationResult:
+        self.calls.append((title, message, spoken_language))
+        return PronunciationResult(
+            title=self.title,
+            message=self.message,
+            spoken_language=self.spoken_language,
+        )
+
+
+class _FailingPronunciationAdapter(PronunciationAdapter):
+    name: ClassVar[str] = "command"
+
+    def adapt(self, *, title: str | None, message: str, spoken_language: str | None) -> PronunciationResult:
+        raise AdapterError("pronunciation exploded")
+
+
 class _NoopPlayback(PlaybackAdapter):
     name: ClassVar[str] = "noop"
 
@@ -68,6 +103,19 @@ def _service_with_summarizer(summarizer: _RecordingSummarizer) -> NotifyService:
     return NotifyService(Config(raw), registry=registry)
 
 
+def _service_with_pronunciation_adapter(
+    summarizer: _RecordingSummarizer,
+    adapter: _RecordingPronunciationAdapter,
+    *,
+    session_state: SessionStateStore | None = None,
+) -> NotifyService:
+    service = _service_with_summarizer(summarizer)
+    service.config.raw["pronunciation"]["provider_order"] = ["command"]
+    service.registry.register_pronunciation("command", lambda: adapter)
+    service.session_state = session_state
+    return service
+
+
 def test_notify_given_short_message_then_still_uses_configured_summarizer() -> None:
     summarizer = _RecordingSummarizer()
     service = _service_with_summarizer(summarizer)
@@ -76,6 +124,194 @@ def test_notify_given_short_message_then_still_uses_configured_summarizer() -> N
 
     assert summarizer.messages == ["done"]
     assert "Task is ready for review." in result.summary
+
+
+def test_notify_given_pronunciation_adapter_then_returns_and_speaks_adapted_summary() -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+
+    result = service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    assert adapter.calls == [("speakup says", "GitHub action failed", None)]
+    assert result.summary == "spikap mówi GitHab ekszyn fejld"
+    assert _FileTTS.texts == ["spikap mówi", "GitHab ekszyn fejld"]
+
+
+def test_notify_given_skip_title_and_pronunciation_title_then_speaks_only_adapted_message() -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+
+    result = service.notify(
+        NotifyRequest(
+            message="done",
+            event=MessageEvent.FINAL,
+            metadata={"_speakup_skip_title": True},
+        )
+    )
+
+    assert adapter.calls == [(None, "GitHub action failed", None)]
+    assert result.summary == "GitHab ekszyn fejld"
+    assert _FileTTS.texts == ["GitHab ekszyn fejld"]
+
+
+def test_notify_given_session_state_language_then_passes_language_and_updates_metadata(tmp_path: Path) -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    session_state = SessionStateStore(tmp_path / "session_state.db")
+    session_state.upsert(agent="codex", session_key="abc", session_name="Morning", spoken_language="pl")
+    service = _service_with_pronunciation_adapter(summarizer, adapter, session_state=session_state)
+    request = NotifyRequest(
+        message="done",
+        event=MessageEvent.FINAL,
+        agent="codex",
+        session_key="abc",
+    )
+
+    result = service.notify(request)
+    stored = session_state.get(agent="codex", session_key="abc")
+
+    assert adapter.calls == [("codex says", "GitHub action failed", "pl")]
+    assert result.summary == "spikap mówi GitHab ekszyn fejld"
+    assert stored is not None
+    assert stored.spoken_language == "pl"
+    assert request.metadata["spoken_language"] == "pl"
+    assert request.metadata["pre_pronunciation_summary"] == "codex says GitHub action failed"
+
+
+def test_notify_given_adapter_omits_existing_session_language_then_metadata_keeps_used_language(tmp_path: Path) -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter(spoken_language=None)
+    session_state = SessionStateStore(tmp_path / "session_state.db")
+    session_state.upsert(agent="codex", session_key="abc", session_name="Morning", spoken_language="pl")
+    service = _service_with_pronunciation_adapter(summarizer, adapter, session_state=session_state)
+    request = NotifyRequest(
+        message="done",
+        event=MessageEvent.FINAL,
+        agent="codex",
+        session_key="abc",
+    )
+
+    service.notify(request)
+
+    assert adapter.calls == [("codex says", "GitHub action failed", "pl")]
+    assert request.metadata["spoken_language"] == "pl"
+
+
+def test_notify_given_session_key_without_language_then_stores_inferred_spoken_language(tmp_path: Path) -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    session_state = SessionStateStore(tmp_path / "session_state.db")
+    service = _service_with_pronunciation_adapter(summarizer, adapter, session_state=session_state)
+
+    service.notify(
+        NotifyRequest(
+            message="done",
+            event=MessageEvent.FINAL,
+            agent="codex",
+            session_key="abc",
+        )
+    )
+
+    stored = session_state.get(agent="codex", session_key="abc")
+    assert adapter.calls == [("codex says", "GitHub action failed", None)]
+    assert stored is not None
+    assert stored.spoken_language == "pl"
+
+
+def test_notify_without_session_key_does_not_write_session_state(tmp_path: Path) -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    session_state = SessionStateStore(tmp_path / "session_state.db")
+    service = _service_with_pronunciation_adapter(summarizer, adapter, session_state=session_state)
+
+    service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL, agent="codex"))
+
+    assert session_state.get(agent="codex", session_key="") is None
+
+
+def test_notify_given_pronunciation_changes_text_then_history_stores_adapted_summary(tmp_path: Path) -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    history = NotificationHistory(tmp_path / "history.db")
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+    service.history = history
+
+    service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    entry = history.get_recent(limit=1)[0]
+    assert entry.summary == "spikap mówi GitHab ekszyn fejld"
+    assert entry.metadata["pre_pronunciation_summary"] == "speakup says GitHub action failed"
+    assert entry.metadata["spoken_language"] == "pl"
+
+
+def test_replay_summary_given_pronunciation_adapter_then_uses_saved_summary_without_readapting() -> None:
+    summarizer = _RecordingSummarizer()
+    adapter = _RecordingPronunciationAdapter()
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+
+    result = service.replay_summary(summary="spikap mówi GitHab ekszyn fejld", event=MessageEvent.FINAL)
+
+    assert adapter.calls == []
+    assert result.summary == "speakup says spikap mówi GitHab ekszyn fejld"
+
+
+def test_notify_given_pronunciation_failure_then_falls_back_to_original_spoken_text() -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    service = _service_with_pronunciation_adapter(summarizer, _FailingPronunciationAdapter())
+
+    result = service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    assert result.summary == "speakup says GitHub action failed"
+    assert _FileTTS.texts == ["speakup says", "GitHub action failed"]
+
+
+def test_notify_given_pronunciation_failure_and_fail_fast_then_raises() -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    service = _service_with_pronunciation_adapter(summarizer, _FailingPronunciationAdapter())
+    service.config.raw["fallback"]["fail_fast"] = True
+
+    with pytest.raises(AdapterError, match="pronunciation exploded"):
+        service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+
+def test_notify_given_skip_summarization_then_still_runs_pronunciation_adapter() -> None:
+    summarizer = _RecordingSummarizer("unused")
+    adapter = _RecordingPronunciationAdapter(message="Bild fejld w module płatności")
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+
+    result = service.notify(
+        NotifyRequest(
+            message="Build failed w module płatności",
+            event=MessageEvent.ERROR,
+            skip_summarization=True,
+        )
+    )
+
+    assert summarizer.messages == []
+    assert adapter.calls == [("speakup says", "Build failed w module płatności", None)]
+    assert result.summary == "spikap mówi Bild fejld w module płatności"
+
+
+def test_notify_given_precomputed_plan_approval_then_still_runs_pronunciation_adapter() -> None:
+    summarizer = _RecordingSummarizer("unused")
+    adapter = _RecordingPronunciationAdapter(message="Codex is waiting for plan approval")
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+
+    result = service.notify(
+        NotifyRequest(
+            message="Codex is waiting for plan approval: Add tests.",
+            event=MessageEvent.NEEDS_INPUT,
+            agent="codex",
+            precomputed_summary="Codex is waiting for plan approval: Add tests.",
+            skip_summarization=True,
+        )
+    )
+
+    assert summarizer.messages == []
+    assert adapter.calls == [("codex says", "Codex is waiting for plan approval: Add tests.", None)]
+    assert result.summary == "spikap mówi Codex is waiting for plan approval"
 
 
 def test_notify_given_root_disabled_then_skips_without_summarizing() -> None:

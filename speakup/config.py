@@ -122,6 +122,14 @@ class SummarizationConfig:
 
 
 @dataclass
+class PronunciationConfig:
+    enabled: bool = True
+    provider_order: list[Literal["lmstudio", "openai", "command", "cerebras", "gemini", "omlx"]] = field(
+        default_factory=lambda: ["omlx"]
+    )
+
+
+@dataclass
 class FallbackConfig:
     fail_fast: bool = False
 
@@ -308,7 +316,7 @@ class OpenAIConfig:
 @dataclass
 class CerebrasConfig:
     api_key_env: str = "CEREBRAS_API_KEY"
-    model: str = "llama3.1-8b"
+    model: str = "llama-3.3-70b"
     base_url: str = "https://api.cerebras.ai/v1"
 
 
@@ -412,6 +420,7 @@ class AppConfig:
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     events: EventsConfig = field(default_factory=EventsConfig)
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
+    pronunciation: PronunciationConfig = field(default_factory=PronunciationConfig)
     fallback: FallbackConfig = field(default_factory=FallbackConfig)
     event_sounds: EventSoundsConfig = field(default_factory=EventSoundsConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
@@ -580,9 +589,12 @@ def _resolve_project_override_from_config(cfg: "Config", cwd: Path) -> dict[obje
 
 def active_repo_config_payload(cfg: "Config", cwd: Path) -> dict[str, object]:
     summary_order = cfg.get("summarization", "provider_order", default=["rule_based"])
+    pronunciation_order = cfg.get("pronunciation", "provider_order", default=["omlx"])
     tts_order = cfg.get("tts", "provider_order", default=["macos"])
     if not isinstance(summary_order, list):
         summary_order = ["rule_based"]
+    if not isinstance(pronunciation_order, list):
+        pronunciation_order = ["omlx"]
     if not isinstance(tts_order, list):
         tts_order = ["macos"]
 
@@ -592,7 +604,7 @@ def active_repo_config_payload(cfg: "Config", cwd: Path) -> dict[str, object]:
 
     provider_names = {
         _provider_config_key(provider)
-        for provider in [*summary_order, *effective_tts_order]
+        for provider in [*summary_order, *pronunciation_order, *effective_tts_order]
         if isinstance(provider, str) and provider.strip()
     }
     providers: dict[str, object] = {}
@@ -608,6 +620,7 @@ def active_repo_config_payload(cfg: "Config", cwd: Path) -> dict[str, object]:
 
     payload: dict[str, object] = {
         "summarization": {"provider_order": summary_order},
+        "pronunciation": {"provider_order": pronunciation_order},
         "tts": tts_payload,
     }
     if providers:

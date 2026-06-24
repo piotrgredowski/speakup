@@ -10,6 +10,10 @@ from pathlib import Path
 import pytest
 
 
+def selected_integration_provider() -> str:
+    return os.environ.get("SPEAKUP_INTEGRATION_TEST_PROVIDER", "cerebras").strip().lower()
+
+
 @pytest.fixture
 def fake_audio_bin(tmp_path: Path) -> tuple[Path, Path]:
     """Creates fake `say` and `afplay` commands and returns (bin_dir, play_log)."""

@@ -19,7 +19,7 @@ class CerebrasSummarizer(Summarizer):
     def __init__(
         self,
         api_key_env: str,
-        model: str = "llama3.1-8b",
+        model: str = "llama-3.3-70b",
         base_url: str = "https://api.cerebras.ai/v1",
         timeout: float = 10.0,
     ):

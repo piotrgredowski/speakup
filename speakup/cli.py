@@ -32,7 +32,8 @@ from .errors import AdapterError
 from .history import NotificationHistory
 from .models import MessageEvent, NotifyRequest
 from .playback.macos import MacOSPlaybackAdapter
-from .service import NotifyService
+from .provider_catalog import REMOTE_PRONUNCIATION_PROVIDERS
+from .service import NotifyService, build_registry_from_config
 from .text_transform import transform_text_for_reading
 from .version import get_version
 
@@ -47,6 +48,17 @@ class SummarizerProvider(str, Enum):
     """Available summarization providers."""
 
     rule_based = "rule_based"
+    lmstudio = "lmstudio"
+    openai = "openai"
+    command = "command"
+    cerebras = "cerebras"
+    gemini = "gemini"
+    omlx = "omlx"
+
+
+class PronunciationProvider(str, Enum):
+    """Available pronunciation adaptation providers."""
+
     lmstudio = "lmstudio"
     openai = "openai"
     command = "command"
@@ -71,6 +83,25 @@ def _resolve_summary_model_target(
         return "gemini", "summary_model"
     if provider == "omlx":
         return "omlx", "summary_model"
+    return "lmstudio", "model"
+
+
+def _resolve_pronunciation_model_target(
+    cfg: Config, pronunciation_provider: Optional[str]
+) -> tuple[str, str]:
+    provider = pronunciation_provider
+    if not provider:
+        provider_order = cfg.get("pronunciation", "provider_order", default=["omlx"])
+        provider = provider_order[0] if provider_order else "omlx"
+
+    if provider == "openai":
+        return "openai", "summary_model"
+    if provider == "gemini":
+        return "gemini", "summary_model"
+    if provider == "omlx":
+        return "omlx", "summary_model"
+    if provider == "cerebras":
+        return "cerebras", "model"
     return "lmstudio", "model"
 
 
@@ -129,10 +160,13 @@ def _build_cli_override_payload(
     speed: Optional[float] = None,
     summary_provider: Optional[str] = None,
     tts_provider: Optional[str] = None,
+    pronunciation_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
     tts_model: Optional[str] = None,
+    pronunciation_model: Optional[str] = None,
     dedup_mode: Optional[str] = None,
     dedup_on_skip: Optional[str] = None,
+    no_pronounce: bool = False,
 ) -> dict[str, object]:
     payload: dict[str, object] = {}
     if no_play:
@@ -145,12 +179,19 @@ def _build_cli_override_payload(
         payload.setdefault("summarization", {})["provider_order"] = [summary_provider]
     if tts_provider:
         payload.setdefault("tts", {})["provider_order"] = [tts_provider]
+    if pronunciation_provider:
+        payload.setdefault("pronunciation", {})["provider_order"] = [pronunciation_provider]
+    if no_pronounce:
+        payload.setdefault("pronunciation", {})["enabled"] = False
     if summary_model:
         for provider_name, key_name in _summary_model_targets(cfg, summary_provider):
             _merge_cli_provider_config(payload, provider_name, key_name, summary_model)
     if tts_model:
         for provider_name, key_name in _tts_model_targets(cfg, tts_provider):
             _merge_cli_provider_config(payload, provider_name, key_name, tts_model)
+    if pronunciation_model:
+        provider_name, key_name = _resolve_pronunciation_model_target(cfg, pronunciation_provider)
+        _merge_cli_provider_config(payload, provider_name, key_name, pronunciation_model)
     if dedup_mode:
         payload.setdefault("dedup", {})["mode"] = dedup_mode
     if dedup_on_skip:
@@ -237,10 +278,13 @@ def _apply_cli_overrides(
     speed: Optional[float] = None,
     summary_provider: Optional[str] = None,
     tts_provider: Optional[str] = None,
+    pronunciation_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
     tts_model: Optional[str] = None,
+    pronunciation_model: Optional[str] = None,
     dedup_mode: Optional[str] = None,
     dedup_on_skip: Optional[str] = None,
+    no_pronounce: bool = False,
 ) -> None:
     """Apply CLI overrides to config using proper Config methods."""
     logger = logging.getLogger(__name__)
@@ -265,6 +309,14 @@ def _apply_cli_overrides(
         cfg.set_tts_provider_order([tts_provider])
         logger.info("tts_provider_overridden", extra={"provider": tts_provider})
 
+    if pronunciation_provider:
+        cfg.raw.setdefault("pronunciation", {})["provider_order"] = [pronunciation_provider]
+        logger.info("pronunciation_provider_overridden", extra={"provider": pronunciation_provider})
+
+    if no_pronounce:
+        cfg.raw.setdefault("pronunciation", {})["enabled"] = False
+        logger.info("pronunciation_disabled_via_cli")
+
     if summary_model:
         provider_name, key_name = _resolve_summary_model_target(cfg, summary_provider)
         cfg.set_provider_config(provider_name, key_name, summary_model)
@@ -278,6 +330,14 @@ def _apply_cli_overrides(
         cfg.set_provider_config(provider_name, key_name, tts_model)
         logger.info(
             "tts_model_overridden", extra={"provider": provider_name, "model": tts_model}
+        )
+
+    if pronunciation_model:
+        provider_name, key_name = _resolve_pronunciation_model_target(cfg, pronunciation_provider)
+        cfg.set_provider_config(provider_name, key_name, pronunciation_model)
+        logger.info(
+            "pronunciation_model_overridden",
+            extra={"provider": provider_name, "model": pronunciation_model},
         )
 
     if dedup_mode:
@@ -306,6 +366,7 @@ def _run_notify(
     no_play: bool,
     no_title: bool,
     no_summarize: bool,
+    no_pronounce: bool,
     fail_fast: bool,
     speed: Optional[float],
     log_level: Optional[str],
@@ -314,8 +375,10 @@ def _run_notify(
     debug: bool,
     summary_provider: Optional[SummarizerProvider],
     tts_provider: Optional[TTSProvider],
+    pronunciation_provider: Optional[PronunciationProvider],
     summary_model: Optional[str],
     tts_model: Optional[str],
+    pronunciation_model: Optional[str],
     dedup_mode: Optional[DedupMode],
     dedup_on_skip: Optional[DedupOnSkip],
 ) -> None:
@@ -345,10 +408,13 @@ def _run_notify(
         speed=speed,
         summary_provider=summary_provider.value if summary_provider else None,
         tts_provider=tts_provider.value if tts_provider else None,
+        pronunciation_provider=pronunciation_provider.value if pronunciation_provider else None,
         summary_model=summary_model,
         tts_model=tts_model,
+        pronunciation_model=pronunciation_model,
         dedup_mode=dedup_mode.value if dedup_mode else None,
         dedup_on_skip=dedup_on_skip.value if dedup_on_skip else None,
+        no_pronounce=no_pronounce,
     )
 
     request = _load_payload(
@@ -374,10 +440,13 @@ def _run_notify(
         speed=speed,
         summary_provider=summary_provider.value if summary_provider else None,
         tts_provider=tts_provider.value if tts_provider else None,
+        pronunciation_provider=pronunciation_provider.value if pronunciation_provider else None,
         summary_model=summary_model,
         tts_model=tts_model,
+        pronunciation_model=pronunciation_model,
         dedup_mode=dedup_mode.value if dedup_mode else None,
         dedup_on_skip=dedup_on_skip.value if dedup_on_skip else None,
+        no_pronounce=no_pronounce,
     )
     if cli_override_payload:
         request.metadata["_speakup_cli_overrides"] = cli_override_payload
@@ -476,6 +545,9 @@ def main_callback(
     no_summarize: bool = typer.Option(
         False, "--no-summarize", help="Skip summarization, use raw message for TTS"
     ),
+    no_pronounce: bool = typer.Option(
+        False, "--no-pronounce", help="Skip pronunciation adaptation for this run"
+    ),
     speed: Optional[float] = typer.Option(
         None, "--speed", help="Override TTS speed for this run"
     ),
@@ -488,8 +560,14 @@ def main_callback(
     tts_provider: Optional[TTSProvider] = typer.Option(
         None, "--tts-provider", "-t", help="Override TTS provider"
     ),
+    pronunciation_provider: Optional[PronunciationProvider] = typer.Option(
+        None, "--pronunciation-provider", help="Override pronunciation adaptation provider"
+    ),
     tts_model: Optional[str] = typer.Option(
         None, "--tts-model", help="Override TTS model for this run"
+    ),
+    pronunciation_model: Optional[str] = typer.Option(
+        None, "--pronunciation-model", help="Override pronunciation adaptation model for this run"
     ),
     dedup_mode: Optional[DedupMode] = typer.Option(
         None,
@@ -560,6 +638,7 @@ def main_callback(
             no_play=no_play,
             no_title=no_title,
             no_summarize=no_summarize,
+            no_pronounce=no_pronounce,
             fail_fast=fail_fast,
             speed=speed,
             log_level=log_level,
@@ -568,8 +647,10 @@ def main_callback(
             debug=debug,
             summary_provider=summary_provider,
             tts_provider=tts_provider,
+            pronunciation_provider=pronunciation_provider,
             summary_model=summary_model,
             tts_model=tts_model,
+            pronunciation_model=pronunciation_model,
             dedup_mode=dedup_mode,
             dedup_on_skip=dedup_on_skip,
         )
@@ -933,6 +1014,94 @@ def verbalize(
     """Transform text into a more readable spoken form."""
     source_text = _load_text_input(text, input_file)
     print(transform_text_for_reading(source_text))
+
+
+@app.command()
+def pronounce(
+    message: str = typer.Option(..., "--message", "-m", help="Message segment to adapt"),
+    title: Optional[str] = typer.Option(None, "--title", help="Optional title segment to adapt"),
+    spoken_language: Optional[str] = typer.Option(None, "--spoken-language", help="Known spoken language for adaptation"),
+    plain: bool = typer.Option(False, "--plain", help="Print only the adapted message text"),
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config.jsonc"),
+    pronunciation_provider: Optional[PronunciationProvider] = typer.Option(
+        None, "--pronunciation-provider", help="Override pronunciation adaptation provider"
+    ),
+    pronunciation_model: Optional[str] = typer.Option(
+        None, "--pronunciation-model", help="Override pronunciation adaptation model for this run"
+    ),
+    fail_fast: bool = typer.Option(False, "--fail-fast", help="Fail instead of falling back on provider errors"),
+) -> None:
+    """Adapt final spoken text for TTS pronunciation without playback."""
+    if plain and title:
+        json.dump(
+            {
+                "status": "error",
+                "error": "plain output requires a single message segment",
+            },
+            sys.stdout,
+        )
+        sys.stdout.write("\n")
+        raise typer.Exit(2)
+
+    cfg = load_config_with_repository_registration(config)
+    _apply_cli_overrides(
+        cfg,
+        fail_fast=fail_fast,
+        pronunciation_provider=pronunciation_provider.value if pronunciation_provider else None,
+        pronunciation_model=pronunciation_model,
+    )
+    registry = build_registry_from_config(cfg)
+    provider_order = cfg.get("pronunciation", "provider_order", default=["omlx"])
+    fail_fast_config = bool(cfg.get("fallback", "fail_fast", default=False))
+    privacy_mode = cfg.get("privacy", "mode", default="local_only")
+    allow_remote = bool(cfg.get("privacy", "allow_remote_fallback", default=False))
+    last_error: str | None = None
+    for provider in provider_order:
+        if provider in REMOTE_PRONUNCIATION_PROVIDERS:
+            if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
+                continue
+        try:
+            result = registry.get_pronunciation(str(provider)).adapt(
+                title=title,
+                message=message,
+                spoken_language=spoken_language,
+            )
+            if plain:
+                print(result.message)
+            else:
+                json.dump(
+                    {
+                        "spoken_language": result.spoken_language,
+                        "title": result.title,
+                        "message": result.message,
+                    },
+                    sys.stdout,
+                    ensure_ascii=False,
+                )
+                sys.stdout.write("\n")
+            return
+        except AdapterError as exc:
+            last_error = str(exc)
+            if fail_fast_config:
+                json.dump({"status": "error", "error": last_error}, sys.stdout)
+                sys.stdout.write("\n")
+                raise typer.Exit(1)
+
+    if plain:
+        print(message)
+    else:
+        json.dump(
+            {
+                "spoken_language": spoken_language,
+                "title": title,
+                "message": message,
+                "fallback": True,
+                "error": last_error,
+            },
+            sys.stdout,
+            ensure_ascii=False,
+        )
+        sys.stdout.write("\n")
 
 
 @app.command("self-test")

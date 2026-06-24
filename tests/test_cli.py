@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -149,6 +150,85 @@ def test_build_cli_override_payload_given_model_only_then_targets_model_capable_
     assert providers["lmstudio"]["tts_model"] == "custom-tts-model"
 
 
+def test_build_cli_override_payload_given_pronunciation_overrides_then_targets_pronunciation_provider() -> None:
+    cfg = Config(default_config())
+
+    payload = _build_cli_override_payload(
+        cfg,
+        pronunciation_provider="gemini",
+        pronunciation_model="gemini-2.5-flash-lite",
+    )
+
+    assert payload == {
+        "pronunciation": {"provider_order": ["gemini"]},
+        "providers": {"gemini": {"summary_model": "gemini-2.5-flash-lite"}},
+    }
+
+
+def test_pronounce_command_outputs_json_by_default(tmp_path: Path) -> None:
+    config = default_config()
+    config["pronunciation"]["provider_order"] = ["command"]
+    config["providers"]["command_summary"] = {
+        "command": sys.executable,
+        "args": [
+            "-c",
+            "print('{{\"spoken_language\":\"pl\",\"title\":null,\"message\":\"GitHab ekszyn fejld\"}}')",
+        ],
+        "timeout_seconds": 5,
+        "trim_output": True,
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+
+    result = runner.invoke(app, ["pronounce", "--config", str(config_path), "--message", "GitHub action failed"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "spoken_language": "pl",
+        "title": None,
+        "message": "GitHab ekszyn fejld",
+    }
+
+
+def test_pronounce_command_plain_output_rejects_title() -> None:
+    result = runner.invoke(app, ["pronounce", "--message", "GitHub action failed", "--title", "Speakup says", "--plain"])
+
+    assert result.exit_code == 2
+    assert "plain output requires a single message segment" in result.stdout
+
+
+def test_pronounce_command_skips_remote_provider_when_privacy_is_local_only(tmp_path: Path, monkeypatch) -> None:
+    config = default_config()
+    config["privacy"] = {"mode": "local_only", "allow_remote_fallback": False}
+    config["pronunciation"]["provider_order"] = ["openai"]
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = runner.invoke(
+        app,
+        [
+            "pronounce",
+            "--config",
+            str(config_path),
+            "--message",
+            "GitHub action failed",
+            "--spoken-language",
+            "pl",
+            "--fail-fast",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "spoken_language": "pl",
+        "title": None,
+        "message": "GitHub action failed",
+        "fallback": True,
+        "error": None,
+    }
+
+
 def test_disable_given_config_path_then_writes_root_enabled_false(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(default_config()))
@@ -287,6 +367,7 @@ def test_config_loading_given_provider_settings_then_auto_registers_active_paylo
     project_path.mkdir()
     config = default_config()
     config["summarization"]["provider_order"] = ["gemini"]
+    config["pronunciation"]["provider_order"] = ["command"]
     config["tts"]["project_overrides"] = {str(project_path.resolve()): {"provider": "lmstudio", "speed": 1.2}}
     config["providers"]["lmstudio"]["tts_model"] = "tts-model"
     config_path = tmp_path / "config.json"
@@ -298,8 +379,10 @@ def test_config_loading_given_provider_settings_then_auto_registers_active_paylo
     assert result.exit_code == 0
     repo_config = json.loads(config_path.read_text())["repositories"][str(project_path.resolve())]
     assert repo_config["summarization"]["provider_order"] == ["gemini"]
+    assert repo_config["pronunciation"]["provider_order"] == ["command"]
     assert repo_config["tts"] == {"provider_order": ["lmstudio"], "speed": 1.2}
     assert repo_config["providers"]["gemini"]["summary_model"] == "gemini-2.5-flash"
+    assert repo_config["providers"]["command_summary"]["command"] == "pi"
     assert repo_config["providers"]["lmstudio"]["tts_model"] == "tts-model"
 
 
@@ -345,6 +428,19 @@ def test_notify_given_no_title_flag_then_sets_skip_title_metadata(tmp_path: Path
 
     assert result.exit_code == 0
     assert getattr(_DummyNotifyService.last_request, "metadata")["_speakup_skip_title"] is True
+
+
+def test_notify_given_no_pronounce_flag_then_sets_pronunciation_override(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(default_config()))
+    _DummyNotifyService.last_request = None
+    monkeypatch.setattr("speakup.cli.NotifyService", _DummyNotifyService)
+
+    result = runner.invoke(app, ["--config", str(config_path), "--message", "done", "--no-pronounce"])
+
+    assert result.exit_code == 0
+    overrides = getattr(_DummyNotifyService.last_request, "metadata")["_speakup_cli_overrides"]
+    assert overrides["pronunciation"] == {"enabled": False}
 
 
 def test_register_repository_config_given_stale_loaded_configs_then_preserves_both_entries(tmp_path: Path) -> None:

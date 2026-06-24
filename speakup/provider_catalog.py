@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-ProviderKind = Literal["summarizer", "tts"]
+ProviderKind = Literal["summarizer", "pronunciation", "tts"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +24,12 @@ PROVIDERS: tuple[ProviderDescriptor, ...] = (
     ProviderDescriptor("cerebras", "summarizer", True, "providers.cerebras"),
     ProviderDescriptor("openai", "summarizer", True, "providers.openai"),
     ProviderDescriptor("gemini", "summarizer", True, "providers.gemini"),
+    ProviderDescriptor("lmstudio", "pronunciation", False, "providers.lmstudio"),
+    ProviderDescriptor("command", "pronunciation", False, "providers.command_summary"),
+    ProviderDescriptor("omlx", "pronunciation", False, "providers.omlx"),
+    ProviderDescriptor("cerebras", "pronunciation", True, "providers.cerebras"),
+    ProviderDescriptor("openai", "pronunciation", True, "providers.openai"),
+    ProviderDescriptor("gemini", "pronunciation", True, "providers.gemini"),
     ProviderDescriptor("macos", "tts", False, "providers.macos"),
     ProviderDescriptor("lmstudio", "tts", False, "providers.lmstudio"),
     ProviderDescriptor("omlx", "tts", False, "providers.omlx"),
@@ -37,6 +43,9 @@ PROVIDERS: tuple[ProviderDescriptor, ...] = (
 
 REMOTE_SUMMARIZERS = {
     provider.name for provider in PROVIDERS if provider.kind == "summarizer" and provider.remote
+}
+REMOTE_PRONUNCIATION_PROVIDERS = {
+    provider.name for provider in PROVIDERS if provider.kind == "pronunciation" and provider.remote
 }
 REMOTE_TTS_PROVIDERS = {
     provider.name for provider in PROVIDERS if provider.kind == "tts" and provider.remote

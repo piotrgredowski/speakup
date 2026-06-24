@@ -32,6 +32,18 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ -v
 
+      - name: Run Cerebras integration tests
+        if: matrix.python-version == '3.13'
+        env:
+          SPEAKUP_INTEGRATION_TEST_PROVIDER: cerebras
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          if [ -z "$CEREBRAS_API_KEY" ]; then
+            echo "Skipping Cerebras integration tests because CEREBRAS_API_KEY is not configured."
+            exit 0
+          fi
+          uv run pytest tests/test_integration_cerebras.py -v -m integration_cerebras
+
       - name: Run linting
         run: uv run ruff check .
 

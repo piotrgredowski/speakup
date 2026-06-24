@@ -20,9 +20,16 @@ from .models import MessageEvent, NotifyRequest, NotifyResult
 from .playback.macos import MacOSPlaybackAdapter
 from .playback.composite import compose_audio_segments
 from .playback.queued import SQLiteQueuedPlayback
-from .provider_catalog import REMOTE_SUMMARIZERS, REMOTE_TTS_PROVIDERS
+from .provider_catalog import REMOTE_PRONUNCIATION_PROVIDERS, REMOTE_SUMMARIZERS, REMOTE_TTS_PROVIDERS
+from .pronunciation import (
+    CommandPronunciationAdapter,
+    GeminiPronunciationAdapter,
+    OpenAICompatiblePronunciationAdapter,
+    PronunciationResult,
+)
 from .registry import AdapterRegistry
 from .session_naming import resolve_session_name
+from .session_state import SessionStateStore
 from .summarizers.cerebras import CerebrasSummarizer
 from .summarizers.command import CommandSummarizer
 from .summarizers.gemini import GeminiSummarizer
@@ -246,6 +253,15 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             trim_output=bool(command_cfg.get("trim_output", True)),
         )
 
+    def make_command_pronunciation() -> CommandPronunciationAdapter:
+        command_cfg = config.get("providers", "command_summary", default={})
+        return CommandPronunciationAdapter(
+            command=command_cfg.get("command", "pi"),
+            args=command_cfg.get("args", ["-p", "{prompt}\n\nInput JSON:\n{input_json}"]),
+            timeout_seconds=int(command_cfg.get("timeout_seconds", 30)),
+            trim_output=bool(command_cfg.get("trim_output", True)),
+        )
+
     def make_lmstudio_summarizer() -> LMStudioSummarizer:
         lm = config.get("providers", "lmstudio", default={})
         return LMStudioSummarizer(
@@ -253,10 +269,27 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             lm.get("model", "local-model"),
         )
 
+    def make_lmstudio_pronunciation() -> OpenAICompatiblePronunciationAdapter:
+        lm = config.get("providers", "lmstudio", default={})
+        return OpenAICompatiblePronunciationAdapter(
+            name="lmstudio",
+            base_url=lm.get("base_url", "http://localhost:1234/v1"),
+            model=lm.get("model", "local-model"),
+        )
+
     def make_openai_summarizer() -> OpenAISummarizer:
         op = config.get("providers", "openai", default={})
         return OpenAISummarizer(
             op.get("api_key_env", "OPENAI_API_KEY"),
+            model=op.get("summary_model", "gpt-4o-mini"),
+        )
+
+    def make_openai_pronunciation() -> OpenAICompatiblePronunciationAdapter:
+        op = config.get("providers", "openai", default={})
+        return OpenAICompatiblePronunciationAdapter(
+            name="openai",
+            base_url="https://api.openai.com/v1",
+            api_key_env=op.get("api_key_env", "OPENAI_API_KEY"),
             model=op.get("summary_model", "gpt-4o-mini"),
         )
 
@@ -268,9 +301,25 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             base_url=cb.get("base_url", "https://api.cerebras.ai/v1"),
         )
 
+    def make_cerebras_pronunciation() -> OpenAICompatiblePronunciationAdapter:
+        cb = config.get("providers", "cerebras", default={})
+        return OpenAICompatiblePronunciationAdapter(
+            name="cerebras",
+            base_url=cb.get("base_url", "https://api.cerebras.ai/v1"),
+            api_key_env=cb.get("api_key_env", "CEREBRAS_API_KEY"),
+            model=cb.get("model", "llama-3.3-70b"),
+        )
+
     def make_gemini_summarizer() -> GeminiSummarizer:
         gem = config.get("providers", "gemini", default={})
         return GeminiSummarizer(
+            api_key_env=gem.get("api_key_env", "GOOGLE_API_KEY"),
+            model=gem.get("summary_model", "gemini-2.5-flash"),
+        )
+
+    def make_gemini_pronunciation() -> GeminiPronunciationAdapter:
+        gem = config.get("providers", "gemini", default={})
+        return GeminiPronunciationAdapter(
             api_key_env=gem.get("api_key_env", "GOOGLE_API_KEY"),
             model=gem.get("summary_model", "gemini-2.5-flash"),
         )
@@ -284,6 +333,17 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             timeout=float(ok.get("timeout", 60.0)),
         )
 
+    def make_omlx_pronunciation() -> OpenAICompatiblePronunciationAdapter:
+        ok = config.get("providers", "omlx", default={})
+        return OpenAICompatiblePronunciationAdapter(
+            name="omlx",
+            base_url=ok.get("base_url", "http://127.0.0.1:8000/v1"),
+            api_key_env=ok.get("api_key_env", "OMLX_API_KEY"),
+            default_api_key="1234",
+            model=ok.get("summary_model", "unsloth/gemma-4-E4B-it-UD-MLX-4bit"),
+            timeout=float(ok.get("timeout", 60.0)),
+        )
+
     registry.register_summarizer("rule_based", make_rule_based)
     registry.register_summarizer("command", make_command_summarizer)
     registry.register_summarizer("lmstudio", make_lmstudio_summarizer)
@@ -291,6 +351,12 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
     registry.register_summarizer("cerebras", make_cerebras_summarizer)
     registry.register_summarizer("gemini", make_gemini_summarizer)
     registry.register_summarizer("omlx", make_omlx_summarizer)
+    registry.register_pronunciation("command", make_command_pronunciation)
+    registry.register_pronunciation("lmstudio", make_lmstudio_pronunciation)
+    registry.register_pronunciation("openai", make_openai_pronunciation)
+    registry.register_pronunciation("cerebras", make_cerebras_pronunciation)
+    registry.register_pronunciation("gemini", make_gemini_pronunciation)
+    registry.register_pronunciation("omlx", make_omlx_pronunciation)
 
     return registry
 
@@ -303,10 +369,12 @@ class NotifyService:
         config: Config,
         registry: AdapterRegistry | None = None,
         history: NotificationHistory | None = None,
+        session_state: SessionStateStore | None = None,
     ):
         self.config = config
         self.registry = registry or build_registry_from_config(config)
         self.history = history
+        self.session_state = session_state or SessionStateStore()
         self.logger = logging.getLogger(__name__)
 
     @contextmanager
@@ -471,6 +539,53 @@ class NotifyService:
             else spoken_message
         )
         return spoken_title, spoken_message, spoken_summary
+
+    def _adapt_pronunciation(
+        self,
+        *,
+        title: str | None,
+        message: str,
+        spoken_language: str | None,
+        request_id: str,
+    ) -> PronunciationResult:
+        if not bool(self.config.get("pronunciation", "enabled", default=True)):
+            return PronunciationResult(title=title, message=message, spoken_language=spoken_language)
+
+        provider_order = self.config.get("pronunciation", "provider_order", default=["omlx"])
+        fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
+        privacy_mode = self.config.get("privacy", "mode", default="local_only")
+        allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=False))
+        for provider in provider_order:
+            if provider in REMOTE_PRONUNCIATION_PROVIDERS:
+                if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
+                    self.logger.info(
+                        "pronunciation_skipped_privacy",
+                        extra={"request_id": request_id, "provider": provider, "privacy_mode": privacy_mode},
+                    )
+                    continue
+            if not self.registry.has_pronunciation(str(provider)):
+                self.logger.info(
+                    "pronunciation_provider_unregistered",
+                    extra={"request_id": request_id, "provider": provider},
+                )
+                continue
+            try:
+                adapter = self.registry.get_pronunciation(str(provider))
+                result = adapter.adapt(title=title, message=message, spoken_language=spoken_language)
+            except AdapterError as exc:
+                self.logger.warning(
+                    "pronunciation_failed",
+                    extra={"request_id": request_id, "provider": provider, "error": str(exc)},
+                )
+                if fail_fast:
+                    raise
+                continue
+            if not result.message.strip():
+                if fail_fast:
+                    raise AdapterError(f"{provider} pronunciation adapter returned empty message")
+                continue
+            return result
+        return PronunciationResult(title=title, message=message, spoken_language=spoken_language)
 
     def _resolve_project_override(self, project_path: str | None) -> dict[object, object]:
         normalized_project_path = _normalize_project_path(project_path)
@@ -916,9 +1031,39 @@ class NotifyService:
             agent=request.agent,
             source_tool=request.source_tool,
         )
-        if request.metadata.get("_speakup_skip_title") is True:
+        skip_title = request.metadata.get("_speakup_skip_title") is True
+        if skip_title:
             spoken_title = None
             spoken_summary = spoken_message
+
+        session_spoken_language = None
+        if request.session_key:
+            state = self.session_state.get(agent=request.agent, session_key=request.session_key)
+            if state is not None:
+                session_spoken_language = state.spoken_language
+
+        pronunciation = self._adapt_pronunciation(
+            title=spoken_title,
+            message=spoken_message,
+            spoken_language=session_spoken_language,
+            request_id=request_id,
+        )
+        pre_pronunciation_summary = spoken_summary
+        spoken_title = None if skip_title else sanitize_text_for_tts(pronunciation.title or "") or None
+        spoken_message = sanitize_text_for_tts(pronunciation.message)
+        spoken_summary = f"{spoken_title} {spoken_message}".strip() if spoken_title else spoken_message
+        used_spoken_language = pronunciation.spoken_language or session_spoken_language
+        if used_spoken_language:
+            request.metadata["spoken_language"] = used_spoken_language
+        if spoken_summary != pre_pronunciation_summary:
+            request.metadata["pre_pronunciation_summary"] = pre_pronunciation_summary
+        if request.session_key:
+            self.session_state.upsert(
+                agent=request.agent,
+                session_key=request.session_key,
+                session_name=request.session_name,
+                spoken_language=used_spoken_language,
+            )
 
         include_payloads = bool(self.config.get("logging", "log_provider_payloads", default=False))
         debug_extra = {

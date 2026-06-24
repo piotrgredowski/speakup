@@ -83,6 +83,15 @@ def test_default_config_uses_local_omlx_summarization_with_rule_based_fallback()
     assert cfg["privacy"]["allow_remote_fallback"] is False
 
 
+def test_default_config_enables_pronunciation_adaptation_with_local_omlx() -> None:
+    cfg = default_config()
+
+    assert cfg["pronunciation"] == {
+        "enabled": True,
+        "provider_order": ["omlx"],
+    }
+
+
 def test_default_config_preserves_existing_dedup_behavior() -> None:
     cfg = default_config()
     assert cfg["dedup"]["mode"] == "duplicate"
@@ -124,6 +133,8 @@ def test_config_load_given_codex_overrides_then_accepts_shape(tmp_path: Path) ->
         (lambda c: c["tts"].update({"audio_format": "flac"}), "tts.audio_format"),
         (lambda c: c["tts"].update({"play_audio": "yes"}), "tts.play_audio"),
         (lambda c: c["summarization"].update({"provider_order": ["rule_based", "x"]}), "summarization.provider_order"),
+        (lambda c: c["pronunciation"].update({"enabled": "yes"}), "pronunciation.enabled"),
+        (lambda c: c["pronunciation"].update({"provider_order": ["rule_based"]}), "pronunciation.provider_order"),
         (lambda c: c["event_sounds"]["files"].update({"unknown": "x"}), "event_sounds.files key 'unknown' must be one of"),
         (lambda c: c["dedup"].update({"window_seconds": 0}), "dedup.window_seconds"),
         (lambda c: c["dedup"].update({"mode": "always"}), "dedup.mode"),

@@ -23,6 +23,12 @@
       "rule_based"
     ]
   },
+  "pronunciation": {
+    "enabled": true,
+    "provider_order": [
+      "omlx"
+    ]
+  },
   "fallback": {
     "fail_fast": false
   },
@@ -187,7 +193,7 @@
     },
     "cerebras": {
       "api_key_env": "CEREBRAS_API_KEY",
-      "model": "llama3.1-8b",
+      "model": "llama-3.3-70b",
       "base_url": "https://api.cerebras.ai/v1"
     },
     "gemini": {
