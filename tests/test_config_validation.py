@@ -28,7 +28,7 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
 def test_default_config_uses_local_omlx_tts_with_piper_and_macos_fallback() -> None:
     cfg = default_config()
     assert cfg["tts"]["provider_order"] == ["omlx", "piper", "macos"]
-    assert cfg["providers"]["piper"]["model"] == "pl_PL-bass-high"
+    assert cfg["providers"]["piper"]["model"] == "en_GB-alba-medium"
 
 
 def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_override(tmp_path: Path) -> None:

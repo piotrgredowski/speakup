@@ -239,7 +239,7 @@ def test_config_loading_given_missing_default_config_then_auto_registers_git_roo
     assert repo_config["summarization"]["provider_order"] == ["omlx", "rule_based"]
     assert repo_config["tts"]["provider_order"] == ["omlx", "piper", "macos"]
     assert repo_config["providers"]["omlx"]["summary_model"] == "unsloth/gemma-4-E4B-it-UD-MLX-4bit"
-    assert repo_config["providers"]["piper"]["model"] == "pl_PL-bass-high"
+    assert repo_config["providers"]["piper"]["model"] == "en_GB-alba-medium"
     assert repo_config["providers"]["macos"]["voice"] == "default"
 
 
