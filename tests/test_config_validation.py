@@ -25,9 +25,10 @@ def test_default_config_runtime_paths_use_system_temp_dir() -> None:
     assert Path(cfg["logging"]["file_path"]) == get_default_log_file_path()
 
 
-def test_default_config_uses_local_omlx_tts_with_macos_fallback() -> None:
+def test_default_config_uses_local_omlx_tts_with_piper_and_macos_fallback() -> None:
     cfg = default_config()
-    assert cfg["tts"]["provider_order"] == ["omlx", "macos"]
+    assert cfg["tts"]["provider_order"] == ["omlx", "piper", "macos"]
+    assert cfg["providers"]["piper"]["model"] == "pl_PL-bass-high"
 
 
 def test_config_load_given_edge_tts_provider_then_accepts_provider_order_and_override(tmp_path: Path) -> None:
@@ -216,3 +217,13 @@ def test_build_registry_from_config_registers_omlx_summarizer(tmp_path: Path) ->
     registry = build_registry_from_config(Config.load(config_path))
 
     assert registry.has_summarizer("omlx") is True
+
+
+def test_build_registry_from_config_registers_piper_tts(tmp_path: Path) -> None:
+    config = default_config()
+    config_path = tmp_path / "piper.jsonc"
+    config_path.write_text(json.dumps(config))
+
+    registry = build_registry_from_config(Config.load(config_path))
+
+    assert registry.has_tts("piper") is True

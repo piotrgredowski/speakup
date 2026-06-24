@@ -48,7 +48,7 @@ Then set `~/.config/speakup/config.jsonc` to use oMLX locally:
     "provider_order": ["omlx", "rule_based"]
   },
   "tts": {
-    "provider_order": ["omlx", "macos"],
+    "provider_order": ["omlx", "piper", "macos"],
     "audio_format": "wav"
   },
   "providers": {
@@ -58,6 +58,12 @@ Then set `~/.config/speakup/config.jsonc` to use oMLX locally:
       "summary_model": "unsloth/gemma-4-E4B-it-UD-MLX-4bit",
       "model": "Kokoro-82M-bf16",
       "voice": "af_heart"
+    },
+    "piper": {
+      "auto_start": true,
+      "data_dir": "~/.local/share/speakup/piper-voices",
+      "model": "pl_PL-bass-high",
+      "voice": "pl_PL-bass-high"
     }
   }
 }

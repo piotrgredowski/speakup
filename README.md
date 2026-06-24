@@ -35,7 +35,7 @@ For local development, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start: local-first
 
-The default config is local-first. It tries local oMLX first for summarization and TTS, then falls back to the built-in rule-based summarizer and macOS `say`, so no agent text is sent to hosted APIs by default.
+The default config is local-first. It tries local oMLX first for summarization and TTS, then local Piper TTS, then falls back to the built-in rule-based summarizer and macOS `say`, so no agent text is sent to hosted APIs by default.
 
 ```bash
 speakup init-config
@@ -94,7 +94,7 @@ For the smoothest fully local macOS setup with oMLX, Kokoro TTS, and Gemma summa
     "provider_order": ["omlx", "rule_based"]
   },
   "tts": {
-    "provider_order": ["omlx", "macos"],
+    "provider_order": ["omlx", "piper", "macos"],
     "audio_format": "wav"
   },
   "providers": {
@@ -104,10 +104,27 @@ For the smoothest fully local macOS setup with oMLX, Kokoro TTS, and Gemma summa
       "summary_model": "unsloth/gemma-4-E4B-it-UD-MLX-4bit",
       "model": "Kokoro-82M-bf16",
       "voice": "af_heart"
+    },
+    "piper": {
+      "auto_start": true,
+      "data_dir": "~/.local/share/speakup/piper-voices",
+      "model": "pl_PL-bass-high",
+      "voice": "pl_PL-bass-high"
     }
   }
 }
 ```
+
+## Local TTS setup example: Piper
+
+Piper support is optional:
+
+```bash
+pip install 'speakup[piper]'
+python -m piper.download_voices --download-dir ~/.local/share/speakup/piper-voices pl_PL-bass-high
+```
+
+SpeakUp can autostart and reuse a local Piper HTTP server. The server speaks through `POST /` with a JSON body and exposes `GET /voices` for readiness checks.
 
 ## Privacy model
 
@@ -116,7 +133,7 @@ By default:
 - `privacy.mode` is `local_only`.
 - `privacy.allow_remote_fallback` is `false`.
 - summarization tries `omlx`, then `rule_based`.
-- TTS tries `omlx`, then `macos`.
+- TTS tries `omlx`, then `piper`, then `macos`.
 - notification history does not store raw messages unless `history.store_messages` is enabled.
 - logs do not include raw message text unless `logging.log_message_text` is enabled.
 
@@ -148,6 +165,7 @@ speakup show-logs-path
 | `macos` | no | yes | yes | Uses `say` and `afplay` |
 | `lmstudio` | yes | yes | yes | Assumes local LM Studio-compatible server |
 | `omlx` | yes | yes | yes | Assumes local OpenAI-compatible oMLX server |
+| `piper` | no | yes | yes | Requires `speakup[piper]`; uses a local Piper HTTP server |
 | `command` | yes | no | depends | Runs a configured local command |
 | `edge` | no | yes | no | Requires `speakup[edge]` and Microsoft Edge TTS service |
 | `openai` | yes | yes | no | Hosted OpenAI APIs |

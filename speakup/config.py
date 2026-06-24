@@ -144,11 +144,11 @@ class EventSoundsConfig:
 class TTSConfig:
     @dataclass
     class ProjectOverride:
-        provider: Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx"] | None = None
+        provider: Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx", "piper"] | None = None
         speed: float = 1.0
 
-    provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx"]] = field(
-        default_factory=lambda: ["omlx", "macos"]
+    provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx", "piper"]] = field(
+        default_factory=lambda: ["omlx", "piper", "macos"]
     )
     voice: str = "default"
     speed: float = 1.0
@@ -337,6 +337,23 @@ class OMLXConfig:
 
 
 @dataclass
+class PiperConfig:
+    base_url: str = "http://127.0.0.1:5000"
+    auto_start: bool = True
+    host: str = "127.0.0.1"
+    port: Annotated[int, Gt(0)] = 5000
+    data_dir: str = "~/.local/share/speakup/piper-voices"
+    model: str = "pl_PL-bass-high"
+    voice: str = "pl_PL-bass-high"
+    title_voice: str | None = None
+    message_voice: str | None = None
+    available_voices: list[str] = field(default_factory=list)
+    timeout: float = 20.0
+    startup_timeout: float = 10.0
+    extra_args: list[str] = field(default_factory=list)
+
+
+@dataclass
 class CommandSummaryConfig:
     command: str = "pi"
     args: list[str] = field(default_factory=lambda: ["-p", "{message}"])
@@ -354,6 +371,7 @@ class ProvidersConfig:
     cerebras: CerebrasConfig = field(default_factory=CerebrasConfig)
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
     omlx: OMLXConfig = field(default_factory=OMLXConfig)
+    piper: PiperConfig = field(default_factory=PiperConfig)
     command_summary: CommandSummaryConfig = field(default_factory=CommandSummaryConfig)
 
 
@@ -461,10 +479,16 @@ _SAFE_PROVIDER_CONFIG_KEYS = {
     "args",
     "available_voices",
     "base_url",
+    "auto_start",
     "command",
+    "data_dir",
+    "extra_args",
+    "host",
     "message_voice",
     "model",
+    "port",
     "summary_model",
+    "startup_timeout",
     "timeout",
     "timeout_seconds",
     "title_voice",

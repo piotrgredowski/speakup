@@ -11,6 +11,8 @@ wheels/
 
 # Runtime cache
 .cache/
+.piper-samples/
+.piper-voices/
 
 # Editor
 .vscode/

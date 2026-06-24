@@ -38,6 +38,7 @@ from .tts.omlx import OmlxTTSAdapter
 from .tts.lmstudio import LMStudioTTSAdapter
 from .tts.macos import MacOSTTSAdapter
 from .tts.openai import OpenAITTSAdapter
+from .tts.piper import PiperTTSAdapter
 
 
 def _clean_voice(value: object) -> str | None:
@@ -207,6 +208,21 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             timeout=float(ok.get("timeout", 60.0)),
         )
 
+    def make_piper() -> PiperTTSAdapter:
+        pp = config.get("providers", "piper", default={})
+        return PiperTTSAdapter(
+            base_url=pp.get("base_url", "http://127.0.0.1:5000"),
+            auto_start=bool(pp.get("auto_start", True)),
+            host=pp.get("host", "127.0.0.1"),
+            port=int(pp.get("port", 5000)),
+            data_dir=pp.get("data_dir", "~/.local/share/speakup/piper-voices"),
+            model=pp.get("model", "pl_PL-bass-high"),
+            voice=pp.get("voice", "pl_PL-bass-high"),
+            timeout=float(pp.get("timeout", 20.0)),
+            startup_timeout=float(pp.get("startup_timeout", 10.0)),
+            extra_args=pp.get("extra_args", []),
+        )
+
     registry.register_tts("macos", make_macos)
     registry.register_tts("lmstudio", make_lmstudio_tts)
     registry.register_tts("edge", make_edge_tts)
@@ -214,6 +230,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
     registry.register_tts("openai", make_openai_tts)
     registry.register_tts("gemini", make_gemini_tts)
     registry.register_tts("omlx", make_omlx)
+    registry.register_tts("piper", make_piper)
 
     # Summarizer adapters (factories)
     def make_rule_based() -> RuleBasedSummarizer:
@@ -1122,7 +1139,7 @@ class NotifyService:
         project_path: str | None = None,
         cli_speed: float | None = None,
     ):
-        provider_order = self.config.get("tts", "provider_order", default=["omlx", "macos"])
+        provider_order = self.config.get("tts", "provider_order", default=["omlx", "piper", "macos"])
         output_dir = Path(self.config.get("tts", "save_audio_dir", default=str(runtime_temp_dir() / "audio")))
         current_provider = provider_override or (provider_order[0] if provider_order else "macos")
         resolved_voice = voice or self._resolve_base_voice(current_provider, project_path)
@@ -1177,7 +1194,7 @@ class NotifyService:
         cli_speed: float | None = None,
     ):
         project_provider = self._resolve_project_provider(project_path)
-        provider_order = [project_provider] if project_provider else self.config.get("tts", "provider_order", default=["omlx", "macos"])
+        provider_order = [project_provider] if project_provider else self.config.get("tts", "provider_order", default=["omlx", "piper", "macos"])
         default_speed = self._resolve_base_speed(project_path, cli_speed)
         if cli_speed is not None:
             session_speed = float(cli_speed)

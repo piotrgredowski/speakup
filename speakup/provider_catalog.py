@@ -27,6 +27,7 @@ PROVIDERS: tuple[ProviderDescriptor, ...] = (
     ProviderDescriptor("macos", "tts", False, "providers.macos"),
     ProviderDescriptor("lmstudio", "tts", False, "providers.lmstudio"),
     ProviderDescriptor("omlx", "tts", False, "providers.omlx"),
+    ProviderDescriptor("piper", "tts", False, "providers.piper", "speakup[piper]"),
     ProviderDescriptor("edge", "tts", True, "providers.edge", "speakup[edge]"),
     ProviderDescriptor("elevenlabs", "tts", True, "providers.elevenlabs"),
     ProviderDescriptor("openai", "tts", True, "providers.openai"),
