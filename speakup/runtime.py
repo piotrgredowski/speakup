@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -107,6 +108,25 @@ class RuntimeStateStore:
     def delete_provider_process(self, provider: str) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM provider_processes WHERE provider = ?", (provider,))
+
+    @staticmethod
+    def pid_is_alive(pid: int) -> bool:
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def delete_provider_process_if_pid(self, provider: str, pid: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM provider_processes WHERE provider = ? AND pid = ?",
+                (provider, pid),
+            )
 
     @staticmethod
     def _row_to_process(row: sqlite3.Row) -> ProviderProcess:

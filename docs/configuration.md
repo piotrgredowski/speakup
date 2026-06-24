@@ -83,13 +83,14 @@ Piper is a local optional TTS provider. Install it with `speakup[piper]`, downlo
       "port": 5000,
       "data_dir": "~/.local/share/speakup/piper-voices",
       "model": "pl_PL-bass-high",
-      "voice": "pl_PL-bass-high"
+      "voice": "pl_PL-bass-high",
+      "idle_timeout_seconds": 600
     }
   }
 }
 ```
 
-When `auto_start` is enabled, SpeakUp starts Piper lazily and records the warm local server in its runtime database so later CLI invocations can reuse it. Piper returns WAV audio; `tts.audio_format` is ignored for this provider. `tts.speed` maps to Piper `length_scale` as `clamp(1 / speed, 0.5, 2.0)`.
+When `auto_start` is enabled, SpeakUp starts Piper lazily and records the warm local server in its runtime database so later CLI invocations can reuse it. A small watchdog stops SpeakUp-managed Piper servers after `idle_timeout_seconds` without requests; set it to `0` or `null` to keep them running indefinitely. Piper returns WAV audio; `tts.audio_format` is ignored for this provider. `tts.speed` maps to Piper `length_scale` as `clamp(1 / speed, 0.5, 2.0)`.
 
 ## Project overrides
 

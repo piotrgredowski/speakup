@@ -77,6 +77,73 @@ def test_piper_tts_given_healthy_server_then_posts_json_and_writes_wav(
     }
 
 
+def test_piper_tts_given_successful_request_then_marks_server_seen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Store:
+        seen = False
+
+        def get_provider_process(self, provider: str):
+            return None
+
+        def delete_provider_process(self, provider: str) -> None:
+            pass
+
+        def mark_seen(self, provider: str) -> None:
+            self.seen = True
+
+    def fake_urlopen(req, timeout: float = 0):
+        if req.full_url.endswith("/voices"):
+            return _FakeResponse(b"{}", content_type="application/json")
+        return _FakeResponse(b"RIFF_FAKE_WAV", content_type="audio/wav")
+
+    store = _Store()
+    monkeypatch.setattr("speakup.tts.piper.urllib.request.urlopen", fake_urlopen)
+
+    adapter = PiperTTSAdapter(auto_start=False, runtime_store=store)
+    adapter.synthesize("Czesc", tmp_path)
+
+    assert store.seen is True
+
+
+def test_piper_tts_given_idle_timeout_then_starts_process_watchdog(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_popen(command, **kwargs):
+        calls.append(command)
+        return object()
+
+    monkeypatch.setattr("speakup.tts.piper.subprocess.Popen", fake_popen)
+
+    adapter = PiperTTSAdapter(idle_timeout_seconds=600)
+    adapter._start_idle_process_watchdog(123)
+
+    assert calls == [
+        [
+            __import__("sys").executable,
+            "-m",
+            "speakup.process_watchdog",
+            "--provider",
+            "piper",
+            "--pid",
+            "123",
+            "--idle-timeout-seconds",
+            "600",
+        ]
+    ]
+
+
+def test_piper_tts_given_disabled_idle_timeout_then_does_not_start_process_watchdog(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr("speakup.tts.piper.subprocess.Popen", lambda command, **kwargs: calls.append(command))
+
+    adapter = PiperTTSAdapter(idle_timeout_seconds=0)
+    adapter._start_idle_process_watchdog(123)
+
+    assert calls == []
+
+
 def test_piper_tts_given_non_audio_response_then_raises_adapter_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

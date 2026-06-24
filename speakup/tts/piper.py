@@ -42,6 +42,7 @@ class PiperTTSAdapter(TTSAdapter):
         voice: str = "pl_PL-bass-high",
         timeout: float = 20.0,
         startup_timeout: float = 10.0,
+        idle_timeout_seconds: int | None = 600,
         extra_args: list[str] | None = None,
         runtime_store: RuntimeStateStore | None = None,
     ):
@@ -54,6 +55,7 @@ class PiperTTSAdapter(TTSAdapter):
         self.default_voice = voice
         self.timeout = timeout
         self.startup_timeout = startup_timeout
+        self.idle_timeout_seconds = idle_timeout_seconds
         self.extra_args = list(extra_args or [])
         self.runtime_store = runtime_store or RuntimeStateStore()
 
@@ -96,6 +98,7 @@ class PiperTTSAdapter(TTSAdapter):
             raise AdapterError(f"Piper TTS returned non-audio response (Content-Type: {content_type}): {preview}")
         if not audio:
             raise AdapterError("Piper TTS produced no audio")
+        self.runtime_store.mark_seen(self.name)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"tts-{uuid4().hex}.wav"
@@ -154,8 +157,9 @@ class PiperTTSAdapter(TTSAdapter):
             base_url=base_url,
             host=self.host,
             port=port,
-            payload={"data_dir": self.data_dir, "model": self.model},
+            payload={"data_dir": self.data_dir, "model": self.model, "command": command},
         )
+        self._start_idle_process_watchdog(process.pid)
         return base_url
 
     def _wait_until_healthy(self, base_url: str, process: subprocess.Popen[bytes], stderr) -> None:
@@ -209,3 +213,23 @@ class PiperTTSAdapter(TTSAdapter):
         except Exception:
             return "stderr unavailable"
         return detail or "no stderr"
+
+    def _start_idle_process_watchdog(self, pid: int) -> None:
+        if self.idle_timeout_seconds is None or self.idle_timeout_seconds <= 0:
+            return
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "speakup.process_watchdog",
+                "--provider",
+                self.name,
+                "--pid",
+                str(pid),
+                "--idle-timeout-seconds",
+                str(self.idle_timeout_seconds),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )

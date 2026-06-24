@@ -350,6 +350,7 @@ class PiperConfig:
     available_voices: list[str] = field(default_factory=list)
     timeout: float = 20.0
     startup_timeout: float = 10.0
+    idle_timeout_seconds: int | None = 600
     extra_args: list[str] = field(default_factory=list)
 
 
@@ -470,6 +471,7 @@ _SAFE_PROVIDER_CONFIG_KEYS = {
     "data_dir",
     "extra_args",
     "host",
+    "idle_timeout_seconds",
     "message_voice",
     "model",
     "port",
