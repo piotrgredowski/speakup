@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from speakup.config import default_config
 from speakup.errors import AdapterError
 from speakup.models import MessageEvent
 from speakup.summarizers.cerebras import CerebrasSummarizer
@@ -37,11 +38,15 @@ def _success_response(text: str) -> dict:
     }
 
 
+def _default_cerebras_model() -> str:
+    return str(default_config()["providers"]["cerebras"]["model"])
+
+
 def test_cerebras_summarizer_given_missing_api_key_then_raises(monkeypatch):
     monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     monkeypatch.delenv("CUSTOM_CEREBRAS_KEY", raising=False)
 
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY", model=_default_cerebras_model())
     with pytest.raises(AdapterError) as exc:
         summarizer.summarize("Test message", MessageEvent.FINAL, max_chars=220)
 
@@ -78,7 +83,7 @@ def test_cerebras_summarizer_given_successful_response_then_returns_summary(monk
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY", model=_default_cerebras_model())
     result = summarizer.summarize("Test message", MessageEvent.FINAL, max_chars=220)
 
     assert result.summary == "Test successful completion"
@@ -94,7 +99,7 @@ def test_cerebras_summarizer_given_needs_input_event_then_sets_flag(monkeypatch)
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY", model=_default_cerebras_model())
     result = summarizer.summarize("Waiting for input", MessageEvent.NEEDS_INPUT, max_chars=220)
 
     assert result.summary == "User input required"
@@ -113,7 +118,7 @@ def test_cerebras_summarizer_given_long_response_then_truncates(monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY", model=_default_cerebras_model())
     result = summarizer.summarize("Long message", MessageEvent.PROGRESS, max_chars=220)
 
     assert result.summary == expected
@@ -151,6 +156,7 @@ def test_cerebras_summarizer_given_custom_base_url_then_uses_it(monkeypatch):
 
     summarizer = CerebrasSummarizer(
         api_key_env="CEREBRAS_API_KEY",
+        model=_default_cerebras_model(),
         base_url="https://custom.cerebras.ai/v1",
     )
     result = summarizer.summarize("Test", MessageEvent.FINAL, max_chars=220)
@@ -167,7 +173,7 @@ def test_cerebras_summarizer_given_api_error_then_raises(monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY", model=_default_cerebras_model())
     with pytest.raises(AdapterError) as exc:
         summarizer.summarize("Test", MessageEvent.FINAL, max_chars=220)
 
@@ -185,7 +191,7 @@ def test_cerebras_summarizer_given_correct_system_prompt_then_uses_it(monkeypatc
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY", model=_default_cerebras_model())
     summarizer.summarize("Test message", MessageEvent.ERROR, max_chars=100)
 
     system_content = request_data["body"]["messages"][0]["content"]

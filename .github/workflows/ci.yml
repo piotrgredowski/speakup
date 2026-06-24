@@ -36,13 +36,14 @@ jobs:
         if: matrix.python-version == '3.13'
         env:
           SPEAKUP_INTEGRATION_TEST_PROVIDER: cerebras
+          SPEAKUP_INTEGRATION_TEST_MODEL: ${{ vars.SPEAKUP_INTEGRATION_TEST_MODEL }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
           if [ -z "$CEREBRAS_API_KEY" ]; then
             echo "Skipping Cerebras integration tests because CEREBRAS_API_KEY is not configured."
             exit 0
           fi
-          uv run pytest tests/test_integration_cerebras.py -v -m integration_cerebras
+          uv run pytest tests/test_integration_cerebras.py tests/test_integration_pronunciation.py -v -m "integration_cerebras or integration_pronunciation"
 
       - name: Run linting
         run: uv run ruff check .

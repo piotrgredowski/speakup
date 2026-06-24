@@ -43,10 +43,39 @@ Rules:
 Examples for spoken_language=pl:
 - "GitHub action failed" -> "GitHab ekszyn fejld"
 - "Build failed w module płatności" -> "Bild fejld w module płatności"
+- "Tests passed" -> "Testy pasd"
+- "Pull request ready for review" -> "Pul rikłest redi for rewju"
+- "Merge conflict detected" -> "Merdż konflikt detekted"
+- "npm install failed" -> "en pi em instal fejld"
+- "Docker build complete" -> "Doker bild komplit"
+- "Typecheck failed" -> "Tajpczek fejld"
+- "Lint errors found" -> "Lint erors faund"
+- "Deployment finished" -> "Diplojment finiszd"
+- "HTTP 403" -> "ha te te pe 403"
+- "API token missing" -> "ej pi aj token missing"
+- "database connection timeout" -> "dejtabeys konekszyn tajmaut"
+- "branch main pushed" -> "brancz main puszd"
+- "speakup says" -> "spikap mówi"
+- "codex says" -> "kodeks mówi"
 """
 
 
+def _strip_json_code_fence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+
+    lines = stripped.splitlines()
+    if len(lines) < 3 or not lines[-1].strip().startswith("```"):
+        return text
+    opening = lines[0].strip().lower()
+    if opening not in {"```", "```json"}:
+        return text
+    return "\n".join(lines[1:-1]).strip()
+
+
 def parse_pronunciation_result(text: str) -> PronunciationResult:
+    text = _strip_json_code_fence(text)
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -73,7 +102,9 @@ def parse_pronunciation_result(text: str) -> PronunciationResult:
     return PronunciationResult(
         title=title.strip() if isinstance(title, str) and title.strip() else None,
         message=message,
-        spoken_language=spoken_language.strip() if isinstance(spoken_language, str) and spoken_language.strip() else None,
+        spoken_language=spoken_language.strip()
+        if isinstance(spoken_language, str) and spoken_language.strip()
+        else None,
     )
 
 
@@ -169,6 +200,7 @@ class OpenAICompatiblePronunciationAdapter(PronunciationAdapter):
         api_key_env: str | None = None,
         default_api_key: str | None = None,
         timeout: float = 10.0,
+        extra_body: dict[str, object] | None = None,
     ) -> None:
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -176,6 +208,7 @@ class OpenAICompatiblePronunciationAdapter(PronunciationAdapter):
         self.api_key_env = api_key_env
         self.default_api_key = default_api_key
         self.timeout = timeout
+        self.extra_body = dict(extra_body or {})
 
     def _api_key(self) -> str | None:
         if self.api_key_env is None:
@@ -202,7 +235,11 @@ class OpenAICompatiblePronunciationAdapter(PronunciationAdapter):
             ],
             "temperature": 0.2,
         }
-        headers = {"Content-Type": "application/json"}
+        payload.update(self.extra_body)
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "speakup/0.1.0",
+        }
         api_key = self._api_key()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

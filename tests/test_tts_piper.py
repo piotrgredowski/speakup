@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -105,6 +106,126 @@ def test_piper_tts_given_successful_request_then_marks_server_seen(
     adapter.synthesize("Czesc", tmp_path)
 
     assert store.seen is True
+
+
+def test_piper_tts_given_healthy_remote_server_then_does_not_download_voice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "voices"
+    downloads: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        downloads.append(command)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "pl_PL-mc_speech-medium.onnx").write_text("voice")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    def fake_urlopen(req, timeout: float = 0):
+        if req.full_url.endswith("/voices"):
+            return _FakeResponse(b"{}", content_type="application/json")
+        return _FakeResponse(b"RIFF_FAKE_WAV", content_type="audio/wav")
+
+    monkeypatch.setattr("speakup.tts.piper.subprocess.run", fake_run)
+    monkeypatch.setattr("speakup.tts.piper.urllib.request.urlopen", fake_urlopen)
+
+    adapter = PiperTTSAdapter(auto_start=False, data_dir=str(data_dir))
+    adapter.synthesize("Czesc", tmp_path / "out", voice="pl_PL-mc_speech-medium")
+
+    assert downloads == []
+
+
+def test_piper_tts_given_local_autostart_missing_voice_then_downloads_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "voices"
+    downloads: list[list[str]] = []
+    request_count = 0
+
+    class _Process:
+        pid = 123
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def fake_run(command, **kwargs):
+        downloads.append(command)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        voice = command[-1]
+        (data_dir / f"{voice}.onnx").write_text("voice")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    def fake_urlopen(req, timeout: float = 0):
+        nonlocal request_count
+        request_count += 1
+        if request_count == 1:
+            raise OSError("not running yet")
+        if req.full_url.endswith("/voices"):
+            return _FakeResponse(b"{}", content_type="application/json")
+        return _FakeResponse(b"RIFF_FAKE_WAV", content_type="audio/wav")
+
+    monkeypatch.setattr("speakup.tts.piper.subprocess.run", fake_run)
+    monkeypatch.setattr("speakup.tts.piper.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("speakup.tts.piper.subprocess.Popen", lambda command, **kwargs: _Process())
+    monkeypatch.setattr("speakup.tts.piper.PiperTTSAdapter._wait_until_healthy", lambda self, *args: None)
+    monkeypatch.setattr("speakup.tts.piper.PiperTTSAdapter._start_idle_process_watchdog", lambda self, pid: None)
+
+    adapter = PiperTTSAdapter(
+        auto_start=True,
+        data_dir=str(data_dir),
+        model="pl_PL-mc_speech-medium",
+        voice="pl_PL-mc_speech-medium",
+    )
+    adapter.synthesize("Czesc", tmp_path / "out", voice="pl_PL-mc_speech-medium")
+    adapter.synthesize("Czesc", tmp_path / "out", voice="pl_PL-mc_speech-medium")
+
+    assert downloads == [
+        [
+            __import__("sys").executable,
+            "-m",
+            "piper.download_voices",
+            "--data-dir",
+            str(data_dir),
+            "pl_PL-mc_speech-medium",
+        ]
+    ]
+
+
+def test_piper_tts_given_model_path_then_does_not_download_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_path = tmp_path / "voices" / "custom.onnx"
+    model_path.parent.mkdir()
+    model_path.write_text("model")
+    downloads: list[list[str]] = []
+
+    class _Process:
+        pid = 123
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def fake_urlopen(req, timeout: float = 0):
+        raise OSError("not ready")
+
+    def fake_popen(command, **kwargs):
+        return _Process()
+
+    monkeypatch.setattr("speakup.tts.piper.subprocess.run", lambda command, **kwargs: downloads.append(command))
+    monkeypatch.setattr("speakup.tts.piper.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("speakup.tts.piper.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("speakup.tts.piper.PiperTTSAdapter._wait_until_healthy", lambda self, *args: None)
+    monkeypatch.setattr("speakup.tts.piper.PiperTTSAdapter._start_idle_process_watchdog", lambda self, pid: None)
+
+    adapter = PiperTTSAdapter(model=str(model_path), data_dir=str(tmp_path / "voices"))
+
+    adapter._ensure_server()
+
+    assert downloads == []
 
 
 def test_piper_tts_given_idle_timeout_then_starts_process_watchdog(monkeypatch: pytest.MonkeyPatch) -> None:

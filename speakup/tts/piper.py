@@ -69,8 +69,8 @@ class PiperTTSAdapter(TTSAdapter):
         audio_format: str = "wav",
     ) -> AudioResult:
         del audio_format
-        base_url = self._ensure_server()
         selected_voice = self.default_voice if voice == "default" else voice
+        base_url = self._ensure_server(selected_voice)
         payload = {
             "text": text,
             "voice": selected_voice,
@@ -105,7 +105,7 @@ class PiperTTSAdapter(TTSAdapter):
         out_path.write_bytes(audio)
         return AudioResult(kind="file", value=str(out_path), provider=self.name, mime_type="audio/wav")
 
-    def _ensure_server(self) -> str:
+    def _ensure_server(self, voice: str | None = None) -> str:
         if self._is_healthy(self.base_url):
             return self.base_url
 
@@ -120,6 +120,9 @@ class PiperTTSAdapter(TTSAdapter):
             raise AdapterError(f"Piper server is not reachable at {self.base_url}")
 
         self._ensure_optional_dependency()
+        self._ensure_voice_available(self.model)
+        if voice and voice != self.model:
+            self._ensure_voice_available(voice)
         port = self.port if self._port_available(self.host, self.port) else self._find_free_port(self.host)
         base_url = f"http://{self.host}:{port}"
         command = [
@@ -161,6 +164,38 @@ class PiperTTSAdapter(TTSAdapter):
         )
         self._start_idle_process_watchdog(process.pid)
         return base_url
+
+    def _ensure_voice_available(self, voice: str) -> None:
+        data_dir = Path(self.data_dir)
+        if self._voice_exists(data_dir, voice):
+            return
+
+        data_dir.mkdir(parents=True, exist_ok=True)
+        self._ensure_optional_dependency()
+        command = [
+            sys.executable,
+            "-m",
+            "piper.download_voices",
+            "--data-dir",
+            self.data_dir,
+            voice,
+        ]
+        try:
+            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        except Exception as exc:
+            raise AdapterError(f"Piper voice download failed for {voice}: {exc}") from exc
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise AdapterError(f"Piper voice download failed for {voice}: {detail}")
+        if not self._voice_exists(data_dir, voice):
+            raise AdapterError(f"Piper voice download did not create files for {voice} in {self.data_dir}")
+
+    @staticmethod
+    def _voice_exists(data_dir: Path, voice: str) -> bool:
+        voice_path = Path(voice).expanduser()
+        if voice_path.exists():
+            return True
+        return any(data_dir.glob(f"{voice}*"))
 
     def _wait_until_healthy(self, base_url: str, process: subprocess.Popen[bytes], stderr) -> None:
         deadline = time.monotonic() + self.startup_timeout

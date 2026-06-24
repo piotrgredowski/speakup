@@ -8,7 +8,7 @@
 - [ ] `uv run ruff check .`
 - [ ] `uv run python -m build`
 - [ ] `uv run twine check dist/*`
-- [ ] If hosted-provider integration behavior changed: `SPEAKUP_INTEGRATION_TEST_PROVIDER=cerebras CEREBRAS_API_KEY=... uv run pytest tests/test_integration_cerebras.py -v -m integration_cerebras`
+- [ ] If hosted-provider integration behavior changed: `SPEAKUP_INTEGRATION_TEST_PROVIDER=cerebras SPEAKUP_INTEGRATION_TEST_MODEL=zai-glm-4.7 CEREBRAS_API_KEY=... uv run pytest tests/test_integration_cerebras.py tests/test_integration_pronunciation.py -v -m "integration_cerebras or integration_pronunciation"`
 
 ## Privacy/security notes
 

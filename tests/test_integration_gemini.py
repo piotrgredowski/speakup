@@ -1,7 +1,6 @@
 """Integration tests for Gemini TTS using real API.
 
-These tests require SPEAKUP_INTEGRATION_TEST_PROVIDER=gemini and GOOGLE_API_KEY.
-They run when SPEAKUP_INTEGRATION_TEST_PROVIDER=gemini.
+They run when Gemini is the selected integration provider and a Gemini API key is available.
 They can be run with: SPEAKUP_INTEGRATION_TEST_PROVIDER=gemini pytest -m integration_gemini
 
 To run only integration tests:
@@ -18,13 +17,13 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import run_cli, selected_integration_provider
+from .conftest import integration_provider_has_key, run_cli, selected_integration_provider
 
 
 # Skip real API tests unless Gemini is the selected hosted integration provider.
 pytestmark = pytest.mark.skipif(
-    selected_integration_provider() != "gemini" or not os.environ.get("GOOGLE_API_KEY"),
-    reason="Gemini integration tests require SPEAKUP_INTEGRATION_TEST_PROVIDER=gemini and GOOGLE_API_KEY",
+    selected_integration_provider() != "gemini" or not integration_provider_has_key("gemini"),
+    reason="Gemini integration tests require the selected integration provider to be gemini and a Gemini API key",
 )
 
 

@@ -6,12 +6,64 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 
+INTEGRATION_PROVIDER_API_KEY_ENVS = {
+    "cerebras": ("CEREBRAS_API_KEY",),
+    "gemini": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+}
+
+
+def integration_provider_has_key(provider: str) -> bool:
+    return any(os.environ.get(env_name) for env_name in INTEGRATION_PROVIDER_API_KEY_ENVS.get(provider, ()))
+
+
+def integration_provider_requires_key(provider: str) -> bool:
+    return provider in INTEGRATION_PROVIDER_API_KEY_ENVS
+
+
 def selected_integration_provider() -> str:
-    return os.environ.get("SPEAKUP_INTEGRATION_TEST_PROVIDER", "cerebras").strip().lower()
+    explicit_provider = os.environ.get("SPEAKUP_INTEGRATION_TEST_PROVIDER", "").strip().lower()
+    if explicit_provider:
+        return explicit_provider
+    for provider in INTEGRATION_PROVIDER_API_KEY_ENVS:
+        if integration_provider_has_key(provider):
+            return provider
+    return ""
+
+
+def selected_integration_model(default: str) -> str:
+    return os.environ.get("SPEAKUP_INTEGRATION_TEST_MODEL", default).strip() or default
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or "integration_pronunciation" not in item.keywords:
+        return
+
+    output = getattr(report, "capstdout", "").strip()
+    if not output:
+        return
+    pronunciation_outputs = getattr(item.config, "_pronunciation_outputs", [])
+    pronunciation_outputs.append((item.nodeid, report.outcome, output))
+    item.config._pronunciation_outputs = pronunciation_outputs
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter, exitstatus: int, config: pytest.Config) -> None:
+    pronunciation_outputs = getattr(config, "_pronunciation_outputs", [])
+    if not pronunciation_outputs:
+        return
+
+    terminalreporter.section("pronunciation integration output", sep="-")
+    for nodeid, outcome, output in pronunciation_outputs:
+        terminalreporter.write_line(f"{nodeid} [{outcome}]")
+        terminalreporter.write_line(output)
+        terminalreporter.write_line("")
 
 
 @pytest.fixture

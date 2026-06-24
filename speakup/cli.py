@@ -140,6 +140,13 @@ def _tts_model_targets(cfg: Config, tts_provider: Optional[str]) -> list[tuple[s
     ]
 
 
+def _resolve_tts_voice_provider(cfg: Config, tts_provider: Optional[str]) -> str:
+    if tts_provider:
+        return tts_provider
+    provider_order = cfg.get("tts", "provider_order", default=["lmstudio"])
+    return provider_order[0] if provider_order else "lmstudio"
+
+
 def _merge_cli_provider_config(payload: dict[str, object], provider: str, key: str, value: object) -> None:
     providers = payload.setdefault("providers", {})
     if not isinstance(providers, dict):
@@ -163,6 +170,9 @@ def _build_cli_override_payload(
     pronunciation_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
     tts_model: Optional[str] = None,
+    tts_voice: Optional[str] = None,
+    tts_title_voice: Optional[str] = None,
+    tts_message_voice: Optional[str] = None,
     pronunciation_model: Optional[str] = None,
     dedup_mode: Optional[str] = None,
     dedup_on_skip: Optional[str] = None,
@@ -189,6 +199,17 @@ def _build_cli_override_payload(
     if tts_model:
         for provider_name, key_name in _tts_model_targets(cfg, tts_provider):
             _merge_cli_provider_config(payload, provider_name, key_name, tts_model)
+    if tts_voice:
+        provider_name = _resolve_tts_voice_provider(cfg, tts_provider)
+        _merge_cli_provider_config(payload, provider_name, "voice", tts_voice)
+        _merge_cli_provider_config(payload, provider_name, "title_voice", tts_voice)
+        _merge_cli_provider_config(payload, provider_name, "message_voice", tts_voice)
+    if tts_title_voice:
+        provider_name = _resolve_tts_voice_provider(cfg, tts_provider)
+        _merge_cli_provider_config(payload, provider_name, "title_voice", tts_title_voice)
+    if tts_message_voice:
+        provider_name = _resolve_tts_voice_provider(cfg, tts_provider)
+        _merge_cli_provider_config(payload, provider_name, "message_voice", tts_message_voice)
     if pronunciation_model:
         provider_name, key_name = _resolve_pronunciation_model_target(cfg, pronunciation_provider)
         _merge_cli_provider_config(payload, provider_name, key_name, pronunciation_model)
@@ -281,6 +302,9 @@ def _apply_cli_overrides(
     pronunciation_provider: Optional[str] = None,
     summary_model: Optional[str] = None,
     tts_model: Optional[str] = None,
+    tts_voice: Optional[str] = None,
+    tts_title_voice: Optional[str] = None,
+    tts_message_voice: Optional[str] = None,
     pronunciation_model: Optional[str] = None,
     dedup_mode: Optional[str] = None,
     dedup_on_skip: Optional[str] = None,
@@ -332,6 +356,23 @@ def _apply_cli_overrides(
             "tts_model_overridden", extra={"provider": provider_name, "model": tts_model}
         )
 
+    if tts_voice:
+        provider_name = _resolve_tts_voice_provider(cfg, tts_provider)
+        cfg.set_provider_config(provider_name, "voice", tts_voice)
+        cfg.set_provider_config(provider_name, "title_voice", tts_voice)
+        cfg.set_provider_config(provider_name, "message_voice", tts_voice)
+        logger.info("tts_voice_overridden", extra={"provider": provider_name, "voice": tts_voice})
+
+    if tts_title_voice:
+        provider_name = _resolve_tts_voice_provider(cfg, tts_provider)
+        cfg.set_provider_config(provider_name, "title_voice", tts_title_voice)
+        logger.info("tts_title_voice_overridden", extra={"provider": provider_name, "voice": tts_title_voice})
+
+    if tts_message_voice:
+        provider_name = _resolve_tts_voice_provider(cfg, tts_provider)
+        cfg.set_provider_config(provider_name, "message_voice", tts_message_voice)
+        logger.info("tts_message_voice_overridden", extra={"provider": provider_name, "voice": tts_message_voice})
+
     if pronunciation_model:
         provider_name, key_name = _resolve_pronunciation_model_target(cfg, pronunciation_provider)
         cfg.set_provider_config(provider_name, key_name, pronunciation_model)
@@ -378,6 +419,9 @@ def _run_notify(
     pronunciation_provider: Optional[PronunciationProvider],
     summary_model: Optional[str],
     tts_model: Optional[str],
+    tts_voice: Optional[str],
+    tts_title_voice: Optional[str],
+    tts_message_voice: Optional[str],
     pronunciation_model: Optional[str],
     dedup_mode: Optional[DedupMode],
     dedup_on_skip: Optional[DedupOnSkip],
@@ -411,6 +455,9 @@ def _run_notify(
         pronunciation_provider=pronunciation_provider.value if pronunciation_provider else None,
         summary_model=summary_model,
         tts_model=tts_model,
+        tts_voice=tts_voice,
+        tts_title_voice=tts_title_voice,
+        tts_message_voice=tts_message_voice,
         pronunciation_model=pronunciation_model,
         dedup_mode=dedup_mode.value if dedup_mode else None,
         dedup_on_skip=dedup_on_skip.value if dedup_on_skip else None,
@@ -443,6 +490,9 @@ def _run_notify(
         pronunciation_provider=pronunciation_provider.value if pronunciation_provider else None,
         summary_model=summary_model,
         tts_model=tts_model,
+        tts_voice=tts_voice,
+        tts_title_voice=tts_title_voice,
+        tts_message_voice=tts_message_voice,
         pronunciation_model=pronunciation_model,
         dedup_mode=dedup_mode.value if dedup_mode else None,
         dedup_on_skip=dedup_on_skip.value if dedup_on_skip else None,
@@ -566,6 +616,15 @@ def main_callback(
     tts_model: Optional[str] = typer.Option(
         None, "--tts-model", help="Override TTS model for this run"
     ),
+    tts_voice: Optional[str] = typer.Option(
+        None, "--tts-voice", help="Override TTS voice for this run"
+    ),
+    tts_title_voice: Optional[str] = typer.Option(
+        None, "--tts-title-voice", help="Override TTS title voice for this run"
+    ),
+    tts_message_voice: Optional[str] = typer.Option(
+        None, "--tts-message-voice", help="Override TTS message voice for this run"
+    ),
     pronunciation_model: Optional[str] = typer.Option(
         None, "--pronunciation-model", help="Override pronunciation adaptation model for this run"
     ),
@@ -650,6 +709,9 @@ def main_callback(
             pronunciation_provider=pronunciation_provider,
             summary_model=summary_model,
             tts_model=tts_model,
+            tts_voice=tts_voice,
+            tts_title_voice=tts_title_voice,
+            tts_message_voice=tts_message_voice,
             pronunciation_model=pronunciation_model,
             dedup_mode=dedup_mode,
             dedup_on_skip=dedup_on_skip,

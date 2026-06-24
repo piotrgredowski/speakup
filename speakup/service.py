@@ -297,7 +297,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
         cb = config.get("providers", "cerebras", default={})
         return CerebrasSummarizer(
             api_key_env=cb.get("api_key_env", "CEREBRAS_API_KEY"),
-            model=cb.get("model", "llama-3.3-70b"),
+            model=str(cb["model"]),
             base_url=cb.get("base_url", "https://api.cerebras.ai/v1"),
         )
 
@@ -307,7 +307,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             name="cerebras",
             base_url=cb.get("base_url", "https://api.cerebras.ai/v1"),
             api_key_env=cb.get("api_key_env", "CEREBRAS_API_KEY"),
-            model=cb.get("model", "llama-3.3-70b"),
+            model=str(cb["model"]),
         )
 
     def make_gemini_summarizer() -> GeminiSummarizer:
@@ -342,6 +342,12 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             default_api_key="1234",
             model=ok.get("summary_model", "unsloth/gemma-4-E4B-it-UD-MLX-4bit"),
             timeout=float(ok.get("timeout", 60.0)),
+            extra_body={
+                "chat_template_kwargs": {
+                    "enable_thinking": False,
+                    "preserve_thinking": False,
+                }
+            },
         )
 
     registry.register_summarizer("rule_based", make_rule_based)
@@ -549,12 +555,35 @@ class NotifyService:
         request_id: str,
     ) -> PronunciationResult:
         if not bool(self.config.get("pronunciation", "enabled", default=True)):
+            self.logger.info("pronunciation_disabled", extra={"request_id": request_id})
             return PronunciationResult(title=title, message=message, spoken_language=spoken_language)
 
         provider_order = self.config.get("pronunciation", "provider_order", default=["omlx"])
         fail_fast = bool(self.config.get("fallback", "fail_fast", default=False))
         privacy_mode = self.config.get("privacy", "mode", default="local_only")
         allow_remote = bool(self.config.get("privacy", "allow_remote_fallback", default=False))
+        started_provider = None
+        started_model = None
+        for candidate in provider_order:
+            if candidate in REMOTE_PRONUNCIATION_PROVIDERS:
+                if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
+                    continue
+            if self.registry.has_pronunciation(str(candidate)):
+                started_provider = str(candidate)
+                started_model = getattr(self.registry.get_pronunciation(str(candidate)), "model", None)
+                break
+        self.logger.info(
+            "pronunciation_started",
+            extra={
+                "request_id": request_id,
+                "provider_order": provider_order,
+                "provider": started_provider,
+                "pronunciation_model": started_model,
+                "has_title": title is not None,
+                "message_length": len(message),
+                "spoken_language": spoken_language,
+            },
+        )
         for provider in provider_order:
             if provider in REMOTE_PRONUNCIATION_PROVIDERS:
                 if privacy_mode == "local_only" or (privacy_mode == "prefer_local" and not allow_remote):
@@ -569,13 +598,19 @@ class NotifyService:
                     extra={"request_id": request_id, "provider": provider},
                 )
                 continue
+            adapter = self.registry.get_pronunciation(str(provider))
+            pronunciation_model = getattr(adapter, "model", None)
             try:
-                adapter = self.registry.get_pronunciation(str(provider))
                 result = adapter.adapt(title=title, message=message, spoken_language=spoken_language)
             except AdapterError as exc:
                 self.logger.warning(
                     "pronunciation_failed",
-                    extra={"request_id": request_id, "provider": provider, "error": str(exc)},
+                    extra={
+                        "request_id": request_id,
+                        "provider": provider,
+                        "pronunciation_model": pronunciation_model,
+                        "error": str(exc),
+                    },
                 )
                 if fail_fast:
                     raise
@@ -583,8 +618,27 @@ class NotifyService:
             if not result.message.strip():
                 if fail_fast:
                     raise AdapterError(f"{provider} pronunciation adapter returned empty message")
+                self.logger.warning(
+                    "pronunciation_empty_message",
+                    extra={"request_id": request_id, "provider": provider},
+                )
                 continue
+            self.logger.info(
+                "pronunciation_completed",
+                extra={
+                    "request_id": request_id,
+                    "provider": provider,
+                    "pronunciation_model": pronunciation_model,
+                    "changed": result.title != title or result.message != message,
+                    "input_title_length": len(title or ""),
+                    "input_message_length": len(message),
+                    "output_title_length": len(result.title or ""),
+                    "output_message_length": len(result.message),
+                    "spoken_language": result.spoken_language or spoken_language,
+                },
+            )
             return result
+        self.logger.info("pronunciation_no_provider_succeeded", extra={"request_id": request_id})
         return PronunciationResult(title=title, message=message, spoken_language=spoken_language)
 
     def _resolve_project_override(self, project_path: str | None) -> dict[object, object]:

@@ -88,7 +88,9 @@ def get_default_log_file_path() -> Path:
     return get_default_log_dir() / "speakup.log"
 
 
-SpeechTemplateField = Literal["source_tool", "agent", "session_name", "context_kind", "context_name", "summary", "raw_message", "event"]
+SpeechTemplateField = Literal[
+    "source_tool", "agent", "session_name", "context_kind", "context_name", "summary", "raw_message", "event"
+]
 
 
 @dataclass
@@ -155,8 +157,8 @@ class TTSConfig:
         provider: Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx", "piper"] | None = None
         speed: float = 1.0
 
-    provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx", "piper"]] = field(
-        default_factory=lambda: ["omlx", "piper", "macos"]
+    provider_order: list[Literal["macos", "lmstudio", "edge", "elevenlabs", "openai", "gemini", "omlx", "piper"]] = (
+        field(default_factory=lambda: ["omlx", "piper", "macos"])
     )
     voice: str = "default"
     speed: float = 1.0
@@ -269,9 +271,7 @@ class SpeechTemplateConfig:
         )
     )
     message: SpeechSegmentTemplateConfig = field(
-        default_factory=lambda: SpeechSegmentTemplateConfig(
-            parts=[SpeechTemplatePartConfig(field="summary")]
-        )
+        default_factory=lambda: SpeechSegmentTemplateConfig(parts=[SpeechTemplatePartConfig(field="summary")])
     )
 
 
@@ -316,13 +316,13 @@ class OpenAIConfig:
 @dataclass
 class CerebrasConfig:
     api_key_env: str = "CEREBRAS_API_KEY"
-    model: str = "llama-3.3-70b"
+    model: str = "zai-glm-4.7"
     base_url: str = "https://api.cerebras.ai/v1"
 
 
 @dataclass
 class GeminiConfig:
-    api_key_env: str = "GOOGLE_API_KEY"
+    api_key_env: str = "GEMINI_API_KEY"
     model: str = "gemini-2.5-flash-preview-tts"
     summary_model: str = "gemini-2.5-flash"
     voice: str = "Kore"
@@ -600,7 +600,9 @@ def active_repo_config_payload(cfg: "Config", cwd: Path) -> dict[str, object]:
 
     project_override = _resolve_project_override_from_config(cfg, cwd)
     project_provider = project_override.get("provider")
-    effective_tts_order = [project_provider] if isinstance(project_provider, str) and project_provider.strip() else tts_order
+    effective_tts_order = (
+        [project_provider] if isinstance(project_provider, str) and project_provider.strip() else tts_order
+    )
 
     provider_names = {
         _provider_config_key(provider)

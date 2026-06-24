@@ -57,6 +57,7 @@ packages = ["speakup", "speakup.lib", "speakup.summarizers", "speakup.tts", "spe
 markers = [
     "integration_cerebras: marks tests as Cerebras API integration tests (deselect with '-m \"not integration_cerebras\"')",
     "integration_gemini: marks tests as Gemini API integration tests (deselect with '-m \"not integration_gemini\"')",
+    "integration_pronunciation: marks tests as real provider pronunciation integration tests",
 ]
 
 [tool.ruff]

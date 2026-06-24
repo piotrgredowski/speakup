@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import ClassVar
 
@@ -59,10 +60,12 @@ class _RecordingPronunciationAdapter(PronunciationAdapter):
         title: str | None = "spikap mówi",
         message: str = "GitHab ekszyn fejld",
         spoken_language: str = "pl",
+        model: str | None = "fake-pronunciation-model",
     ) -> None:
         self.title = title
         self.message = message
         self.spoken_language = spoken_language
+        self.model = model
         self.calls: list[tuple[str | None, str, str | None]] = []
 
     def adapt(self, *, title: str | None, message: str, spoken_language: str | None) -> PronunciationResult:
@@ -136,6 +139,25 @@ def test_notify_given_pronunciation_adapter_then_returns_and_speaks_adapted_summ
     assert adapter.calls == [("speakup says", "GitHub action failed", None)]
     assert result.summary == "spikap mówi GitHab ekszyn fejld"
     assert _FileTTS.texts == ["spikap mówi", "GitHab ekszyn fejld"]
+
+
+def test_notify_given_pronunciation_adapter_then_logs_pronunciation_without_raw_text(caplog: pytest.LogCaptureFixture) -> None:
+    summarizer = _RecordingSummarizer("GitHub action failed")
+    adapter = _RecordingPronunciationAdapter()
+    service = _service_with_pronunciation_adapter(summarizer, adapter)
+
+    with caplog.at_level(logging.INFO, logger="speakup.service"):
+        service.notify(NotifyRequest(message="done", event=MessageEvent.FINAL))
+
+    messages = [record.message for record in caplog.records]
+    assert "pronunciation_started" in messages
+    assert "pronunciation_completed" in messages
+    started = next(record for record in caplog.records if record.message == "pronunciation_started")
+    assert started.pronunciation_model == "fake-pronunciation-model"
+    completed = next(record for record in caplog.records if record.message == "pronunciation_completed")
+    assert completed.pronunciation_model == "fake-pronunciation-model"
+    assert "GitHub action failed" not in caplog.text
+    assert "GitHab ekszyn fejld" not in caplog.text
 
 
 def test_notify_given_skip_title_and_pronunciation_title_then_speaks_only_adapted_message() -> None:

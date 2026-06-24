@@ -7,6 +7,7 @@ Requires CEREBRAS_API_KEY environment variable.
 """
 
 from speakup.models import MessageEvent
+from speakup.config import default_config
 from speakup.summarizers.cerebras import CerebrasSummarizer
 
 SAMPLES = {
@@ -141,7 +142,10 @@ MAX_CHARS = 220
 
 
 def main():
-    summarizer = CerebrasSummarizer(api_key_env="CEREBRAS_API_KEY")
+    summarizer = CerebrasSummarizer(
+        api_key_env="CEREBRAS_API_KEY",
+        model=str(default_config()["providers"]["cerebras"]["model"]),
+    )
 
     print("=" * 60)
     print("SUMMARY PROMPT OUTPUT TEST")

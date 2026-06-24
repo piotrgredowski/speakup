@@ -8,6 +8,37 @@ import pytest
 
 from speakup.config import Config, ConfigValidationError, default_config, get_default_log_file_path
 from speakup.service import build_registry_from_config
+from tests.conftest import integration_provider_requires_key, selected_integration_provider
+
+
+def test_selected_integration_provider_given_no_env_then_returns_empty(monkeypatch) -> None:
+    monkeypatch.delenv("SPEAKUP_INTEGRATION_TEST_PROVIDER", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    assert selected_integration_provider() == ""
+
+
+def test_selected_integration_provider_given_gemini_key_then_auto_selects_gemini(monkeypatch) -> None:
+    monkeypatch.delenv("SPEAKUP_INTEGRATION_TEST_PROVIDER", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+    assert selected_integration_provider() == "gemini"
+
+
+def test_selected_integration_provider_given_explicit_provider_then_uses_it(monkeypatch) -> None:
+    monkeypatch.setenv("SPEAKUP_INTEGRATION_TEST_PROVIDER", "cerebras")
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+    assert selected_integration_provider() == "cerebras"
+
+
+def test_integration_provider_requires_key_given_local_provider_then_returns_false() -> None:
+    assert integration_provider_requires_key("omlx") is False
 
 
 def test_config_load_given_valid_default_then_succeeds(tmp_path, monkeypatch) -> None:

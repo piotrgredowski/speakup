@@ -105,6 +105,52 @@ def test_apply_cli_overrides_given_openai_tts_provider_then_updates_openai_model
     assert cfg.get("providers", "openai", "model") == "gpt-4o-mini-tts"
 
 
+def test_apply_cli_overrides_given_piper_tts_model_then_updates_model_only() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        tts_provider="piper",
+        tts_model="pl_PL-mc_speech-medium",
+    )
+
+    assert cfg.get("tts", "provider_order") == ["piper"]
+    assert cfg.get("providers", "piper", "model") == "pl_PL-mc_speech-medium"
+    assert cfg.get("providers", "piper", "voice") == "en_GB-alba-medium"
+    assert cfg.get("providers", "piper", "title_voice") is None
+    assert cfg.get("providers", "piper", "message_voice") is None
+
+
+def test_apply_cli_overrides_given_tts_voice_then_updates_provider_voice() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        tts_provider="piper",
+        tts_voice="pl_PL-mc_speech-medium",
+    )
+
+    assert cfg.get("tts", "provider_order") == ["piper"]
+    assert cfg.get("providers", "piper", "voice") == "pl_PL-mc_speech-medium"
+    assert cfg.get("providers", "piper", "title_voice") == "pl_PL-mc_speech-medium"
+    assert cfg.get("providers", "piper", "message_voice") == "pl_PL-mc_speech-medium"
+
+
+def test_apply_cli_overrides_given_tts_role_voices_then_updates_role_voices() -> None:
+    cfg = Config(default_config())
+
+    _apply_cli_overrides(
+        cfg,
+        tts_provider="piper",
+        tts_title_voice="pl_PL-mc_speech-medium",
+        tts_message_voice="pl_PL-bass-high",
+    )
+
+    assert cfg.get("tts", "provider_order") == ["piper"]
+    assert cfg.get("providers", "piper", "title_voice") == "pl_PL-mc_speech-medium"
+    assert cfg.get("providers", "piper", "message_voice") == "pl_PL-bass-high"
+
+
 def test_build_cli_override_payload_given_omlx_models_then_targets_omlx_provider() -> None:
     cfg = Config(default_config())
 
@@ -123,6 +169,46 @@ def test_build_cli_override_payload_given_omlx_models_then_targets_omlx_provider
             "omlx": {
                 "summary_model": "unsloth/gemma-4-E4B-it-UD-MLX-4bit",
                 "model": "Kokoro-82M-bf16",
+            }
+        },
+    }
+
+
+def test_build_cli_override_payload_given_piper_tts_model_then_updates_model_only() -> None:
+    cfg = Config(default_config())
+
+    payload = _build_cli_override_payload(
+        cfg,
+        tts_provider="piper",
+        tts_model="pl_PL-mc_speech-medium",
+    )
+
+    assert payload == {
+        "tts": {"provider_order": ["piper"]},
+        "providers": {
+            "piper": {
+                "model": "pl_PL-mc_speech-medium",
+            }
+        },
+    }
+
+
+def test_build_cli_override_payload_given_tts_voice_then_updates_provider_voice() -> None:
+    cfg = Config(default_config())
+
+    payload = _build_cli_override_payload(
+        cfg,
+        tts_provider="piper",
+        tts_voice="pl_PL-mc_speech-medium",
+    )
+
+    assert payload == {
+        "tts": {"provider_order": ["piper"]},
+        "providers": {
+            "piper": {
+                "voice": "pl_PL-mc_speech-medium",
+                "title_voice": "pl_PL-mc_speech-medium",
+                "message_voice": "pl_PL-mc_speech-medium",
             }
         },
     }
