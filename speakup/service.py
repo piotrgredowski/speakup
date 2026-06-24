@@ -220,6 +220,7 @@ def build_registry_from_config(config: Config) -> AdapterRegistry:
             voice=pp.get("voice", "pl_PL-bass-high"),
             timeout=float(pp.get("timeout", 20.0)),
             startup_timeout=float(pp.get("startup_timeout", 10.0)),
+            idle_timeout_seconds=pp.get("idle_timeout_seconds", 600),
             extra_args=pp.get("extra_args", []),
         )
 

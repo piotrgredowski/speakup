@@ -63,7 +63,8 @@ Then set `~/.config/speakup/config.jsonc` to use oMLX locally:
       "auto_start": true,
       "data_dir": "~/.local/share/speakup/piper-voices",
       "model": "pl_PL-bass-high",
-      "voice": "pl_PL-bass-high"
+      "voice": "pl_PL-bass-high",
+      "idle_timeout_seconds": 600
     }
   }
 }
